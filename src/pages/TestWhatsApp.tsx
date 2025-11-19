@@ -52,21 +52,35 @@ export default function TestWhatsApp() {
 
   const loadRestaurant = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      toast({
+        title: "Erro de autenticação",
+        description: "Por favor faça login primeiro",
+        variant: "destructive"
+      });
+      return;
+    }
 
-    const { data: restaurant } = await supabase
+    const { data: restaurant, error } = await supabase
       .from('restaurants')
       .select('id, phone')
       .eq('user_id', user.id)
       .single();
 
-    if (restaurant) {
-      setRestaurantId(restaurant.id);
+    if (error || !restaurant) {
       toast({
-        title: "Restaurante carregado",
-        description: `Teste com número: ${testPhone}`
+        title: "Nenhum restaurante encontrado",
+        description: "Por favor crie um restaurante primeiro na página Settings",
+        variant: "destructive"
       });
+      return;
     }
+
+    setRestaurantId(restaurant.id);
+    toast({
+      title: "Restaurante carregado",
+      description: `Teste com número: ${testPhone}`
+    });
   };
 
   const sendTestMessage = async () => {
