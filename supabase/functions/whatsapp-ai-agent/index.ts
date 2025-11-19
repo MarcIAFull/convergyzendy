@@ -15,11 +15,93 @@ interface CartItem {
   addons: Array<{ addon_id: string; name: string; price: number }>;
 }
 
+type OrderState = 
+  | 'idle'
+  | 'browsing_menu'
+  | 'adding_item'
+  | 'choosing_addons'
+  | 'confirming_item'
+  | 'collecting_address'
+  | 'collecting_payment'
+  | 'confirming_order'
+  | 'order_completed';
+
 interface ConversationState {
   cart: CartItem[];
   delivery_address?: string;
   payment_method?: string;
-  stage: 'browsing' | 'cart_review' | 'address' | 'payment' | 'confirmation';
+  state: OrderState;
+  pending_item?: {
+    product_id: string;
+    quantity: number;
+    addon_ids?: string[];
+  };
+}
+
+// State machine transitions
+const STATE_TRANSITIONS: Record<OrderState, OrderState[]> = {
+  idle: ['browsing_menu'],
+  browsing_menu: ['adding_item', 'collecting_address'], // Can skip to address if cart has items
+  adding_item: ['choosing_addons', 'confirming_item'],
+  choosing_addons: ['confirming_item'],
+  confirming_item: ['browsing_menu', 'collecting_address'],
+  collecting_address: ['collecting_payment'],
+  collecting_payment: ['confirming_order'],
+  confirming_order: ['order_completed', 'browsing_menu'], // Can go back if customer says no
+  order_completed: ['idle'],
+};
+
+function getNextState(currentState: OrderState, action: string, hasCart: boolean): OrderState {
+  // State transition logic based on action and context
+  switch (currentState) {
+    case 'idle':
+      return 'browsing_menu';
+    
+    case 'browsing_menu':
+      if (action.includes('add') || action.includes('quero')) {
+        return 'adding_item';
+      }
+      if (hasCart && (action.includes('finalizar') || action.includes('pedir'))) {
+        return 'collecting_address';
+      }
+      return 'browsing_menu';
+    
+    case 'adding_item':
+      if (action.includes('extra') || action.includes('adicional')) {
+        return 'choosing_addons';
+      }
+      return 'confirming_item';
+    
+    case 'choosing_addons':
+      return 'confirming_item';
+    
+    case 'confirming_item':
+      if (action.includes('mais') || action.includes('outro')) {
+        return 'browsing_menu';
+      }
+      if (action.includes('finalizar') || action.includes('pedir')) {
+        return 'collecting_address';
+      }
+      return 'browsing_menu';
+    
+    case 'collecting_address':
+      return 'collecting_payment';
+    
+    case 'collecting_payment':
+      return 'confirming_order';
+    
+    case 'confirming_order':
+      if (action.includes('sim') || action.includes('confirmar')) {
+        return 'order_completed';
+      }
+      return 'browsing_menu';
+    
+    case 'order_completed':
+      return 'idle';
+    
+    default:
+      return currentState;
+  }
 }
 
 serve(async (req) => {
@@ -93,7 +175,7 @@ serve(async (req) => {
       .order('timestamp', { ascending: true })
       .limit(20);
 
-    // Get or create active cart
+    // Get or create active cart with state
     const { data: existingCart } = await supabase
       .from('carts')
       .select('*, cart_items(*, cart_item_addons(addon_id))')
@@ -104,7 +186,7 @@ serve(async (req) => {
 
     let conversationState: ConversationState = {
       cart: [],
-      stage: 'browsing',
+      state: 'idle',
     };
 
     if (existingCart) {
@@ -126,58 +208,50 @@ serve(async (req) => {
           }) || [],
         };
       }) || [];
+      
+      // Determine state from cart and message history
+      if (conversationState.cart.length === 0) {
+        conversationState.state = 'browsing_menu';
+      } else {
+        // Check last message to infer state
+        const lastMessage = messages?.[messages.length - 1];
+        if (lastMessage?.body.toLowerCase().includes('morada')) {
+          conversationState.state = 'collecting_address';
+        } else if (lastMessage?.body.toLowerCase().includes('pagamento')) {
+          conversationState.state = 'collecting_payment';
+        } else {
+          conversationState.state = 'browsing_menu';
+        }
+      }
     }
+
+    // Import state prompts
+    const { getStatePrompt } = await import('./state-prompts.ts');
+
+    // Calculate cart total
+    const cartTotal = conversationState.cart.reduce((sum, item) => {
+      const itemTotal = (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.quantity;
+      return sum + itemTotal;
+    }, 0);
+
+    // Get state-specific system prompt
+    const systemPrompt = getStatePrompt(
+      conversationState.state,
+      restaurant.name,
+      menuStructure,
+      conversationState.cart,
+      cartTotal,
+      Number(restaurant.delivery_fee)
+    );
+
+    console.log('Current State:', conversationState.state);
+    console.log('Cart Total:', cartTotal);
 
     // Build conversation history for context
     const conversationHistory = messages?.map(msg => ({
       role: msg.direction === 'inbound' ? 'user' : 'assistant',
       content: msg.body,
     })) || [];
-
-    // System prompt with strict rules
-    const systemPrompt = `Você é um assistente de pedidos para o restaurante "${restaurant.name}".
-
-REGRAS ESTRITAS QUE NUNCA PODE QUEBRAR:
-1. Responda SEMPRE em Português Europeu (de Portugal, não Brasil)
-2. NUNCA invente produtos, preços ou informações - use APENAS os dados do menu fornecido
-3. Se o cliente pedir algo que não existe, diga claramente que não está disponível
-4. Use as ferramentas (tools) para adicionar/remover do carrinho e finalizar pedidos
-5. Seja simpático, natural e eficiente
-
-MENU DISPONÍVEL:
-${JSON.stringify(menuStructure, null, 2)}
-
-CARRINHO ATUAL DO CLIENTE:
-${conversationState.cart.length > 0 ? conversationState.cart.map(item => 
-  `• ${item.quantity}x ${item.product_name} (€${item.price.toFixed(2)})${
-    item.addons.length > 0 ? ` + ${item.addons.map(a => a.name).join(', ')}` : ''
-  }`
-).join('\n') : 'Vazio'}
-
-TOTAL ATUAL: €${conversationState.cart.reduce((sum, item) => {
-  const itemTotal = (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.quantity;
-  return sum + itemTotal;
-}, 0).toFixed(2)}
-
-TAXA DE ENTREGA: €${Number(restaurant.delivery_fee).toFixed(2)}
-
-FLUXO DO PEDIDO:
-1. Cliente escolhe produtos → use add_to_cart com product_id e quantity
-2. Confirme cada adição mostrando nome e preço corretos
-3. Quando tiver itens no carrinho, pergunte se deseja adicionar mais ou finalizar
-4. Para finalizar:
-   a) Pergunte a morada de entrega completa
-   b) Pergunte o método de pagamento (Dinheiro, Multibanco, MBWay)
-   c) Mostre resumo: itens + subtotal + entrega + total
-   d) Confirme o pedido → use finalize_order com delivery_address e payment_method
-
-IMPORTANTE:
-- Se não tem certeza do produto, pergunte ou sugira opções do menu
-- Preços devem sempre corresponder aos do menu
-- Use as ferramentas para modificar o carrinho
-- Seja claro sobre custos e tempo de entrega
-
-Responda à mensagem do cliente de forma natural e útil.`;
 
     // Define tools for structured operations
     const tools = [
@@ -315,6 +389,9 @@ Responda à mensagem do cliente de forma natural e útil.`;
 
           const product = products?.find(p => p.id === args.product_id);
           assistantMessage += `\n\n✅ Adicionado: ${args.quantity}x ${product?.name} (€${Number(product?.price).toFixed(2)})`;
+          
+          // Update state to confirming_item
+          conversationState.state = 'confirming_item';
 
         } else if (functionName === 'remove_from_cart') {
           if (existingCart) {
@@ -365,6 +442,9 @@ Responda à mensagem do cliente de forma natural e útil.`;
             .from('carts')
             .update({ status: 'completed' })
             .eq('id', existingCart.id);
+
+          // Update state to order_completed
+          conversationState.state = 'order_completed';
 
           // Generate order summary
           const orderSummary = `
