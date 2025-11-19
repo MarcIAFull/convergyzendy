@@ -113,8 +113,14 @@ export default function TestWhatsApp() {
         setMessages(prev => [...prev, aiMessage]);
       }
 
-      if (data.state) {
-        setOrderState(data.state);
+      // Update order state with all response data
+      if (data) {
+        setOrderState({
+          state: data.state || 'idle',
+          cart: data.cart || [],
+          delivery_address: data.delivery_address,
+          payment_method: data.payment_method,
+        });
       }
 
       toast({
