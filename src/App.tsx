@@ -10,6 +10,7 @@ import MenuManagement from "@/pages/MenuManagement";
 import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Settings from "@/pages/Settings";
+import Messages from "@/pages/Messages";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 
@@ -29,6 +30,7 @@ const App = () => (
               <Route path="/menu" element={<MenuManagement />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/:id" element={<OrderDetail />} />
+              <Route path="/messages" element={<Messages />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

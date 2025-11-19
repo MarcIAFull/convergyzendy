@@ -10,6 +10,7 @@ import {
   LogOut,
   Moon,
   Sun,
+  MessageSquare,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -20,6 +21,7 @@ const DashboardLayout = () => {
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Menu", href: "/menu", icon: Package },
     { name: "Orders", href: "/orders", icon: Menu },
+    { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 
