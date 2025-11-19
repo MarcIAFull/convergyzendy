@@ -485,7 +485,11 @@ Obrigado pelo seu pedido! Chegará em breve.`;
     }
 
     return new Response(
-      JSON.stringify({ success: true, response: assistantMessage }),
+      JSON.stringify({ 
+        success: true, 
+        response: assistantMessage,
+        state: conversationState
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }

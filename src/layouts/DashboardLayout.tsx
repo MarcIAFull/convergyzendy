@@ -11,6 +11,7 @@ import {
   Moon,
   Sun,
   MessageSquare,
+  TestTube,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -22,6 +23,7 @@ const DashboardLayout = () => {
     { name: "Menu", href: "/menu", icon: Package },
     { name: "Orders", href: "/orders", icon: Menu },
     { name: "Messages", href: "/messages", icon: MessageSquare },
+    { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 
