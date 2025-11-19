@@ -120,8 +120,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   },
 
   subscribeToOrders: (restaurantId: string) => {
+    console.log('Setting up real-time subscription for restaurant:', restaurantId);
+    
     const channel = supabase
-      .channel('orders-changes')
+      .channel('orders-realtime')
       .on(
         'postgres_changes',
         {
@@ -130,15 +132,48 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           table: 'orders',
           filter: `restaurant_id=eq.${restaurantId}`,
         },
-        () => {
+        (payload) => {
+          console.log('Order change detected:', payload);
           // Refetch orders when any change occurs
           get().fetchOrders(restaurantId);
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cart_items',
+        },
+        (payload) => {
+          console.log('Cart item change detected:', payload);
+          // Refetch orders when cart items change
+          get().fetchOrders(restaurantId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cart_item_addons',
+        },
+        (payload) => {
+          console.log('Cart item addon change detected:', payload);
+          // Refetch orders when cart item addons change
+          get().fetchOrders(restaurantId);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to real-time updates');
+        }
+      });
 
     // Return unsubscribe function
     return () => {
+      console.log('Unsubscribing from real-time updates');
       supabase.removeChannel(channel);
     };
   },
