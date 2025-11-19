@@ -2,6 +2,8 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
+import { useRestaurantStore } from "@/stores/restaurantStore";
+import { useEffect } from "react";
 import {
   LayoutDashboard,
   Menu,
@@ -17,6 +19,13 @@ import {
 const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { fetchRestaurant } = useRestaurantStore();
+
+  // Load restaurant on mount
+  useEffect(() => {
+    console.log('[DashboardLayout] Initializing - fetching restaurant');
+    fetchRestaurant();
+  }, [fetchRestaurant]);
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },

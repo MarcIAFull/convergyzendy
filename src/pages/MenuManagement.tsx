@@ -92,18 +92,28 @@ const MenuManagement = () => {
   };
 
   const handleSaveCategory = async () => {
-    if (!restaurant?.id) return;
+    if (!restaurant?.id) {
+      console.error('[MenuManagement] Cannot save category - no restaurant ID');
+      toast({ title: 'Error', description: 'No restaurant found. Please create a restaurant in Settings first.', variant: 'destructive' });
+      return;
+    }
+    
+    console.log('[MenuManagement] Saving category:', { editing: !!editingCategory, name: categoryName, restaurantId: restaurant.id });
+    
     try {
       if (editingCategory) {
         await updateCategory(editingCategory.id, { name: categoryName });
+        console.log('[MenuManagement] Category updated successfully');
         toast({ title: 'Category updated successfully' });
       } else {
         await addCategory(categoryName, restaurant.id);
+        console.log('[MenuManagement] Category added successfully');
         toast({ title: 'Category added successfully' });
       }
       setCategoryDialog(false);
       setCategoryName('');
     } catch (error) {
+      console.error('[MenuManagement] Failed to save category:', error);
       toast({ title: 'Error', description: 'Failed to save category', variant: 'destructive' });
     }
   };
@@ -167,7 +177,13 @@ const MenuManagement = () => {
   };
 
   const handleSaveProduct = async () => {
-    if (!restaurant?.id) return;
+    if (!restaurant?.id) {
+      console.error('[MenuManagement] Cannot save product - no restaurant ID');
+      toast({ title: 'Error', description: 'No restaurant found. Please create a restaurant in Settings first.', variant: 'destructive' });
+      return;
+    }
+    
+    console.log('[MenuManagement] Saving product:', { editing: !!editingProduct, form: productForm, hasImage: !!productImageFile, restaurantId: restaurant.id });
     
     setUploadingImage(true);
     try {
@@ -175,13 +191,16 @@ const MenuManagement = () => {
 
       // Upload new image if file selected
       if (productImageFile) {
+        console.log('[MenuManagement] Uploading product image...');
         const uploadResult = await uploadImage(productImageFile);
         imageUrl = uploadResult.url;
+        console.log('[MenuManagement] Image uploaded:', imageUrl);
 
         // Delete old image if updating product
         if (editingProduct?.image_url) {
           const oldImagePath = extractPathFromUrl(editingProduct.image_url);
           if (oldImagePath) {
+            console.log('[MenuManagement] Deleting old image:', oldImagePath);
             await deleteImage(oldImagePath).catch(console.error);
           }
         }
@@ -197,9 +216,11 @@ const MenuManagement = () => {
 
       if (editingProduct) {
         await updateProduct(editingProduct.id, productData);
+        console.log('[MenuManagement] Product updated successfully');
         toast({ title: 'Product updated successfully' });
       } else {
         await addProduct({ ...productData, category_id: selectedCategoryId, restaurant_id: restaurant.id });
+        console.log('[MenuManagement] Product added successfully');
         toast({ title: 'Product added successfully' });
       }
       
@@ -207,6 +228,7 @@ const MenuManagement = () => {
       setProductImageFile(null);
       setProductImagePreview('');
     } catch (error) {
+      console.error('[MenuManagement] Failed to save product:', error);
       toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to save product', variant: 'destructive' });
     } finally {
       setUploadingImage(false);
@@ -228,17 +250,22 @@ const MenuManagement = () => {
   };
 
   const handleSaveAddon = async () => {
+    console.log('[MenuManagement] Saving addon:', { editing: !!editingAddon, form: addonForm, productId: selectedProductId });
+    
     try {
       const addonData = { name: addonForm.name, price: parseFloat(addonForm.price) };
       if (editingAddon) {
         await updateAddon(editingAddon.id, addonData);
+        console.log('[MenuManagement] Addon updated successfully');
         toast({ title: 'Add-on updated successfully' });
       } else {
         await addAddon({ ...addonData, product_id: selectedProductId });
+        console.log('[MenuManagement] Addon added successfully');
         toast({ title: 'Add-on added successfully' });
       }
       setAddonDialog(false);
     } catch (error) {
+      console.error('[MenuManagement] Failed to save addon:', error);
       toast({ title: 'Error', description: 'Failed to save add-on', variant: 'destructive' });
     }
   };
