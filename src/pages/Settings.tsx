@@ -60,7 +60,7 @@ const daysOfWeek = [
 ] as const;
 
 const Settings = () => {
-  const { restaurant, loading, fetchRestaurant, updateRestaurant } = useRestaurantStore();
+  const { restaurant, loading, fetchRestaurant, createRestaurant, updateRestaurant } = useRestaurantStore();
   const { toast } = useToast();
 
   const form = useForm<RestaurantSettingsFormValues>({
@@ -102,24 +102,45 @@ const Settings = () => {
 
   const onSubmit = async (values: RestaurantSettingsFormValues) => {
     try {
-      await updateRestaurant({
-        name: values.name,
-        phone: values.phone,
-        address: values.address,
-        delivery_fee: values.delivery_fee,
-        is_open: values.is_open,
-        opening_hours: values.opening_hours as any,
-      });
-
-      toast({
-        title: 'Settings saved',
-        description: 'Restaurant settings have been updated successfully.',
-      });
+      if (restaurant) {
+        // Update existing restaurant
+        await updateRestaurant({
+          name: values.name,
+          phone: values.phone,
+          address: values.address,
+          delivery_fee: values.delivery_fee,
+          is_open: values.is_open,
+          opening_hours: values.opening_hours as any,
+        });
+        
+        toast({
+          title: "Settings saved",
+          description: "Your restaurant settings have been updated successfully.",
+        });
+      } else {
+        // Create new restaurant
+        await createRestaurant({
+          name: values.name,
+          phone: values.phone,
+          address: values.address,
+          delivery_fee: values.delivery_fee,
+          is_open: values.is_open,
+          opening_hours: values.opening_hours as any,
+        });
+        
+        toast({
+          title: "Restaurant created",
+          description: "Your restaurant has been created successfully.",
+        });
+        
+        // Reload restaurant data after creation
+        await fetchRestaurant();
+      }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Failed to update settings. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save settings",
+        variant: "destructive",
       });
     }
   };
