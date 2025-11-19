@@ -69,6 +69,9 @@ export default {
           DEFAULT: "hsl(var(--red))",
           light: "hsl(var(--red-light))",
         },
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
+        success: "hsl(var(--success))",
       },
       borderRadius: {
         lg: "var(--radius)",
