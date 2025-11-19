@@ -51,20 +51,11 @@ export default function TestWhatsApp() {
   }, [messages]);
 
   const loadRestaurant = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        title: "Erro de autenticação",
-        description: "Por favor faça login primeiro",
-        variant: "destructive"
-      });
-      return;
-    }
-
+    // For single-tenant MVP, just get the first restaurant
     const { data: restaurant, error } = await supabase
       .from('restaurants')
       .select('id, phone')
-      .eq('user_id', user.id)
+      .limit(1)
       .single();
 
     if (error || !restaurant) {

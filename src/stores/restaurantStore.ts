@@ -22,16 +22,11 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   fetchRestaurant: async () => {
     set({ loading: true, error: null });
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
+      // For single-tenant MVP, just get the first restaurant
       const { data, error } = await supabase
         .from('restaurants')
         .select('*')
-        .eq('user_id', user.id)
+        .limit(1)
         .single();
 
       if (error) {
@@ -55,17 +50,12 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   createRestaurant: async (restaurantData) => {
     set({ loading: true, error: null });
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
+      // For single-tenant MVP, create without user_id
       const { data, error } = await supabase
         .from('restaurants')
         .insert({
           ...restaurantData,
-          user_id: user.id,
+          user_id: null, // No authentication required
         } as any)
         .select()
         .single();
