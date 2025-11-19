@@ -9,11 +9,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Package, Clock, Truck, CheckCircle, Phone, DollarSign } from 'lucide-react';
 import { OrderWithDetails } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
   const { restaurant, fetchRestaurant } = useRestaurantStore();
   const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
   const [activeTab, setActiveTab] = useState('all');
+  const [isConnected, setIsConnected] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchRestaurant();
@@ -22,8 +25,15 @@ const Dashboard = () => {
   useEffect(() => {
     if (restaurant?.id) {
       fetchOrders(restaurant.id);
+      
+      // Set up real-time subscription
       const unsubscribe = subscribeToOrders(restaurant.id);
-      return unsubscribe;
+      setIsConnected(true);
+      
+      return () => {
+        unsubscribe();
+        setIsConnected(false);
+      };
     }
   }, [restaurant?.id, fetchOrders, subscribeToOrders]);
 
@@ -78,6 +88,11 @@ const Dashboard = () => {
 
   const handleStatusChange = async (orderId: string, newStatus: 'new' | 'preparing' | 'out_for_delivery' | 'completed' | 'cancelled') => {
     await updateOrderStatus(orderId, newStatus);
+    
+    toast({
+      title: "Order updated",
+      description: `Order status changed to ${getStatusLabel(newStatus)}`,
+    });
   };
 
   const openWhatsApp = (phone: string) => {
@@ -222,9 +237,17 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-4xl font-bold text-foreground">Orders Dashboard</h1>
-        <p className="text-muted-foreground mt-2">Manage your restaurant orders in real-time</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-foreground">Orders Dashboard</h1>
+          <p className="text-muted-foreground mt-2">Manage your restaurant orders in real-time</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-success animate-pulse' : 'bg-muted'}`} />
+          <span className="text-sm text-muted-foreground">
+            {isConnected ? 'Live updates active' : 'Connecting...'}
+          </span>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
