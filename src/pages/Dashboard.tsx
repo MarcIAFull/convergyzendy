@@ -6,16 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Package, Clock, Truck, CheckCircle, Phone, DollarSign } from 'lucide-react';
+import { Package, Clock, Truck, CheckCircle, Phone, DollarSign, Eye } from 'lucide-react';
 import { OrderWithDetails } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 
 const Dashboard = () => {
   const { restaurant, fetchRestaurant } = useRestaurantStore();
   const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
   const [activeTab, setActiveTab] = useState('all');
   const [isConnected, setIsConnected] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -99,6 +102,11 @@ const Dashboard = () => {
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
   };
 
+  const handleViewOrder = (order: OrderWithDetails) => {
+    setSelectedOrder(order);
+    setDrawerOpen(true);
+  };
+
   const OrderCard = ({ order }: { order: OrderWithDetails }) => (
     <Card className="mb-4 hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
@@ -154,11 +162,11 @@ const Dashboard = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => openWhatsApp(order.user_phone)}
+            onClick={() => handleViewOrder(order)}
             className="flex-1"
           >
-            <Phone className="h-4 w-4 mr-2" />
-            Contact
+            <Eye className="h-4 w-4 mr-2" />
+            View Details
           </Button>
           {order.status === 'new' && (
             <Button
@@ -324,6 +332,14 @@ const Dashboard = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <OrderDetailsDrawer
+        order={selectedOrder}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onStatusChange={handleStatusChange}
+        onContactCustomer={openWhatsApp}
+      />
     </div>
   );
 };
