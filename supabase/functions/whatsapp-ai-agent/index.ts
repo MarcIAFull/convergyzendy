@@ -363,6 +363,7 @@ serve(async (req) => {
     let newState: OrderState = currentState;
     let deliveryAddress = conversationState.delivery_address;
     let paymentMethod = conversationState.payment_method;
+    const toolResults: any[] = [];
 
     if (aiMessage.tool_calls) {
       for (const toolCall of aiMessage.tool_calls) {
@@ -371,185 +372,414 @@ serve(async (req) => {
 
         console.log(`Executing tool: ${functionName}`, args);
 
-        switch (functionName) {
-          case 'add_to_cart': {
-            // Find cart item for this product
-            const { data: cartItems } = await supabase
-              .from('cart_items')
-              .select('id')
-              .eq('cart_id', cart!.id)
-              .eq('product_id', args.product_id)
-              .maybeSingle();
-
-            if (cartItems) {
-              // Update quantity
-              await supabase
-                .from('cart_items')
-                .update({ quantity: args.quantity })
-                .eq('id', cartItems.id);
-            } else {
-              // Insert new cart item
-              const { data: newItem } = await supabase
-                .from('cart_items')
-                .insert({
-                  cart_id: cart!.id,
-                  product_id: args.product_id,
-                  quantity: args.quantity,
-                  notes: args.notes,
-                })
-                .select()
+        try {
+          switch (functionName) {
+            case 'add_to_cart': {
+              // Validate product exists
+              const { data: product, error: productError } = await supabase
+                .from('products')
+                .select('id, name, price')
+                .eq('id', args.product_id)
                 .single();
 
-              // Add addons if provided
-              if (args.addon_ids && args.addon_ids.length > 0) {
-                const addonInserts = args.addon_ids.map((addonId: string) => ({
-                  cart_item_id: newItem!.id,
-                  addon_id: addonId,
-                }));
-                await supabase.from('cart_item_addons').insert(addonInserts);
+              if (productError || !product) {
+                console.error('Product not found:', args.product_id, productError);
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'Product not found' }),
+                });
+                break;
               }
-            }
-            newState = 'confirming_item';
-            break;
-          }
 
-          case 'remove_from_cart': {
-            const { data: cartItems } = await supabase
-              .from('cart_items')
-              .select('id')
-              .eq('cart_id', cart!.id)
-              .eq('product_id', args.product_id)
-              .maybeSingle();
-
-            if (cartItems) {
-              await supabase.from('cart_items').delete().eq('id', cartItems.id);
-            }
-            break;
-          }
-
-          case 'update_cart_item': {
-            const { data: cartItems } = await supabase
-              .from('cart_items')
-              .select('id')
-              .eq('cart_id', cart!.id)
-              .eq('product_id', args.product_id)
-              .maybeSingle();
-
-            if (cartItems) {
-              await supabase
+              // Find or create cart item for this product
+              const { data: existingItem } = await supabase
                 .from('cart_items')
-                .update({ quantity: args.quantity })
-                .eq('id', cartItems.id);
-            }
-            break;
-          }
+                .select('id, quantity')
+                .eq('cart_id', cart!.id)
+                .eq('product_id', args.product_id)
+                .maybeSingle();
 
-          case 'set_delivery_address': {
-            deliveryAddress = args.address;
-            newState = 'collecting_payment';
-            break;
-          }
+              if (existingItem) {
+                // Update quantity
+                const { error: updateError } = await supabase
+                  .from('cart_items')
+                  .update({ quantity: existingItem.quantity + args.quantity })
+                  .eq('id', existingItem.id);
 
-          case 'set_payment_method': {
-            paymentMethod = args.method;
-            newState = 'confirming_order';
-            break;
-          }
+                if (updateError) {
+                  console.error('Error updating cart item:', updateError);
+                  throw updateError;
+                }
+              } else {
+                // Insert new cart item
+                const { data: newItem, error: insertError } = await supabase
+                  .from('cart_items')
+                  .insert({
+                    cart_id: cart!.id,
+                    product_id: args.product_id,
+                    quantity: args.quantity,
+                    notes: args.notes,
+                  })
+                  .select()
+                  .single();
 
-          case 'finalize_order': {
-            if (args.confirmed && deliveryAddress && paymentMethod) {
-              // Calculate final total
-              const { data: finalCart } = await supabase
-                .from('carts')
-                .select(`
-                  cart_items (
-                    quantity,
-                    products (price),
-                    cart_item_addons (addons (price))
-                  )
-                `)
-                .eq('id', cart!.id)
-                .single();
+                if (insertError) {
+                  console.error('Error inserting cart item:', insertError);
+                  throw insertError;
+                }
 
-              const finalTotal = finalCart!.cart_items.reduce((sum: number, item: any) => {
-                const itemTotal = item.products.price * item.quantity;
-                const addonsTotal = item.cart_item_addons.reduce(
-                  (aSum: number, cia: any) => aSum + cia.addons.price,
-                  0
-                ) * item.quantity;
-                return sum + itemTotal + addonsTotal;
-              }, 0) + restaurant.delivery_fee;
+                // Add addons if provided
+                if (args.addon_ids && args.addon_ids.length > 0) {
+                  const addonInserts = args.addon_ids.map((addonId: string) => ({
+                    cart_item_id: newItem!.id,
+                    addon_id: addonId,
+                  }));
+                  const { error: addonError } = await supabase
+                    .from('cart_item_addons')
+                    .insert(addonInserts);
 
-              // Create order
-              await supabase.from('orders').insert({
-                restaurant_id: restaurantId,
-                user_phone: customerPhone,
-                cart_id: cart!.id,
-                delivery_address: deliveryAddress,
-                payment_method: paymentMethod,
-                total_amount: finalTotal,
-                status: 'new',
+                  if (addonError) {
+                    console.error('Error adding addons:', addonError);
+                  }
+                }
+              }
+
+              newState = 'confirming_item';
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                role: 'tool',
+                name: functionName,
+                content: JSON.stringify({
+                  success: true,
+                  product_name: product.name,
+                  quantity: args.quantity,
+                  price: product.price,
+                }),
               });
-
-              // Mark cart as completed
-              await supabase
-                .from('carts')
-                .update({ status: 'completed' })
-                .eq('id', cart!.id);
-
-              newState = 'order_completed';
+              
+              console.log(`✅ Added ${args.quantity}x ${product.name} to cart ${cart!.id}`);
+              break;
             }
-            break;
-          }
 
-          case 'transition_state': {
-            if (canTransition(currentState, args.next_state)) {
-              newState = args.next_state;
+            case 'remove_from_cart': {
+              const { data: itemToRemove } = await supabase
+                .from('cart_items')
+                .select('id')
+                .eq('cart_id', cart!.id)
+                .eq('product_id', args.product_id)
+                .maybeSingle();
+
+              if (itemToRemove) {
+                await supabase.from('cart_items').delete().eq('id', itemToRemove.id);
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: true }),
+                });
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'Item not in cart' }),
+                });
+              }
+              break;
             }
-            break;
+
+            case 'update_cart_item': {
+              const { data: itemToUpdate } = await supabase
+                .from('cart_items')
+                .select('id')
+                .eq('cart_id', cart!.id)
+                .eq('product_id', args.product_id)
+                .maybeSingle();
+
+              if (itemToUpdate) {
+                await supabase
+                  .from('cart_items')
+                  .update({ quantity: args.quantity })
+                  .eq('id', itemToUpdate.id);
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: true }),
+                });
+              }
+              break;
+            }
+
+            case 'set_delivery_address': {
+              deliveryAddress = args.address;
+              newState = 'collecting_payment';
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                role: 'tool',
+                name: functionName,
+                content: JSON.stringify({ success: true, address: args.address }),
+              });
+              break;
+            }
+
+            case 'set_payment_method': {
+              paymentMethod = args.method;
+              newState = 'confirming_order';
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                role: 'tool',
+                name: functionName,
+                content: JSON.stringify({ success: true, method: args.method }),
+              });
+              break;
+            }
+
+            case 'finalize_order': {
+              if (args.confirmed && deliveryAddress && paymentMethod) {
+                // Calculate final total
+                const { data: finalCart } = await supabase
+                  .from('carts')
+                  .select(`
+                    cart_items (
+                      quantity,
+                      products (price),
+                      cart_item_addons (addons (price))
+                    )
+                  `)
+                  .eq('id', cart!.id)
+                  .single();
+
+                const finalTotal = finalCart!.cart_items.reduce((sum: number, item: any) => {
+                  const itemTotal = item.products.price * item.quantity;
+                  const addonsTotal = item.cart_item_addons.reduce(
+                    (aSum: number, cia: any) => aSum + cia.addons.price,
+                    0
+                  ) * item.quantity;
+                  return sum + itemTotal + addonsTotal;
+                }, 0) + restaurant.delivery_fee;
+
+                // Create order
+                await supabase.from('orders').insert({
+                  restaurant_id: restaurantId,
+                  user_phone: customerPhone,
+                  cart_id: cart!.id,
+                  delivery_address: deliveryAddress,
+                  payment_method: paymentMethod,
+                  total_amount: finalTotal,
+                  status: 'new',
+                });
+
+                // Mark cart as completed
+                await supabase
+                  .from('carts')
+                  .update({ status: 'completed' })
+                  .eq('id', cart!.id);
+
+                newState = 'order_completed';
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: true, total: finalTotal }),
+                });
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'Missing address or payment method' }),
+                });
+              }
+              break;
+            }
+
+            case 'transition_state': {
+              if (canTransition(currentState, args.next_state)) {
+                newState = args.next_state;
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: true, new_state: newState }),
+                });
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'Invalid state transition' }),
+                });
+              }
+              break;
+            }
           }
+        } catch (toolError) {
+          console.error(`Error executing tool ${functionName}:`, toolError);
+          toolResults.push({
+            tool_call_id: toolCall.id,
+            role: 'tool',
+            name: functionName,
+            content: JSON.stringify({
+              success: false,
+              error: toolError instanceof Error ? toolError.message : 'Unknown error',
+            }),
+          });
         }
       }
-    }
 
-    const responseText = aiMessage.content || 'Desculpe, ocorreu um erro.';
+      // Make second OpenAI call with tool results to get final response
+      const followUpMessages = [
+        ...messages,
+        aiMessage,
+        ...toolResults,
+      ];
 
-    console.log(`State transition: ${currentState} -> ${newState}`);
-
-    // Save outgoing message
-    await supabase.from('messages').insert({
-      restaurant_id: restaurantId,
-      from_number: restaurant.phone,
-      to_number: customerPhone,
-      body: responseText,
-      direction: 'outbound',
-    });
-
-    // Send WhatsApp message
-    try {
-      await supabase.functions.invoke('whatsapp-send', {
-        body: {
-          restaurantId,
-          customerPhone,
-          messageText: responseText,
+      const followUpResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: followUpMessages,
+          temperature: 0.7,
+        }),
       });
-    } catch (sendError) {
-      console.error('Error sending WhatsApp message:', sendError);
-    }
 
-    return new Response(
-      JSON.stringify({
-        response: responseText,
-        state: newState,
-        cart: cartItems,
-        delivery_address: deliveryAddress,
-        payment_method: paymentMethod,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      if (followUpResponse.ok) {
+        const followUpData = await followUpResponse.json();
+        const finalMessage = followUpData.choices[0].message;
+        console.log('Final AI Response:', finalMessage.content);
+
+        const responseText = finalMessage.content || 'Produto adicionado ao carrinho!';
+
+        console.log(`State transition: ${currentState} -> ${newState}`);
+
+        // Reload cart after tool execution
+        const { data: updatedCart } = await supabase
+          .from('carts')
+          .select(`
+            cart_items (
+              id,
+              product_id,
+              quantity,
+              notes,
+              products (
+                id,
+                name,
+                price
+              ),
+              cart_item_addons (
+                addon_id,
+                addons (
+                  id,
+                  name,
+                  price
+                )
+              )
+            )
+          `)
+          .eq('id', cart!.id)
+          .single();
+
+        const updatedCartItems: CartItem[] = updatedCart?.cart_items?.map((item: any) => ({
+          product_id: item.product_id,
+          product_name: item.products.name,
+          quantity: item.quantity,
+          price: item.products.price,
+          notes: item.notes,
+          addons: item.cart_item_addons?.map((cia: any) => ({
+            addon_id: cia.addon_id,
+            name: cia.addons.name,
+            price: cia.addons.price,
+          })) || [],
+        })) || [];
+
+        console.log('Updated cart items:', updatedCartItems.length, 'items');
+
+        // Save outgoing message
+        await supabase.from('messages').insert({
+          restaurant_id: restaurantId,
+          from_number: restaurant.phone,
+          to_number: customerPhone,
+          body: responseText,
+          direction: 'outbound',
+        });
+
+        // Send WhatsApp message
+        try {
+          await supabase.functions.invoke('whatsapp-send', {
+            body: {
+              restaurantId,
+              customerPhone,
+              messageText: responseText,
+            },
+          });
+        } catch (sendError) {
+          console.error('Error sending WhatsApp message:', sendError);
+        }
+
+        return new Response(
+          JSON.stringify({
+            response: responseText,
+            state: newState,
+            cart: updatedCartItems,
+            delivery_address: deliveryAddress,
+            payment_method: paymentMethod,
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      } else {
+        console.error('Follow-up OpenAI call failed');
+        throw new Error('Failed to get AI response after tool execution');
       }
-    );
+    } else {
+      // No tool calls, use direct response
+      const responseText = aiMessage.content || 'Olá! Como posso ajudar?';
+
+      console.log(`State transition: ${currentState} -> ${newState}`);
+
+      // Save outgoing message
+      await supabase.from('messages').insert({
+        restaurant_id: restaurantId,
+        from_number: restaurant.phone,
+        to_number: customerPhone,
+        body: responseText,
+        direction: 'outbound',
+      });
+
+      // Send WhatsApp message
+      try {
+        await supabase.functions.invoke('whatsapp-send', {
+          body: {
+            restaurantId,
+            customerPhone,
+            messageText: responseText,
+          },
+        });
+      } catch (sendError) {
+        console.error('Error sending WhatsApp message:', sendError);
+      }
+
+      return new Response(
+        JSON.stringify({
+          response: responseText,
+          state: newState,
+          cart: cartItems,
+          delivery_address: deliveryAddress,
+          payment_method: paymentMethod,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
   } catch (error) {
     console.error('Error in whatsapp-ai-agent:', error);
     return new Response(
