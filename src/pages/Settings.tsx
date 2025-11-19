@@ -101,9 +101,12 @@ const Settings = () => {
   }, [restaurant, form]);
 
   const onSubmit = async (values: RestaurantSettingsFormValues) => {
+    console.log('[Settings] Form submitted:', { hasRestaurant: !!restaurant, values });
+    
     try {
       if (restaurant) {
         // Update existing restaurant
+        console.log('[Settings] Updating existing restaurant:', restaurant.id);
         await updateRestaurant({
           name: values.name,
           phone: values.phone,
@@ -113,12 +116,14 @@ const Settings = () => {
           opening_hours: values.opening_hours as any,
         });
         
+        console.log('[Settings] Restaurant updated successfully');
         toast({
           title: "Settings saved",
           description: "Your restaurant settings have been updated successfully.",
         });
       } else {
         // Create new restaurant
+        console.log('[Settings] Creating new restaurant');
         await createRestaurant({
           name: values.name,
           phone: values.phone,
@@ -128,6 +133,7 @@ const Settings = () => {
           opening_hours: values.opening_hours as any,
         });
         
+        console.log('[Settings] Restaurant created successfully, reloading...');
         toast({
           title: "Restaurant created",
           description: "Your restaurant has been created successfully.",
@@ -137,9 +143,11 @@ const Settings = () => {
         await fetchRestaurant();
       }
     } catch (error) {
+      console.error('[Settings] Failed to save settings:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to save settings";
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save settings",
+        title: "Error saving settings",
+        description: errorMessage,
         variant: "destructive",
       });
     }
