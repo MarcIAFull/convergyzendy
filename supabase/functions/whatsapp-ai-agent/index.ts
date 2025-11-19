@@ -1,5 +1,7 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { getStatePrompt, type OrderState } from "./state-prompts.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,17 +16,6 @@ interface CartItem {
   notes?: string;
   addons: Array<{ addon_id: string; name: string; price: number }>;
 }
-
-type OrderState = 
-  | 'idle'
-  | 'browsing_menu'
-  | 'adding_item'
-  | 'choosing_addons'
-  | 'confirming_item'
-  | 'collecting_address'
-  | 'collecting_payment'
-  | 'confirming_order'
-  | 'order_completed';
 
 interface ConversationState {
   cart: CartItem[];
@@ -41,67 +32,18 @@ interface ConversationState {
 // State machine transitions
 const STATE_TRANSITIONS: Record<OrderState, OrderState[]> = {
   idle: ['browsing_menu'],
-  browsing_menu: ['adding_item', 'collecting_address'], // Can skip to address if cart has items
+  browsing_menu: ['adding_item', 'collecting_address'],
   adding_item: ['choosing_addons', 'confirming_item'],
   choosing_addons: ['confirming_item'],
   confirming_item: ['browsing_menu', 'collecting_address'],
   collecting_address: ['collecting_payment'],
   collecting_payment: ['confirming_order'],
-  confirming_order: ['order_completed', 'browsing_menu'], // Can go back if customer says no
+  confirming_order: ['order_completed', 'browsing_menu'],
   order_completed: ['idle'],
 };
 
-function getNextState(currentState: OrderState, action: string, hasCart: boolean): OrderState {
-  // State transition logic based on action and context
-  switch (currentState) {
-    case 'idle':
-      return 'browsing_menu';
-    
-    case 'browsing_menu':
-      if (action.includes('add') || action.includes('quero')) {
-        return 'adding_item';
-      }
-      if (hasCart && (action.includes('finalizar') || action.includes('pedir'))) {
-        return 'collecting_address';
-      }
-      return 'browsing_menu';
-    
-    case 'adding_item':
-      if (action.includes('extra') || action.includes('adicional')) {
-        return 'choosing_addons';
-      }
-      return 'confirming_item';
-    
-    case 'choosing_addons':
-      return 'confirming_item';
-    
-    case 'confirming_item':
-      if (action.includes('mais') || action.includes('outro')) {
-        return 'browsing_menu';
-      }
-      if (action.includes('finalizar') || action.includes('pedir')) {
-        return 'collecting_address';
-      }
-      return 'browsing_menu';
-    
-    case 'collecting_address':
-      return 'collecting_payment';
-    
-    case 'collecting_payment':
-      return 'confirming_order';
-    
-    case 'confirming_order':
-      if (action.includes('sim') || action.includes('confirmar')) {
-        return 'order_completed';
-      }
-      return 'browsing_menu';
-    
-    case 'order_completed':
-      return 'idle';
-    
-    default:
-      return currentState;
-  }
+function canTransition(from: OrderState, to: OrderState): boolean {
+  return STATE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
 serve(async (req) => {
@@ -112,10 +54,12 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { restaurantId, customerPhone, messageBody } = await req.json();
+
+    console.log(`Processing message from ${customerPhone}: ${messageBody}`);
 
     // Load restaurant and menu
     const { data: restaurant, error: restaurantError } = await supabase
@@ -128,145 +72,156 @@ serve(async (req) => {
       throw new Error('Restaurant not found');
     }
 
-    // Load complete menu
-    const { data: categories, error: categoriesError } = await supabase
+    // Load menu structure
+    const { data: categories } = await supabase
       .from('categories')
-      .select('*')
+      .select(`
+        id,
+        name,
+        products (
+          id,
+          name,
+          description,
+          price,
+          is_available,
+          addons (
+            id,
+            name,
+            price
+          )
+        )
+      `)
       .eq('restaurant_id', restaurantId)
-      .order('sort_order', { ascending: true });
+      .order('sort_order');
 
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_available', true);
-
-    const { data: addons, error: addonsError } = await supabase
-      .from('addons')
-      .select('*')
-      .in('product_id', products?.map(p => p.id) || []);
-
-    if (categoriesError || productsError || addonsError) {
-      throw new Error('Failed to load menu');
-    }
-
-    // Build menu structure
-    const menuStructure = categories?.map(cat => ({
-      category: cat.name,
-      products: products?.filter(p => p.category_id === cat.id).map(prod => ({
-        id: prod.id,
-        name: prod.name,
-        description: prod.description,
-        price: Number(prod.price),
-        addons: addons?.filter(a => a.product_id === prod.id).map(addon => ({
-          id: addon.id,
-          name: addon.name,
-          price: Number(addon.price),
-        })) || [],
-      })) || [],
-    })) || [];
-
-    // Load conversation history
-    const { data: messages } = await supabase
+    // Load conversation history (last 20 messages)
+    const { data: messageHistory } = await supabase
       .from('messages')
       .select('*')
       .eq('restaurant_id', restaurantId)
-      .eq('from_number', customerPhone)
+      .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
       .order('timestamp', { ascending: true })
       .limit(20);
 
-    // Get or create active cart with state
-    const { data: existingCart } = await supabase
+    // Load or create active cart
+    let { data: cart } = await supabase
       .from('carts')
-      .select('*, cart_items(*, cart_item_addons(addon_id))')
+      .select(`
+        id,
+        status,
+        cart_items (
+          id,
+          product_id,
+          quantity,
+          notes,
+          products (
+            id,
+            name,
+            price
+          ),
+          cart_item_addons (
+            addon_id,
+            addons (
+              id,
+              name,
+              price
+            )
+          )
+        )
+      `)
       .eq('restaurant_id', restaurantId)
       .eq('user_phone', customerPhone)
       .eq('status', 'active')
       .maybeSingle();
 
-    let conversationState: ConversationState = {
-      cart: [],
-      state: 'idle',
-    };
+    if (!cart) {
+      const { data: newCart } = await supabase
+        .from('carts')
+        .insert({
+          restaurant_id: restaurantId,
+          user_phone: customerPhone,
+          status: 'active',
+        })
+        .select()
+        .single();
+      cart = newCart;
+    }
 
-    if (existingCart) {
-      conversationState.cart = existingCart.cart_items?.map((item: any) => {
-        const product = products?.find(p => p.id === item.product_id);
-        return {
-          product_id: item.product_id,
-          product_name: product?.name || 'Unknown',
-          quantity: item.quantity,
-          price: Number(product?.price || 0),
-          notes: item.notes,
-          addons: item.cart_item_addons?.map((cia: any) => {
-            const addon = addons?.find(a => a.id === cia.addon_id);
-            return {
-              addon_id: cia.addon_id,
-              name: addon?.name || 'Unknown',
-              price: Number(addon?.price || 0),
-            };
-          }) || [],
-        };
-      }) || [];
-      
-      // Determine state from cart and message history
-      if (conversationState.cart.length === 0) {
-        conversationState.state = 'browsing_menu';
-      } else {
-        // Check last message to infer state
-        const lastMessage = messages?.[messages.length - 1];
-        if (lastMessage?.body.toLowerCase().includes('morada')) {
-          conversationState.state = 'collecting_address';
-        } else if (lastMessage?.body.toLowerCase().includes('pagamento')) {
-          conversationState.state = 'collecting_payment';
-        } else {
-          conversationState.state = 'browsing_menu';
-        }
+    // Build current state
+    const cartItems: CartItem[] = cart?.cart_items?.map((item: any) => ({
+      product_id: item.product_id,
+      product_name: item.products.name,
+      quantity: item.quantity,
+      price: item.products.price,
+      notes: item.notes,
+      addons: item.cart_item_addons?.map((cia: any) => ({
+        addon_id: cia.addon_id,
+        name: cia.addons.name,
+        price: cia.addons.price,
+      })) || [],
+    })) || [];
+
+    const cartTotal = cartItems.reduce((sum, item) => {
+      const itemTotal = item.price * item.quantity;
+      const addonsTotal = item.addons.reduce((aSum, addon) => aSum + addon.price, 0) * item.quantity;
+      return sum + itemTotal + addonsTotal;
+    }, 0);
+
+    // Determine current state from context
+    let currentState: OrderState = 'idle';
+    if (messageHistory && messageHistory.length > 0) {
+      currentState = 'browsing_menu'; // Default to browsing if conversation exists
+      if (cartItems.length > 0) {
+        currentState = 'confirming_item';
       }
     }
 
-    // Import state prompts
-    const { getStatePrompt } = await import('./state-prompts.ts');
+    const conversationState: ConversationState = {
+      cart: cartItems,
+      state: currentState,
+    };
 
-    // Calculate cart total
-    const cartTotal = conversationState.cart.reduce((sum, item) => {
-      const itemTotal = (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.quantity;
-      return sum + itemTotal;
-    }, 0);
-
-    // Get state-specific system prompt
-    const systemPrompt = getStatePrompt(
-      conversationState.state,
-      restaurant.name,
-      menuStructure,
-      conversationState.cart,
-      cartTotal,
-      Number(restaurant.delivery_fee)
-    );
-
-    console.log('Current State:', conversationState.state);
+    console.log('Current State:', currentState);
     console.log('Cart Total:', cartTotal);
 
-    // Build conversation history for context
-    const conversationHistory = messages?.map(msg => ({
-      role: msg.direction === 'inbound' ? 'user' : 'assistant',
-      content: msg.body,
-    })) || [];
+    // Build system prompt
+    const systemPrompt = getStatePrompt(
+      currentState,
+      restaurant.name,
+      categories,
+      cartItems,
+      cartTotal,
+      restaurant.delivery_fee
+    );
 
-    // Define tools for structured operations
+    // Build conversation history for OpenAI
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...(messageHistory?.map((msg: any) => ({
+        role: msg.direction === 'inbound' ? 'user' : 'assistant',
+        content: msg.body,
+      })) || []),
+      { role: 'user', content: messageBody },
+    ];
+
+    // Define tools for OpenAI
     const tools = [
       {
         type: 'function',
         function: {
           name: 'add_to_cart',
-          description: 'Adiciona um produto ao carrinho com quantidade e extras opcionais',
+          description: 'Add a product to the customer cart',
           parameters: {
             type: 'object',
             properties: {
-              product_id: { type: 'string', description: 'ID do produto' },
-              quantity: { type: 'number', description: 'Quantidade' },
-              addon_ids: { type: 'array', items: { type: 'string' }, description: 'IDs dos extras' },
-              notes: { type: 'string', description: 'Notas especiais' },
+              product_id: { type: 'string', description: 'Product ID from menu' },
+              quantity: { type: 'integer', description: 'Quantity to add', default: 1 },
+              addon_ids: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional addon IDs',
+              },
+              notes: { type: 'string', description: 'Optional notes' },
             },
             required: ['product_id', 'quantity'],
           },
@@ -276,11 +231,11 @@ serve(async (req) => {
         type: 'function',
         function: {
           name: 'remove_from_cart',
-          description: 'Remove um produto do carrinho',
+          description: 'Remove a product from the cart',
           parameters: {
             type: 'object',
             properties: {
-              product_id: { type: 'string', description: 'ID do produto a remover' },
+              product_id: { type: 'string', description: 'Product ID to remove' },
             },
             required: ['product_id'],
           },
@@ -289,214 +244,314 @@ serve(async (req) => {
       {
         type: 'function',
         function: {
-          name: 'finalize_order',
-          description: 'Finaliza o pedido após confirmar morada e método de pagamento',
+          name: 'update_cart_item',
+          description: 'Update quantity of an item in cart',
           parameters: {
             type: 'object',
             properties: {
-              delivery_address: { type: 'string', description: 'Morada de entrega' },
-              payment_method: { type: 'string', description: 'Método de pagamento' },
+              product_id: { type: 'string', description: 'Product ID to update' },
+              quantity: { type: 'integer', description: 'New quantity' },
             },
-            required: ['delivery_address', 'payment_method'],
+            required: ['product_id', 'quantity'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'set_delivery_address',
+          description: 'Set the delivery address',
+          parameters: {
+            type: 'object',
+            properties: {
+              address: { type: 'string', description: 'Delivery address' },
+            },
+            required: ['address'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'set_payment_method',
+          description: 'Set the payment method',
+          parameters: {
+            type: 'object',
+            properties: {
+              method: {
+                type: 'string',
+                enum: ['cash', 'card', 'mbway'],
+                description: 'Payment method',
+              },
+            },
+            required: ['method'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'finalize_order',
+          description: 'Create the final order',
+          parameters: {
+            type: 'object',
+            properties: {
+              confirmed: { type: 'boolean', description: 'Customer confirmed order' },
+            },
+            required: ['confirmed'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'transition_state',
+          description: 'Move to next state in order flow',
+          parameters: {
+            type: 'object',
+            properties: {
+              next_state: {
+                type: 'string',
+                enum: [
+                  'idle',
+                  'browsing_menu',
+                  'adding_item',
+                  'choosing_addons',
+                  'confirming_item',
+                  'collecting_address',
+                  'collecting_payment',
+                  'confirming_order',
+                  'order_completed',
+                ],
+                description: 'Next state',
+              },
+            },
+            required: ['next_state'],
           },
         },
       },
     ];
 
-    // Call Lovable AI with tools
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call OpenAI
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...conversationHistory,
-          { role: 'user', content: messageBody },
-        ],
+        model: 'gpt-4o-mini',
+        messages,
         tools,
         temperature: 0.7,
-        max_tokens: 500,
       }),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errorText);
-      throw new Error('Failed to generate AI response');
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('OpenAI API error:', openaiResponse.status, errorText);
+      throw new Error(`OpenAI API error: ${errorText}`);
     }
 
-    const aiData = await aiResponse.json();
-    const choice = aiData.choices[0];
-    let assistantMessage = choice.message.content || '';
-    const toolCalls = choice.message.tool_calls;
+    const aiData = await openaiResponse.json();
+    const aiMessage = aiData.choices[0].message;
 
-    console.log('AI Response:', assistantMessage);
-    console.log('Tool Calls:', toolCalls);
+    console.log('AI Response:', aiMessage.content);
+    console.log('Tool Calls:', aiMessage.tool_calls);
 
-    // Handle tool calls
-    if (toolCalls && toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
+    // Process tool calls
+    let newState: OrderState = currentState;
+    let deliveryAddress = conversationState.delivery_address;
+    let paymentMethod = conversationState.payment_method;
+
+    if (aiMessage.tool_calls) {
+      for (const toolCall of aiMessage.tool_calls) {
         const functionName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
 
         console.log(`Executing tool: ${functionName}`, args);
 
-        if (functionName === 'add_to_cart') {
-          // Get or create cart
-          let cartId = existingCart?.id;
-          if (!cartId) {
-            const { data: newCart, error: cartError } = await supabase
-              .from('carts')
-              .insert({
+        switch (functionName) {
+          case 'add_to_cart': {
+            // Find cart item for this product
+            const { data: cartItems } = await supabase
+              .from('cart_items')
+              .select('id')
+              .eq('cart_id', cart!.id)
+              .eq('product_id', args.product_id)
+              .maybeSingle();
+
+            if (cartItems) {
+              // Update quantity
+              await supabase
+                .from('cart_items')
+                .update({ quantity: args.quantity })
+                .eq('id', cartItems.id);
+            } else {
+              // Insert new cart item
+              const { data: newItem } = await supabase
+                .from('cart_items')
+                .insert({
+                  cart_id: cart!.id,
+                  product_id: args.product_id,
+                  quantity: args.quantity,
+                  notes: args.notes,
+                })
+                .select()
+                .single();
+
+              // Add addons if provided
+              if (args.addon_ids && args.addon_ids.length > 0) {
+                const addonInserts = args.addon_ids.map((addonId: string) => ({
+                  cart_item_id: newItem!.id,
+                  addon_id: addonId,
+                }));
+                await supabase.from('cart_item_addons').insert(addonInserts);
+              }
+            }
+            newState = 'confirming_item';
+            break;
+          }
+
+          case 'remove_from_cart': {
+            const { data: cartItems } = await supabase
+              .from('cart_items')
+              .select('id')
+              .eq('cart_id', cart!.id)
+              .eq('product_id', args.product_id)
+              .maybeSingle();
+
+            if (cartItems) {
+              await supabase.from('cart_items').delete().eq('id', cartItems.id);
+            }
+            break;
+          }
+
+          case 'update_cart_item': {
+            const { data: cartItems } = await supabase
+              .from('cart_items')
+              .select('id')
+              .eq('cart_id', cart!.id)
+              .eq('product_id', args.product_id)
+              .maybeSingle();
+
+            if (cartItems) {
+              await supabase
+                .from('cart_items')
+                .update({ quantity: args.quantity })
+                .eq('id', cartItems.id);
+            }
+            break;
+          }
+
+          case 'set_delivery_address': {
+            deliveryAddress = args.address;
+            newState = 'collecting_payment';
+            break;
+          }
+
+          case 'set_payment_method': {
+            paymentMethod = args.method;
+            newState = 'confirming_order';
+            break;
+          }
+
+          case 'finalize_order': {
+            if (args.confirmed && deliveryAddress && paymentMethod) {
+              // Calculate final total
+              const { data: finalCart } = await supabase
+                .from('carts')
+                .select(`
+                  cart_items (
+                    quantity,
+                    products (price),
+                    cart_item_addons (addons (price))
+                  )
+                `)
+                .eq('id', cart!.id)
+                .single();
+
+              const finalTotal = finalCart!.cart_items.reduce((sum: number, item: any) => {
+                const itemTotal = item.products.price * item.quantity;
+                const addonsTotal = item.cart_item_addons.reduce(
+                  (aSum: number, cia: any) => aSum + cia.addons.price,
+                  0
+                ) * item.quantity;
+                return sum + itemTotal + addonsTotal;
+              }, 0) + restaurant.delivery_fee;
+
+              // Create order
+              await supabase.from('orders').insert({
                 restaurant_id: restaurantId,
                 user_phone: customerPhone,
-                status: 'active',
-              })
-              .select()
-              .single();
+                cart_id: cart!.id,
+                delivery_address: deliveryAddress,
+                payment_method: paymentMethod,
+                total_amount: finalTotal,
+                status: 'new',
+              });
 
-            if (cartError) throw cartError;
-            cartId = newCart.id;
+              // Mark cart as completed
+              await supabase
+                .from('carts')
+                .update({ status: 'completed' })
+                .eq('id', cart!.id);
+
+              newState = 'order_completed';
+            }
+            break;
           }
 
-          // Add product to cart
-          const { data: cartItem, error: itemError } = await supabase
-            .from('cart_items')
-            .insert({
-              cart_id: cartId,
-              product_id: args.product_id,
-              quantity: args.quantity,
-              notes: args.notes || null,
-            })
-            .select()
-            .single();
-
-          if (itemError) throw itemError;
-
-          // Add addons if specified
-          if (args.addon_ids && args.addon_ids.length > 0) {
-            const addonInserts = args.addon_ids.map((addonId: string) => ({
-              cart_item_id: cartItem.id,
-              addon_id: addonId,
-            }));
-
-            await supabase.from('cart_item_addons').insert(addonInserts);
+          case 'transition_state': {
+            if (canTransition(currentState, args.next_state)) {
+              newState = args.next_state;
+            }
+            break;
           }
-
-          const product = products?.find(p => p.id === args.product_id);
-          assistantMessage += `\n\n✅ Adicionado: ${args.quantity}x ${product?.name} (€${Number(product?.price).toFixed(2)})`;
-          
-          // Update state to confirming_item
-          conversationState.state = 'confirming_item';
-
-        } else if (functionName === 'remove_from_cart') {
-          if (existingCart) {
-            const { error: removeError } = await supabase
-              .from('cart_items')
-              .delete()
-              .eq('cart_id', existingCart.id)
-              .eq('product_id', args.product_id);
-
-            if (removeError) throw removeError;
-
-            const product = products?.find(p => p.id === args.product_id);
-            assistantMessage += `\n\n✅ Removido: ${product?.name}`;
-          }
-
-        } else if (functionName === 'finalize_order') {
-          if (!existingCart || conversationState.cart.length === 0) {
-            assistantMessage += '\n\n❌ Carrinho vazio. Adicione produtos antes de finalizar.';
-            continue;
-          }
-
-          // Calculate total
-          const subtotal = conversationState.cart.reduce((sum, item) => {
-            const itemTotal = (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.quantity;
-            return sum + itemTotal;
-          }, 0);
-          const totalAmount = subtotal + Number(restaurant.delivery_fee);
-
-          // Create order
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              restaurant_id: restaurantId,
-              user_phone: customerPhone,
-              cart_id: existingCart.id,
-              delivery_address: args.delivery_address,
-              payment_method: args.payment_method,
-              total_amount: totalAmount,
-              status: 'new',
-            })
-            .select()
-            .single();
-
-          if (orderError) throw orderError;
-
-          // Update cart status
-          await supabase
-            .from('carts')
-            .update({ status: 'completed' })
-            .eq('id', existingCart.id);
-
-          // Update state to order_completed
-          conversationState.state = 'order_completed';
-
-          // Generate order summary
-          const orderSummary = `
-🎉 PEDIDO CONFIRMADO #${order.id.substring(0, 8)}
-
-📦 Itens:
-${conversationState.cart.map(item => 
-  `• ${item.quantity}x ${item.product_name} - €${(item.price * item.quantity).toFixed(2)}${
-    item.addons.length > 0 ? `\n  Extras: ${item.addons.map(a => a.name).join(', ')}` : ''
-  }`
-).join('\n')}
-
-💰 Subtotal: €${subtotal.toFixed(2)}
-🚚 Entrega: €${Number(restaurant.delivery_fee).toFixed(2)}
-💳 Total: €${totalAmount.toFixed(2)}
-
-📍 Morada: ${args.delivery_address}
-💳 Pagamento: ${args.payment_method}
-
-Obrigado pelo seu pedido! Chegará em breve.`;
-
-          assistantMessage = orderSummary;
         }
       }
     }
 
-    // Send response via WhatsApp
-    const { error: sendError } = await supabase.functions.invoke('whatsapp-send', {
-      body: {
-        restaurantId,
-        customerPhone,
-        messageText: assistantMessage,
-      },
+    const responseText = aiMessage.content || 'Desculpe, ocorreu um erro.';
+
+    console.log(`State transition: ${currentState} -> ${newState}`);
+
+    // Save outgoing message
+    await supabase.from('messages').insert({
+      restaurant_id: restaurantId,
+      from_number: restaurant.phone,
+      to_number: customerPhone,
+      body: responseText,
+      direction: 'outbound',
     });
 
-    if (sendError) {
+    // Send WhatsApp message
+    try {
+      await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          restaurantId,
+          customerPhone,
+          messageText: responseText,
+        },
+      });
+    } catch (sendError) {
       console.error('Error sending WhatsApp message:', sendError);
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        response: assistantMessage,
-        state: conversationState
+      JSON.stringify({
+        response: responseText,
+        state: newState,
+        cart: cartItems,
+        delivery_address: deliveryAddress,
+        payment_method: paymentMethod,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
-
   } catch (error) {
-    console.error('AI Agent error:', error);
+    console.error('Error in whatsapp-ai-agent:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
