@@ -61,13 +61,11 @@ export default function Messages() {
   }, [selectedPhone]);
 
   const loadRestaurantAndConversations = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    // For single-tenant MVP, just get the first restaurant
     const { data: restaurant } = await supabase
       .from('restaurants')
       .select('id')
-      .eq('user_id', user.id)
+      .limit(1)
       .single();
 
     if (restaurant) {
