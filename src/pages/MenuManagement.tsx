@@ -176,11 +176,21 @@ const MenuManagement = () => {
 
   const handleDelete = async () => {
     if (!deleteDialog.id || !deleteDialog.type) return;
+    
+    // Get product count before deleting category for proper feedback
+    const category = categories.find(c => c.id === deleteDialog.id);
+    const productCount = category?.products.length || 0;
+
     try {
       switch (deleteDialog.type) {
         case 'category':
           await deleteCategory(deleteDialog.id);
-          toast({ title: 'Category deleted successfully' });
+          toast({ 
+            title: 'Category deleted successfully',
+            description: productCount > 0 
+              ? `${productCount} ${productCount === 1 ? 'product' : 'products'} also deleted`
+              : undefined
+          });
           break;
         case 'product':
           await deleteProduct(deleteDialog.id);
@@ -193,7 +203,7 @@ const MenuManagement = () => {
       }
       setDeleteDialog({ open: false, type: null, id: null });
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to delete item', variant: 'destructive' });
     }
   };
 
@@ -428,10 +438,22 @@ const MenuManagement = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this{' '}
-              {deleteDialog.type === 'category' && 'category and all its products'}
-              {deleteDialog.type === 'product' && 'product and all its add-ons'}
-              {deleteDialog.type === 'addon' && 'add-on'}.
+              This action cannot be undone.
+              {deleteDialog.type === 'category' && (
+                <>
+                  {' '}This will permanently delete this category
+                  {(() => {
+                    const category = categories.find(c => c.id === deleteDialog.id);
+                    const productCount = category?.products.length || 0;
+                    if (productCount > 0) {
+                      return ` and all ${productCount} ${productCount === 1 ? 'product' : 'products'} in it (including their add-ons)`;
+                    }
+                    return '';
+                  })()}.
+                </>
+              )}
+              {deleteDialog.type === 'product' && ' This will permanently delete this product and all its add-ons.'}
+              {deleteDialog.type === 'addon' && ' This will permanently delete this add-on.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
