@@ -82,9 +82,25 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   addCategory: async (name, restaurantId) => {
     set({ loading: true, error: null });
     try {
+      // Get highest sort_order to add new category at the end
+      const { data: existingCategories } = await supabase
+        .from('categories')
+        .select('sort_order')
+        .eq('restaurant_id', restaurantId)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+
+      const newSortOrder = existingCategories && existingCategories.length > 0 
+        ? (existingCategories[0].sort_order || 0) + 1 
+        : 0;
+
       const { data, error } = await supabase
         .from('categories')
-        .insert({ name, restaurant_id: restaurantId })
+        .insert({ 
+          name: name.trim(), 
+          restaurant_id: restaurantId,
+          sort_order: newSortOrder 
+        })
         .select()
         .single();
 
@@ -96,15 +112,21 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to add category',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 
   updateCategory: async (id, updates) => {
     set({ loading: true, error: null });
     try {
+      // Trim name if provided
+      const sanitizedUpdates = updates.name 
+        ? { ...updates, name: updates.name.trim() }
+        : updates;
+
       const { error } = await supabase
         .from('categories')
-        .update(updates)
+        .update(sanitizedUpdates)
         .eq('id', id);
 
       if (error) throw error;
@@ -112,7 +134,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
       // Update local state
       set(state => ({
         categories: state.categories.map(cat =>
-          cat.id === id ? { ...cat, ...updates } : cat
+          cat.id === id ? { ...cat, ...sanitizedUpdates } : cat
         ),
         loading: false,
       }));
@@ -121,12 +143,15 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to update category',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 
   deleteCategory: async (id) => {
     set({ loading: true, error: null });
     try {
+      // Database CASCADE will automatically delete all products and their addons
+      // when the category is deleted
       const { error } = await supabase
         .from('categories')
         .delete()
@@ -134,6 +159,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
 
       if (error) throw error;
 
+      // Remove from local state
       set(state => ({
         categories: state.categories.filter(cat => cat.id !== id),
         loading: false,
@@ -143,6 +169,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to delete category',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 
