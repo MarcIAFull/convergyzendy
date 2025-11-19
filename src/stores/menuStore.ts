@@ -176,9 +176,21 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   addProduct: async (product) => {
     set({ loading: true, error: null });
     try {
+      // Validate required fields
+      if (!product.name?.trim()) {
+        throw new Error('Product name is required');
+      }
+      if (!product.price || product.price < 0) {
+        throw new Error('Valid price is required');
+      }
+
       const { data, error } = await supabase
         .from('products')
-        .insert(product)
+        .insert({
+          ...product,
+          name: product.name.trim(),
+          description: product.description?.trim() || null,
+        })
         .select()
         .single();
 
@@ -190,15 +202,28 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to add product',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 
   updateProduct: async (id, updates) => {
     set({ loading: true, error: null });
     try {
+      // Sanitize updates
+      const sanitizedUpdates = {
+        ...updates,
+        name: updates.name ? updates.name.trim() : undefined,
+        description: updates.description ? updates.description.trim() : updates.description === '' ? null : undefined,
+      };
+
+      // Remove undefined values
+      Object.keys(sanitizedUpdates).forEach(key => 
+        sanitizedUpdates[key as keyof typeof sanitizedUpdates] === undefined && delete sanitizedUpdates[key as keyof typeof sanitizedUpdates]
+      );
+
       const { error } = await supabase
         .from('products')
-        .update(updates)
+        .update(sanitizedUpdates)
         .eq('id', id);
 
       if (error) throw error;
@@ -208,7 +233,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         categories: state.categories.map(cat => ({
           ...cat,
           products: cat.products.map(prod =>
-            prod.id === id ? { ...prod, ...updates } : prod
+            prod.id === id ? { ...prod, ...sanitizedUpdates } : prod
           ),
         })),
         loading: false,
@@ -218,12 +243,20 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to update product',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 
   deleteProduct: async (id) => {
     set({ loading: true, error: null });
     try {
+      // Get product to check for image
+      const state = get();
+      const product = state.categories
+        .flatMap(cat => cat.products)
+        .find(p => p.id === id);
+
+      // Delete product from database (CASCADE will delete addons)
       const { error } = await supabase
         .from('products')
         .delete()
@@ -231,6 +264,18 @@ export const useMenuStore = create<MenuState>((set, get) => ({
 
       if (error) throw error;
 
+      // Delete image from storage if exists
+      if (product?.image_url) {
+        const urlParts = product.image_url.split('/');
+        const fileName = urlParts[urlParts.length - 1];
+        if (fileName) {
+          await supabase.storage
+            .from('product-images')
+            .remove([fileName]);
+        }
+      }
+
+      // Update local state
       set(state => ({
         categories: state.categories.map(cat => ({
           ...cat,
@@ -243,6 +288,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to delete product',
         loading: false 
       });
+      throw error; // Re-throw to handle in UI
     }
   },
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useMenuStore } from '@/stores/menuStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,8 +41,11 @@ import {
   Loader2,
   DollarSign,
   Image as ImageIcon,
+  Upload,
+  X,
 } from 'lucide-react';
 import type { CategoryWithProducts, Product, Addon } from '@/types/database';
+import { uploadImage, deleteImage, validateImageFile, extractPathFromUrl } from '@/lib/imageUpload';
 
 const MenuManagement = () => {
   const { restaurant, fetchRestaurant } = useRestaurantStore();
@@ -60,6 +63,10 @@ const MenuManagement = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [categoryName, setCategoryName] = useState('');
   const [productForm, setProductForm] = useState({ name: '', description: '', price: '', image_url: '', is_available: true });
+  const [productImageFile, setProductImageFile] = useState<File | null>(null);
+  const [productImagePreview, setProductImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [addonForm, setAddonForm] = useState({ name: '', price: '' });
 
   useEffect(() => {
@@ -105,6 +112,8 @@ const MenuManagement = () => {
     setEditingProduct(null);
     setSelectedCategoryId(categoryId);
     setProductForm({ name: '', description: '', price: '', image_url: '', is_available: true });
+    setProductImageFile(null);
+    setProductImagePreview('');
     setProductDialog(true);
   };
 
@@ -118,19 +127,74 @@ const MenuManagement = () => {
       image_url: product.image_url || '',
       is_available: product.is_available,
     });
+    setProductImageFile(null);
+    setProductImagePreview(product.image_url || '');
     setProductDialog(true);
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast({
+        title: 'Invalid image',
+        description: validationError,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProductImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    setProductImageFile(file);
+  };
+
+  const handleRemoveImage = () => {
+    setProductImageFile(null);
+    setProductImagePreview('');
+    setProductForm({ ...productForm, image_url: '' });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleSaveProduct = async () => {
     if (!restaurant?.id) return;
+    
+    setUploadingImage(true);
     try {
+      let imageUrl = productForm.image_url;
+
+      // Upload new image if file selected
+      if (productImageFile) {
+        const uploadResult = await uploadImage(productImageFile);
+        imageUrl = uploadResult.url;
+
+        // Delete old image if updating product
+        if (editingProduct?.image_url) {
+          const oldImagePath = extractPathFromUrl(editingProduct.image_url);
+          if (oldImagePath) {
+            await deleteImage(oldImagePath).catch(console.error);
+          }
+        }
+      }
+
       const productData = {
         name: productForm.name,
         description: productForm.description || null,
         price: parseFloat(productForm.price),
-        image_url: productForm.image_url || null,
+        image_url: imageUrl || null,
         is_available: productForm.is_available,
       };
+
       if (editingProduct) {
         await updateProduct(editingProduct.id, productData);
         toast({ title: 'Product updated successfully' });
@@ -138,9 +202,14 @@ const MenuManagement = () => {
         await addProduct({ ...productData, category_id: selectedCategoryId, restaurant_id: restaurant.id });
         toast({ title: 'Product added successfully' });
       }
+      
       setProductDialog(false);
+      setProductImageFile(null);
+      setProductImagePreview('');
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save product', variant: 'destructive' });
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to save product', variant: 'destructive' });
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -397,15 +466,58 @@ const MenuManagement = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="product-image" className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4" />
-                Image URL
+                <Upload className="h-4 w-4" />
+                Product Image
               </Label>
-              <Input id="product-image" placeholder="https://example.com/image.jpg" value={productForm.image_url} onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })} />
+              <div className="space-y-3">
+                {productImagePreview ? (
+                  <div className="relative w-full aspect-video bg-muted rounded-lg overflow-hidden">
+                    <img
+                      src={productImagePreview}
+                      alt="Product preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2"
+                      onClick={handleRemoveImage}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center w-full aspect-video border-2 border-dashed border-muted-foreground/25 rounded-lg">
+                    <div className="text-center">
+                      <ImageIcon className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                      <p className="mt-2 text-sm text-muted-foreground">No image selected</p>
+                    </div>
+                  </div>
+                )}
+                <Input
+                  ref={fileInputRef}
+                  id="product-image"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  onChange={handleImageFileChange}
+                  className="cursor-pointer"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Supported formats: JPEG, PNG, WebP. Max size: 5MB
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProductDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveProduct} disabled={!productForm.name.trim() || !productForm.price || parseFloat(productForm.price) < 0}>{editingProduct ? 'Update' : 'Add'} Product</Button>
+            <Button 
+              onClick={handleSaveProduct} 
+              disabled={!productForm.name.trim() || !productForm.price || parseFloat(productForm.price) < 0 || uploadingImage}
+            >
+              {uploadingImage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingProduct ? 'Update' : 'Add'} Product
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
