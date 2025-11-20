@@ -9,19 +9,28 @@ import { updateCustomerInsightsAfterOrder, getCustomerInsights } from "../_share
  * 
  * CRITICAL CART RETRIEVAL LOGIC:
  * ================================
- * This agent ALWAYS uses getOrCreateActiveCart() to retrieve the customer's cart.
+ * This agent uses THREE helper functions for cart management:
  * 
- * Rules enforced by getOrCreateActiveCart():
- * 1. ONLY returns carts with status='active'
- * 2. NEVER returns completed, cancelled, or abandoned carts
- * 3. If multiple active carts exist (edge case), closes all but the most recent one
- * 4. Always returns exactly ONE cart - either the existing active one or a new one
- * 5. The AI MUST trust this cart as the single source of truth for the conversation
+ * 1. getActiveCartWithItems(supabase, restaurantId, phone)
+ *    - Returns ONLY carts with status='active'
+ *    - Returns NULL if no active cart exists (does NOT create)
+ *    - NEVER returns completed/cancelled/abandoned carts
+ *    - If multiple active carts exist, abandons all but the most recent
  * 
- * The AI is explicitly instructed to:
+ * 2. createNewCart(supabase, restaurantId, phone)
+ *    - Creates a fresh cart with status='active' and no items
+ * 
+ * 3. getOrCreateActiveCart(supabase, restaurantId, phone)
+ *    - Combines the above: gets existing active cart or creates new one
+ *    - Used at conversation start to ensure there's always a cart
+ * 
+ * The AI MUST:
+ * - Trust getActiveCartWithItems as the single source of truth for current cart
  * - Never assume cart contents from old messages or timestamps
  * - Never reference completed orders as if they're in the current cart
- * - Distinguish between "current order" (active cart) and "last completed order" (historical data)
+ * - Distinguish between "current order" (active cart) and "last order" (completed historical data)
+ * 
+ * This ensures the AI never shows old completed carts to the user.
  */
 
 const corsHeaders = {
@@ -92,9 +101,22 @@ function canTransition(from: OrderState, to: OrderState): boolean {
   return STATE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-// Helper function to get or create a single active cart for a customer
-async function getOrCreateActiveCart(supabase: any, restaurantId: string, customerPhone: string) {
-  console.log('[CartSession] Getting or creating active cart for:', customerPhone);
+/**
+ * CART RETRIEVAL HELPERS
+ * ======================
+ * These functions enforce strict cart status filtering to prevent mixing
+ * active carts with completed/cancelled/abandoned ones.
+ */
+
+/**
+ * Get the active cart with all items loaded.
+ * Returns NULL if no active cart exists (does NOT create one).
+ * Only returns carts with status='active'.
+ * 
+ * If multiple active carts exist (edge case), abandons all but the most recent.
+ */
+async function getActiveCartWithItems(supabase: any, restaurantId: string, customerPhone: string) {
+  console.log('[Cart] Getting active cart for:', customerPhone);
   
   // Fetch ALL active carts (not using maybeSingle to catch edge cases)
   const { data: activeCarts, error: fetchError } = await supabase
@@ -124,21 +146,28 @@ async function getOrCreateActiveCart(supabase: any, restaurantId: string, custom
         )
       )
     `)
-    .eq('restaurant_id', restaurantId)
     .eq('user_phone', customerPhone)
+    .eq('restaurant_id', restaurantId)
     .eq('status', 'active')
     .order('updated_at', { ascending: false });
 
   if (fetchError) {
-    console.error('[CartSession] Error fetching active carts:', fetchError);
+    console.error('[Cart] Error fetching active carts:', fetchError);
     throw fetchError;
   }
 
-  console.log(`[CartSession] Found ${activeCarts?.length || 0} active cart(s)`);
+  const count = activeCarts?.length || 0;
+  console.log(`[Cart] Found ${count} active cart(s)`);
 
-  // Handle edge case: multiple active carts exist
-  if (activeCarts && activeCarts.length > 1) {
-    console.warn(`[CartSession] ⚠️ Multiple active carts detected (${activeCarts.length}), cleaning up...`);
+  // If no active carts, return null
+  if (!activeCarts || activeCarts.length === 0) {
+    console.log('[Cart] No active cart exists');
+    return null;
+  }
+
+  // If multiple active carts exist (edge case), clean up
+  if (activeCarts.length > 1) {
+    console.warn(`[Cart] ⚠️ Multiple active carts detected (${activeCarts.length}), cleaning up...`);
     
     // Keep the most recent one, abandon the rest
     const cartsToAbandon = activeCarts.slice(1).map((c: any) => c.id);
@@ -149,21 +178,24 @@ async function getOrCreateActiveCart(supabase: any, restaurantId: string, custom
       .in('id', cartsToAbandon);
     
     if (abandonError) {
-      console.error('[CartSession] Error abandoning old carts:', abandonError);
+      console.error('[Cart] Error abandoning old carts:', abandonError);
     } else {
-      console.log(`[CartSession] ✅ Abandoned ${cartsToAbandon.length} old cart(s):`, cartsToAbandon);
+      console.log(`[Cart] ✅ Abandoned ${cartsToAbandon.length} old cart(s)`);
     }
   }
 
-  // If we have at least one active cart, return the most recent one
-  if (activeCarts && activeCarts.length > 0) {
-    const activeCart = activeCarts[0];
-    console.log(`[CartSession] Returning active cart ${activeCart.id}, updated ${activeCart.updated_at}`);
-    return activeCart;
-  }
+  const activeCart = activeCarts[0];
+  console.log(`[Cart] Returning active cart ${activeCart.id} with ${activeCart.cart_items?.length || 0} items`);
+  return activeCart;
+}
 
-  // No active cart found, create a new one
-  console.log('[CartSession] No active cart found, creating new one...');
+/**
+ * Create a new active cart for the customer.
+ * Always creates a fresh cart with status='active' and no items.
+ */
+async function createNewCart(supabase: any, restaurantId: string, customerPhone: string) {
+  console.log('[Cart] Creating new cart for:', customerPhone);
+  
   const { data: newCart, error: createError } = await supabase
     .from('carts')
     .insert({
@@ -174,8 +206,8 @@ async function getOrCreateActiveCart(supabase: any, restaurantId: string, custom
     .select(`
       id,
       status,
-      updated_at,
       created_at,
+      updated_at,
       cart_items (
         id,
         product_id,
@@ -199,12 +231,27 @@ async function getOrCreateActiveCart(supabase: any, restaurantId: string, custom
     .single();
 
   if (createError) {
-    console.error('[CartSession] Error creating new cart:', createError);
+    console.error('[Cart] Error creating new cart:', createError);
     throw createError;
   }
 
-  console.log(`[CartSession] ✅ Created new cart: ${newCart.id}`);
+  console.log(`[Cart] ✅ Created new cart: ${newCart.id}`);
   return newCart;
+}
+
+/**
+ * Get or create an active cart.
+ * First checks for existing active cart, creates if none exists.
+ * Used at the start of conversation to ensure there's always a cart to work with.
+ */
+async function getOrCreateActiveCart(supabase: any, restaurantId: string, customerPhone: string) {
+  const existingCart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
+  
+  if (existingCart) {
+    return existingCart;
+  }
+  
+  return await createNewCart(supabase, restaurantId, customerPhone);
 }
 
 // Helper function to get the last completed order for a phone number
@@ -1262,34 +1309,11 @@ Use these tools to execute the customer's requests accurately.
 
         console.log(`State transition: ${currentState} -> ${newState}`);
 
-        // Reload cart after tool execution (refreshing the same active cart by ID)
-        // We're not re-querying by status here - just getting updated state of the cart we already have
-        const { data: updatedCart } = await supabase
-          .from('carts')
-          .select(`
-            cart_items (
-              id,
-              product_id,
-              quantity,
-              notes,
-              products (
-                id,
-                name,
-                price
-              ),
-              cart_item_addons (
-                addon_id,
-                addons (
-                  id,
-                  name,
-                  price
-                )
-              )
-            )
-          `)
-          .eq('id', cart!.id)
-          .single();
-
+        // Reload active cart after tool execution
+        // CRITICAL: Always use getActiveCartWithItems to ensure we only work with active carts
+        const updatedCart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
+        
+        // If cart is no longer active (completed/cancelled), use empty cart
         const updatedCartItems: CartItem[] = updatedCart?.cart_items?.map((item: any) => ({
           product_id: item.product_id,
           product_name: item.products.name,
@@ -1303,7 +1327,7 @@ Use these tools to execute the customer's requests accurately.
           })) || [],
         })) || [];
 
-        console.log('Updated cart items:', updatedCartItems.length, 'items');
+        console.log('[Cart] Updated cart items:', updatedCartItems.length, 'items');
 
         // Save outgoing message
         await supabase.from('messages').insert({
