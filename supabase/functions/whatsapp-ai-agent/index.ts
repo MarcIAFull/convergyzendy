@@ -626,16 +626,22 @@ serve(async (req) => {
     }, 0);
 
     // Log current cart state clearly
+    console.log(`[AI-Agent] ========== CART STATE AT START OF TURN ==========`);
+    console.log(`[AI-Agent] Conversation state: ${currentState}`);
     if (cart) {
-      console.log(`[AI-Agent] ✅ Active cart for ${customerPhone} = ${cart.id} with ${currentCartItems.length} items (total: €${cartTotal.toFixed(2)})`);
+      console.log(`[AI-Agent] ✅ Active cart exists: ${cart.id}`);
+      console.log(`[AI-Agent] Cart items count: ${currentCartItems.length}`);
       if (currentCartItems.length > 0) {
         console.log('[AI-Agent] Current cart contents:', currentCartItems.map(i => `${i.quantity}x ${i.product_name}`).join(', '));
       } else {
-        console.log('[AI-Agent] Cart exists but is EMPTY (no items added yet)');
+        console.log('[AI-Agent] ⚠️ Cart exists but is EMPTY (no items added yet)');
       }
+      console.log(`[AI-Agent] Cart total: €${cartTotal.toFixed(2)}`);
     } else {
-      console.log(`[AI-Agent] ❌ No active cart exists for ${customerPhone} - will start fresh when customer adds first item`);
+      console.log(`[AI-Agent] ❌ No active cart exists for ${customerPhone}`);
+      console.log(`[AI-Agent] Current cart items: [] (empty array)`);
     }
+    console.log(`[AI-Agent] =====================================================`);
 
     // Extract last messages for session state
     const lastUserMessage = messageHistory?.filter((m: any) => m.direction === 'inbound').slice(-1)[0]?.body || null;
@@ -681,12 +687,30 @@ Your primary goals:
 4) Use upsell and cross-sell intelligently, based on user preferences.
 
 =====================================================================
+CRITICAL: CURRENT CART VS HISTORICAL PREFERENCES
+=====================================================================
+
+**ABSOLUTE RULE: current_cart_items is the ONLY source of truth for the current order.**
+
+current_cart_items = ${JSON.stringify(currentCartItems)}
+
+${currentCartItems.length === 0 ? '⚠️ THE CART IS EMPTY. You MUST NOT claim any items are in the current order.' : `✅ Current cart has ${currentCartItems.length} item(s).`}
+
+If current_cart_items is empty ([]), you MUST:
+- Say "Ainda não tens nenhum item no teu pedido" if asked about the cart
+- NEVER mention water, pizza, or any other item as being "in the cart" or "in the order"
+- You can suggest items based on history, but make it clear they are suggestions, not current order items
+
+Historical preferences (preferred_items, preferred_addons) are ONLY for suggestions.
+They NEVER represent the current order unless explicitly added to current_cart_items via the add_to_cart tool.
+
+=====================================================================
 CORE PRINCIPLES
 =====================================================================
 
 1) **Truth comes from the backend (Supabase) — NEVER from assumptions**
 You receive structured data every turn:
-- \`current_cart\`: the REAL items currently in the active cart (may be empty).
+- \`current_cart_items\`: the REAL items currently in the active cart (may be empty).
 - \`historical_preferences\`: insights from previous completed orders (preferred items, addons, average ticket, etc.).
 - \`conversation_state\`: the backend-defined state (idle, browsing_menu, adding_item, choosing_addons, confirming_item, collecting_address, collecting_payment, confirming_order, order_completed).
 - Customer details already collected (address, payment method, etc.).
@@ -694,12 +718,12 @@ You receive structured data every turn:
 
 YOU MUST treat each source separately:
 - **Current Cart = Absolute Truth**.
-  Nothing is in the user's current order unless it exists in \`current_cart\`.
+  Nothing is in the user's current order unless it exists in \`current_cart_items\`.
 - **Historical Preferences = ONLY for suggestions**.
   They NEVER modify the cart unless the user explicitly approves.
 
 2) **You NEVER invent or guess cart content**
-If \`current_cart\` is empty, the order is empty.
+If \`current_cart_items\` is empty, the order is empty.
 If historical preferences show the user "usually orders water", you may mention it, but must say it is based on past orders, NOT on the current cart.
 
 3) **Single Source of Truth for Active Cart**
@@ -707,7 +731,7 @@ The backend ensures:
 - Only ONE active cart exists for each (restaurant_id, user_phone).
 - If multiple exist, backend keeps the newest and closes the others.
 
-You must rely only on the provided \`current_cart\`.
+You must rely only on the provided \`current_cart_items\`.
 
 4) **Conversation State Is Controlled by the Backend**
 You DO NOT decide the next state — the backend does.
@@ -853,11 +877,11 @@ CART VS. HISTORY RULES
 
 - But DO NOT say:
   ❌ "O teu carrinho tem água."
-  unless \`current_cart\` actually contains water.
+  unless \`current_cart_items\` actually contains water.
 
 - NEVER automatically add items based on history.
 - NEVER assume they want the same thing as last time.
-- NEVER speak of "editing" an item that does not exist in \`current_cart\`.
+- NEVER speak of "editing" an item that does not exist in \`current_cart_items\`.
 
 =====================================================================
 SMART SALES BEHAVIOR
@@ -942,6 +966,20 @@ You have access to tools for:
 - set_payment_method: Set payment method (cash, card, mbway, multibanco)
 - finalize_order: Create the final order (only after clear confirmation)
 - transition_state: Move to next state when appropriate
+
+**CRITICAL: WHEN TO CALL add_to_cart**
+You MUST call the add_to_cart tool when:
+- User explicitly confirms a product: "quero essa pizza", "pode ser essa", "sim, quero essa", "adiciona"
+- User says the product name: "quero uma pizza Margherita"
+- User accepts your suggestion: You: "Temos pizza Margherita" → User: "sim" / "pode ser" / "quero"
+
+You MUST include:
+- product_id: The exact product ID from the menu
+- quantity: Default to 1 if not specified
+- addon_ids: Array of addon IDs if user confirmed addons
+- notes: Any special requests
+
+After calling add_to_cart, the system will reload the cart and you will see the updated current_cart_items.
 
 Use these tools to execute the customer's requests accurately.
 
@@ -1148,8 +1186,15 @@ Execute your role with clarity, efficiency, and friendliness.
     const aiData = await openaiResponse.json();
     const aiMessage = aiData.choices[0].message;
 
-    console.log('AI Response:', aiMessage.content);
-    console.log('Tool Calls:', aiMessage.tool_calls);
+    console.log('[AI-Agent] ========== AI RESPONSE ==========');
+    console.log('[AI-Agent] Response text:', aiMessage.content);
+    console.log('[AI-Agent] Tool calls:', aiMessage.tool_calls ? `${aiMessage.tool_calls.length} tool(s)` : 'none');
+    if (aiMessage.tool_calls) {
+      aiMessage.tool_calls.forEach((tc: any) => {
+        console.log(`[AI-Agent]   - ${tc.function.name}:`, tc.function.arguments);
+      });
+    }
+    console.log('[AI-Agent] =======================================');
 
     // Process tool calls
     let newState: OrderState = currentState;
@@ -1167,10 +1212,19 @@ Execute your role with clarity, efficiency, and friendliness.
         try {
           switch (functionName) {
             case 'add_to_cart': {
+              console.log('[add_to_cart] ========== ADDING ITEM TO CART ==========');
+              console.log('[add_to_cart] Product ID:', args.product_id);
+              console.log('[add_to_cart] Quantity:', args.quantity);
+              console.log('[add_to_cart] Addon IDs:', args.addon_ids);
+              console.log('[add_to_cart] Notes:', args.notes);
+              
               // Ensure cart exists before adding items
               if (!cart) {
-                console.log('[Cart] Creating new cart for first item');
+                console.log('[add_to_cart] No active cart exists - creating new cart');
                 cart = await createNewCart(supabase, restaurantId, customerPhone);
+                console.log('[add_to_cart] ✅ Created new cart:', cart.id);
+              } else {
+                console.log('[add_to_cart] Using existing cart:', cart.id);
               }
 
               // Validate product exists
@@ -1181,7 +1235,7 @@ Execute your role with clarity, efficiency, and friendliness.
                 .single();
 
               if (productError || !product) {
-                console.error('Product not found:', args.product_id, productError);
+                console.error('[add_to_cart] ❌ Product not found:', args.product_id, productError);
                 toolResults.push({
                   tool_call_id: toolCall.id,
                   role: 'tool',
@@ -1190,6 +1244,8 @@ Execute your role with clarity, efficiency, and friendliness.
                 });
                 break;
               }
+              
+              console.log('[add_to_cart] ✅ Product found:', product.name, '€' + product.price);
 
               // Find or create cart item for this product
               const { data: existingItem } = await supabase
@@ -1274,7 +1330,8 @@ Execute your role with clarity, efficiency, and friendliness.
                 }),
               });
               
-              console.log(`✅ Added ${args.quantity}x ${product.name} to cart ${cart!.id}`);
+              console.log(`[add_to_cart] ✅ Successfully added ${args.quantity}x ${product.name} to cart ${cart!.id}`);
+              console.log('[add_to_cart] ================================================');
               break;
             }
 
@@ -1712,19 +1769,20 @@ Execute your role with clarity, efficiency, and friendliness.
 
         // Reload active cart after tool execution
         // CRITICAL: Always use getActiveCartWithItems to ensure we only work with active carts
+        console.log('[AI-Agent] ========== RELOADING CART AFTER TOOL EXECUTION ==========');
         const updatedCart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
         
         if (updatedCart) {
           const itemCount = updatedCart.cart_items?.length || 0;
-          console.log(`[Cart] ✅ Reloaded active cart ${updatedCart.id} with ${itemCount} items`);
+          console.log(`[AI-Agent] ✅ Reloaded active cart ${updatedCart.id} with ${itemCount} items`);
           if (itemCount > 0) {
             const itemSummary = updatedCart.cart_items.map((i: any) => `${i.quantity}x ${i.products.name}`).join(', ');
-            console.log(`[Cart] Items in cart: ${itemSummary}`);
+            console.log(`[AI-Agent] Items in cart: ${itemSummary}`);
           } else {
-            console.log('[Cart] ⚠️ Cart is EMPTY (no items yet)');
+            console.log('[AI-Agent] ⚠️ Cart is EMPTY (no items yet)');
           }
         } else {
-          console.log('[Cart] ❌ No active cart after tool execution - cart was completed/cancelled or does not exist');
+          console.log('[AI-Agent] ❌ No active cart after tool execution - cart was completed/cancelled or does not exist');
         }
         
         // If cart is no longer active (completed/cancelled), use empty cart
@@ -1741,7 +1799,8 @@ Execute your role with clarity, efficiency, and friendliness.
           })) || [],
         })) || [];
 
-        console.log('[Cart] Updated cart items:', updatedCartItems.length, 'items');
+        console.log('[AI-Agent] Final current_cart_items for response:', updatedCartItems.length, 'items');
+        console.log('[AI-Agent] ================================================================');
 
         // Save outgoing message
         await supabase.from('messages').insert({
