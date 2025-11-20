@@ -243,10 +243,10 @@ export default function TestWhatsApp() {
     if (!restaurantId) return;
 
     try {
-      // Cancel all active carts for this test phone
+      // Abandon all active carts for this test phone
       const { error } = await supabase
         .from('carts')
-        .update({ status: 'cancelled' })
+        .update({ status: 'abandoned' })
         .eq('restaurant_id', restaurantId)
         .eq('user_phone', testPhone)
         .eq('status', 'active');

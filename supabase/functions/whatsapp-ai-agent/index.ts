@@ -390,6 +390,7 @@ serve(async (req) => {
     
     let newState = targetState;
     let newMetadata = { ...stateMetadata };
+    let finalizeSuccess = false; // Track if finalize_order succeeded
     
     for (const toolCall of toolCalls) {
       const functionName = toolCall.function.name;
@@ -492,6 +493,7 @@ serve(async (req) => {
           
           if (!newMetadata.delivery_address || !newMetadata.payment_method) {
             console.error('[Tool] Cannot finalize: missing address or payment');
+            // Don't set finalizeSuccess, leave it false
             continue;
           }
           
@@ -516,15 +518,16 @@ serve(async (req) => {
           } else {
             console.log(`[Tool] ✅ Order created: ${order.id}`);
             
-            // Mark cart as converted
+            // Mark cart as completed
             await supabase
               .from('carts')
-              .update({ status: 'converted' })
+              .update({ status: 'completed' })
               .eq('id', activeCart.id);
             
             // Clear metadata
             newMetadata = {};
             newState = 'idle';
+            finalizeSuccess = true; // Mark as successful
           }
           break;
         }
@@ -579,9 +582,20 @@ serve(async (req) => {
           }
           
           case 'finalize_order': {
-            const newCartTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-            confirmations.push(`🎉 Pedido confirmado! Total: €${newCartTotal.toFixed(2)}`);
-            confirmations.push(`O teu pedido chegará em breve!`);
+            if (finalizeSuccess) {
+              const newCartTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+              confirmations.push(`🎉 Pedido confirmado! Total: €${newCartTotal.toFixed(2)}`);
+              confirmations.push(`O teu pedido chegará em breve!`);
+            } else {
+              // Finalize failed - ask for missing info
+              if (!newMetadata.delivery_address && !newMetadata.payment_method) {
+                confirmations.push('Para finalizar, preciso do teu endereço de entrega e método de pagamento.');
+              } else if (!newMetadata.delivery_address) {
+                confirmations.push('Para finalizar, preciso do teu endereço de entrega.');
+              } else if (!newMetadata.payment_method) {
+                confirmations.push('Para finalizar, preciso do método de pagamento (dinheiro, cartão ou MBWay).');
+              }
+            }
             break;
           }
           
