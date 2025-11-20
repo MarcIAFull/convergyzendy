@@ -33,7 +33,7 @@ export default function WhatsAppConnection() {
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste. 😊");
   const [sending, setSending] = useState(false);
   const instanceName = "convergy"; // This would come from env in production
-  const webhookUrl = `${window.location.origin}/api/evolution/webhook`;
+  const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async () => {
     try {
