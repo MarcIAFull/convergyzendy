@@ -37,72 +37,81 @@ serve(async (req) => {
     // POST request for incoming messages
     if (req.method === 'POST') {
       const body = await req.json();
-      console.log('Webhook received:', JSON.stringify(body, null, 2));
+      console.log('[EvolutionWebhook] Incoming payload:', JSON.stringify(body, null, 2));
 
-      // Parse WhatsApp webhook payload
-      const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-      const messages = value?.messages;
+      // Parse Evolution API webhook payload
+      // Evolution sends: { event: "messages.upsert", instance: "...", data: { key, message, ... } }
+      const event = body.event;
+      const data = body.data;
 
-      if (!messages || messages.length === 0) {
-        console.log('No messages in webhook');
+      // Only process incoming messages
+      if (event !== 'messages.upsert' || !data || data.key?.fromMe) {
+        console.log('[EvolutionWebhook] Ignoring non-message or outbound event');
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      const message = messages[0];
-      const from = message.from; // Customer phone number
-      const messageBody = message.text?.body || '';
-      const messageId = message.id;
-      const timestamp = message.timestamp;
+      // Extract phone number (remove @s.whatsapp.net suffix)
+      const remoteJid = data.key?.remoteJid || '';
+      const from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      
+      // Extract message text (Evolution supports multiple message types)
+      const messageBody = 
+        data.message?.conversation || 
+        data.message?.extendedTextMessage?.text || 
+        data.message?.imageMessage?.caption ||
+        '';
 
-      // Get business phone number from metadata
-      const businessPhoneId = value?.metadata?.phone_number_id;
-      const displayPhoneNumber = value?.metadata?.display_phone_number;
+      if (!messageBody) {
+        console.log('[EvolutionWebhook] No text content in message');
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
-      console.log(`Message from ${from}: ${messageBody}`);
+      console.log(`[EvolutionWebhook] Normalized phone: ${from}, text: ${messageBody}`);
 
-      // Find restaurant by phone number
+      // Find restaurant by instance name (single-tenant setup)
+      // In a multi-tenant setup, you'd match by phone number from Evolution instance config
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .select('id, name, phone')
-        .eq('phone', displayPhoneNumber)
+        .limit(1)
         .maybeSingle();
 
       if (restaurantError) {
-        console.error('Error finding restaurant:', restaurantError);
+        console.error('[EvolutionWebhook] Error finding restaurant:', restaurantError);
         throw restaurantError;
       }
 
       if (!restaurant) {
-        console.log(`No restaurant found for phone ${displayPhoneNumber}`);
+        console.log('[EvolutionWebhook] No restaurant found');
         return new Response(JSON.stringify({ success: true, note: 'Restaurant not found' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      // Save message to database
+      // Save inbound message to database
       const { error: messageError } = await supabase
         .from('messages')
         .insert({
           restaurant_id: restaurant.id,
           from_number: from,
-          to_number: displayPhoneNumber,
+          to_number: restaurant.phone,
           body: messageBody,
           direction: 'inbound',
         });
 
       if (messageError) {
-        console.error('Error saving message:', messageError);
+        console.error('[EvolutionWebhook] Error saving message:', messageError);
         throw messageError;
       }
 
-      console.log('Message saved to database');
+      console.log('[EvolutionWebhook] Message saved to database');
 
-      // TODO: Forward to AI agent function
-      // This will be implemented in the next step
+      // Call AI ordering agent (handles state machine, tools, and sends reply)
+      console.log('[EvolutionWebhook] Calling handleIncomingWhatsAppMessage via whatsapp-ai-agent');
       try {
         const { data: aiResponse, error: aiError } = await supabase.functions.invoke('whatsapp-ai-agent', {
           body: {
@@ -113,12 +122,15 @@ serve(async (req) => {
         });
 
         if (aiError) {
-          console.error('Error calling AI agent:', aiError);
-        } else {
-          console.log('AI agent response:', aiResponse);
+          console.error('[EvolutionWebhook] Error calling AI agent:', aiError);
+          throw aiError;
         }
+        
+        console.log('[EvolutionWebhook] AI agent processed message successfully');
+        console.log('[EvolutionWebhook] Reply sent via Evolution API');
       } catch (aiError) {
-        console.error('AI agent not available yet:', aiError);
+        console.error('[EvolutionWebhook] AI agent error:', aiError);
+        throw aiError;
       }
 
       return new Response(JSON.stringify({ success: true }), {
