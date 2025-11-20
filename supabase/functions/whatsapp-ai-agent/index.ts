@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { getStatePrompt, type OrderState } from "./state-prompts.ts";
+import { updateCustomerInsightsAfterOrder } from "../_shared/customerInsights.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -561,9 +562,13 @@ serve(async (req) => {
                   .from('carts')
                   .select(`
                     cart_items (
+                      id,
                       quantity,
-                      products (price),
-                      cart_item_addons (addons (price))
+                      products (id, name, price),
+                      cart_item_addons (
+                        addon_id,
+                        addons (id, name, price)
+                      )
                     )
                   `)
                   .eq('id', cart!.id)
@@ -579,21 +584,55 @@ serve(async (req) => {
                 }, 0) + restaurant.delivery_fee;
 
                 // Create order
-                await supabase.from('orders').insert({
-                  restaurant_id: restaurantId,
-                  user_phone: customerPhone,
-                  cart_id: cart!.id,
-                  delivery_address: deliveryAddress,
-                  payment_method: paymentMethod,
-                  total_amount: finalTotal,
-                  status: 'new',
-                });
+                const { data: newOrder, error: orderError } = await supabase
+                  .from('orders')
+                  .insert({
+                    restaurant_id: restaurantId,
+                    user_phone: customerPhone,
+                    cart_id: cart!.id,
+                    delivery_address: deliveryAddress,
+                    payment_method: paymentMethod,
+                    total_amount: finalTotal,
+                    status: 'new',
+                  })
+                  .select()
+                  .single();
+
+                if (orderError) {
+                  console.error('[OrderCreation] Error creating order:', orderError);
+                  throw orderError;
+                }
+
+                console.log(`[OrderCreation] ✅ Order created: ${newOrder.id}`);
 
                 // Mark cart as completed
                 await supabase
                   .from('carts')
                   .update({ status: 'completed' })
                   .eq('id', cart!.id);
+
+                // Update customer insights (best-effort, non-blocking)
+                try {
+                  const orderItems = finalCart!.cart_items.map((item: any) => ({
+                    productId: item.products.id,
+                    productName: item.products.name,
+                    addons: item.cart_item_addons?.map((cia: any) => ({
+                      addonId: cia.addons.id,
+                      addonName: cia.addons.name,
+                    })) || [],
+                  }));
+
+                  await updateCustomerInsightsAfterOrder(supabase, {
+                    phone: customerPhone,
+                    orderId: newOrder.id,
+                    total: finalTotal,
+                    items: orderItems,
+                    status: 'confirmed',
+                  });
+                } catch (insightsError) {
+                  // Already logged in the helper, just continue
+                  console.log('[OrderCreation] Customer insights update failed but order was created successfully');
+                }
 
                 newState = 'order_completed';
                 toolResults.push({
