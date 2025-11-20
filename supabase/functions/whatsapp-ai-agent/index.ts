@@ -18,6 +18,21 @@ interface CartItem {
   addons: Array<{ addon_id: string; name: string; price: number }>;
 }
 
+interface SessionState {
+  current_state: OrderState;
+  has_open_cart: boolean;
+  cart_item_count: number;
+  cart_total: number;
+  last_user_message: string | null;
+  last_agent_message: string | null;
+  last_order?: {
+    id: string;
+    status: string;
+    confirmed_at: string;
+    total: number;
+  };
+}
+
 interface ConversationState {
   cart: CartItem[];
   delivery_address?: string;
@@ -95,14 +110,14 @@ serve(async (req) => {
       .eq('restaurant_id', restaurantId)
       .order('sort_order');
 
-    // Load conversation history (last 20 messages)
+    // Load conversation history (last 15 messages for session state)
     const { data: messageHistory } = await supabase
       .from('messages')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
       .order('timestamp', { ascending: true })
-      .limit(20);
+      .limit(15);
 
     // Load or create active cart
     let { data: cart } = await supabase
@@ -148,6 +163,16 @@ serve(async (req) => {
       cart = newCart;
     }
 
+    // Load recent order for session state
+    const { data: lastOrder } = await supabase
+      .from('orders')
+      .select('id, status, total_amount, created_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('user_phone', customerPhone)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     // Build current state
     const cartItems: CartItem[] = cart?.cart_items?.map((item: any) => ({
       product_id: item.product_id,
@@ -168,6 +193,10 @@ serve(async (req) => {
       return sum + itemTotal + addonsTotal;
     }, 0);
 
+    // Extract last messages for session state
+    const lastUserMessage = messageHistory?.filter((m: any) => m.direction === 'inbound').slice(-1)[0]?.body || null;
+    const lastAgentMessage = messageHistory?.filter((m: any) => m.direction === 'outbound').slice(-1)[0]?.body || null;
+
     // Determine current state from context
     let currentState: OrderState = 'idle';
     if (messageHistory && messageHistory.length > 0) {
@@ -177,6 +206,26 @@ serve(async (req) => {
       }
     }
 
+    // Build structured session state
+    const sessionState = {
+      current_state: currentState,
+      has_open_cart: cartItems.length > 0,
+      cart_item_count: cartItems.length,
+      cart_total: cartTotal,
+      last_user_message: lastUserMessage,
+      last_agent_message: lastAgentMessage,
+      ...(lastOrder && {
+        last_order: {
+          id: lastOrder.id,
+          status: lastOrder.status,
+          confirmed_at: lastOrder.created_at,
+          total: lastOrder.total_amount,
+        },
+      }),
+    };
+
+    console.log('[SessionState] Built session state:', JSON.stringify(sessionState, null, 2));
+
     const conversationState: ConversationState = {
       cart: cartItems,
       state: currentState,
@@ -185,8 +234,8 @@ serve(async (req) => {
     console.log('Current State:', currentState);
     console.log('Cart Total:', cartTotal);
 
-    // Build system prompt
-    const systemPrompt = getStatePrompt(
+    // Build system prompt with session state
+    const basePrompt = getStatePrompt(
       currentState,
       restaurant.name,
       categories,
@@ -195,10 +244,26 @@ serve(async (req) => {
       restaurant.delivery_fee
     );
 
-    // Build conversation history for OpenAI
+    const systemPrompt = `${basePrompt}
+
+**SESSION STATE** (Use this to understand the current conversation context):
+\`\`\`json
+${JSON.stringify(sessionState, null, 2)}
+\`\`\`
+
+IMPORTANT RULES:
+- Use the session_state to understand conversation context instead of relying on full message history
+- If last_order exists and is recent (status: "new" or "completed"), do NOT reuse old carts
+- Understand short references like "o mesmo", "cancela", "só limão" by checking last_user_message and last_agent_message
+- If has_open_cart is false and user wants to order, start fresh
+- If current_state is "order_completed" and user sends a new message, transition to "browsing_menu" for a new order
+`;
+
+    // Build conversation history for OpenAI (reduced to last 5 messages)
+    const recentMessages = messageHistory?.slice(-5) || [];
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...(messageHistory?.map((msg: any) => ({
+      ...(recentMessages.map((msg: any) => ({
         role: msg.direction === 'inbound' ? 'user' : 'assistant',
         content: msg.body,
       })) || []),

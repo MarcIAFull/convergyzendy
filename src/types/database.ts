@@ -108,6 +108,21 @@ export interface Message {
   timestamp: string;
 }
 
+export interface CustomerInsight {
+  phone: string;
+  preferred_items: Array<{ id: string; name: string; count: number }>;
+  preferred_addons: Array<{ id: string; name: string; count: number }>;
+  rejected_items: Array<{ id: string; name: string; count: number }>;
+  average_ticket: number | null;
+  order_count: number;
+  order_frequency_days: number | null;
+  last_order_id: string | null;
+  last_interaction_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Extended types with relations
 export interface ProductWithAddons extends Product {
   addons: Addon[];
