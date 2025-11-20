@@ -53,7 +53,7 @@ You ONLY output a structured intent classification.
 You must ALWAYS output exactly this JSON structure:
 
 {
-  "intent": "confirm_item" | "browse_menu" | "browse_product" | "ask_question" | "provide_address" | "provide_payment" | "finalize" | "modify_cart" | "unclear",
+  "intent": "confirm_item" | "browse_menu" | "browse_product" | "ask_question" | "provide_address" | "provide_payment" | "finalize" | "modify_cart" | "collect_customer_data" | "manage_pending_items" | "confirm_pending_items" | "unclear",
   "target_state": "idle" | "browsing_menu" | "confirming_item" | "collecting_address" | "collecting_payment" | "ready_to_order",
   "confidence": 0.0 to 1.0,
   "reasoning": "Brief explanation of your classification"
@@ -113,6 +113,28 @@ User wants to remove items from cart.
 Indicators:
 - User says "remove", "take out", "delete", etc.
 - User mentions a product currently in the cart
+
+## collect_customer_data
+User is providing or correcting their personal information (name, address, payment method).
+Indicators:
+- User mentions their name for the first time or corrects it
+- User provides/updates delivery address details
+- User changes or specifies payment preference
+- User says "my name is...", "I prefer to pay with...", etc.
+
+## manage_pending_items
+User mentions multiple products or new products without clear confirmation intent.
+Indicators:
+- User lists several products in one message ("I want pizza, burger, and fries")
+- User asks about adding new items while browsing
+- User is exploring options before committing
+
+## confirm_pending_items
+User confirms a list of pending products the agent just proposed.
+Indicators:
+- There are pending items in the conversation
+- Agent just presented a list of products
+- User replies affirmatively ("yes", "that's fine", "add them all", "confirm")
 
 ## unclear
 User's intent cannot be confidently determined from the context.
