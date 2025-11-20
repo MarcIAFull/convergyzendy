@@ -15,6 +15,7 @@ import {
   MessageSquare,
   TestTube,
   Smartphone,
+  Brain,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -33,6 +34,7 @@ const DashboardLayout = () => {
     { name: "Menu", href: "/menu", icon: Package },
     { name: "Orders", href: "/orders", icon: Menu },
     { name: "Messages", href: "/messages", icon: MessageSquare },
+    { name: "AI Configuration", href: "/ai-configuration", icon: Brain },
     { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "WhatsApp Connection", href: "/whatsapp-connection", icon: Smartphone },
     { name: "Settings", href: "/settings", icon: Settings },
