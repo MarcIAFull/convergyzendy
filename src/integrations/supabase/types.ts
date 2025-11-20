@@ -49,6 +49,145 @@ export type Database = {
           },
         ]
       }
+      agent_prompt_blocks: {
+        Row: {
+          agent_id: string
+          content: string
+          created_at: string
+          id: string
+          is_locked: boolean
+          ordering: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          content: string
+          created_at?: string
+          id?: string
+          is_locked?: boolean
+          ordering?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_locked?: boolean
+          ordering?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_prompt_blocks_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_tools: {
+        Row: {
+          agent_id: string
+          created_at: string
+          description_override: string | null
+          enabled: boolean
+          id: string
+          ordering: number
+          tool_name: string
+          updated_at: string
+          usage_rules: string | null
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          description_override?: string | null
+          enabled?: boolean
+          id?: string
+          ordering?: number
+          tool_name: string
+          updated_at?: string
+          usage_rules?: string | null
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          description_override?: string | null
+          enabled?: boolean
+          id?: string
+          ordering?: number
+          tool_name?: string
+          updated_at?: string
+          usage_rules?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tools_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agents: {
+        Row: {
+          base_system_prompt: string
+          behavior_config: Json | null
+          created_at: string
+          frequency_penalty: number | null
+          id: string
+          is_active: boolean
+          max_tokens: number
+          model: string
+          name: string
+          orchestration_config: Json | null
+          presence_penalty: number | null
+          temperature: number
+          top_p: number | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          base_system_prompt: string
+          behavior_config?: Json | null
+          created_at?: string
+          frequency_penalty?: number | null
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model?: string
+          name: string
+          orchestration_config?: Json | null
+          presence_penalty?: number | null
+          temperature?: number
+          top_p?: number | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          base_system_prompt?: string
+          behavior_config?: Json | null
+          created_at?: string
+          frequency_penalty?: number | null
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model?: string
+          name?: string
+          orchestration_config?: Json | null
+          presence_penalty?: number | null
+          temperature?: number
+          top_p?: number | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cart_item_addons: {
         Row: {
           addon_id: string

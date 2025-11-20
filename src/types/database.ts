@@ -173,3 +173,46 @@ export interface OrderWithDetails extends Order {
 export interface ConversationPendingItemWithDetails extends ConversationPendingItem {
   product: Product;
 }
+
+// Agent Configuration Types
+export interface AgentDB {
+  id: string;
+  name: string;
+  type: 'orchestrator' | 'assistant';
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  top_p: number | null;
+  frequency_penalty: number | null;
+  presence_penalty: number | null;
+  base_system_prompt: string;
+  is_active: boolean;
+  behavior_config: any;
+  orchestration_config: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentToolDB {
+  id: string;
+  agent_id: string;
+  tool_name: string;
+  enabled: boolean;
+  ordering: number;
+  description_override: string | null;
+  usage_rules: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentPromptBlockDB {
+  id: string;
+  agent_id: string;
+  title: string;
+  content: string;
+  ordering: number;
+  is_locked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
