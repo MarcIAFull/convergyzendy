@@ -4,6 +4,26 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { getStatePrompt, type OrderState } from "./state-prompts.ts";
 import { updateCustomerInsightsAfterOrder, getCustomerInsights } from "../_shared/customerInsights.ts";
 
+/**
+ * WhatsApp AI Ordering Agent
+ * 
+ * CRITICAL CART RETRIEVAL LOGIC:
+ * ================================
+ * This agent ALWAYS uses getOrCreateActiveCart() to retrieve the customer's cart.
+ * 
+ * Rules enforced by getOrCreateActiveCart():
+ * 1. ONLY returns carts with status='active'
+ * 2. NEVER returns completed, cancelled, or abandoned carts
+ * 3. If multiple active carts exist (edge case), closes all but the most recent one
+ * 4. Always returns exactly ONE cart - either the existing active one or a new one
+ * 5. The AI MUST trust this cart as the single source of truth for the conversation
+ * 
+ * The AI is explicitly instructed to:
+ * - Never assume cart contents from old messages or timestamps
+ * - Never reference completed orders as if they're in the current cart
+ * - Distinguish between "current order" (active cart) and "last completed order" (historical data)
+ */
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -320,7 +340,9 @@ serve(async (req) => {
       .limit(15);
 
     // Load active cart using the refactored helper
+    // CRITICAL: This always returns exactly ONE active cart (never completed/cancelled/abandoned)
     const cart = await getOrCreateActiveCart(supabase, restaurantId, customerPhone);
+    console.log(`[AI-Agent] Starting conversation with cart ${cart.id}, has ${cart.cart_items?.length || 0} items`);
 
     // Load recent order for session state
     const { data: lastOrder } = await supabase
@@ -452,10 +474,12 @@ Help the customer place a complete order in a simple, fast and friendly way.
 ${JSON.stringify(categories, null, 2)}
 \`\`\`
 
-**CURRENT CART**:
+**CURRENT CART** (AUTHORITATIVE - Single source of truth for this conversation):
 \`\`\`json
 ${JSON.stringify({ items: cartItems, subtotal: cartTotal, delivery_fee: restaurant.delivery_fee, total: cartTotal + restaurant.delivery_fee }, null, 2)}
 \`\`\`
+
+IMPORTANT: This cart contains ONLY items with status='active'. Completed/cancelled/abandoned orders are NOT included here.
 
 **SESSION STATE** (Current conversation context):
 \`\`\`json
@@ -493,7 +517,16 @@ ${JSON.stringify(customerProfile, null, 2)}
    - If the user says "me manda o de sempre", interpret it using the customer_profile (preferred items), but confirm explicitly before finalizing.
    - Always re-check the current cart data before confirming or changing an order.
 
-4. **Use customer_profile and insights to sell better (without being annoying)**
+4. **CRITICAL: Always trust the CURRENT CART as loaded**
+   - The CURRENT CART shown above is the single source of truth for this conversation
+   - This cart was loaded using strict rules: only status='active', never completed/cancelled/abandoned carts
+   - NEVER assume cart contents from old messages or timestamps
+   - NEVER reference items from completed orders as if they're in the current cart
+   - If CURRENT CART is empty and user asks "what's in my order?", it means there IS NO current order
+   - When a user starts a new conversation, they start with a fresh active cart (or empty cart if none exists)
+   - Completed orders are in the past and NOT in the current cart unless the user explicitly re-added them
+
+5. **Use customer_profile and insights to sell better (without being annoying)**
    - The customer_profile is loaded at the start of each conversation and shows historical preferences
    - For greetings like "o de sempre", "faz igual da outra vez", or "o que costumo pedir?":
      • If customer_profile.order_count >= 2, you can call get_customer_insights to get fresh data
@@ -1229,7 +1262,8 @@ Use these tools to execute the customer's requests accurately.
 
         console.log(`State transition: ${currentState} -> ${newState}`);
 
-        // Reload cart after tool execution
+        // Reload cart after tool execution (refreshing the same active cart by ID)
+        // We're not re-querying by status here - just getting updated state of the cart we already have
         const { data: updatedCart } = await supabase
           .from('carts')
           .select(`
