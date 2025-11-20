@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.evolution-status]
 verify_jwt = false
+
+[functions.evolution-test-message]
+verify_jwt = false
