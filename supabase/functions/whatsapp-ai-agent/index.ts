@@ -147,6 +147,7 @@ serve(async (req) => {
     console.log('\n[Orchestrator] ========== CALLING ORCHESTRATOR ==========');
     
     const orchestratorPrompt = buildOrchestratorPrompt({
+      userMessage: rawMessage,
       currentState,
       cartItems,
       cartTotal,
@@ -167,7 +168,7 @@ serve(async (req) => {
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: orchestratorPrompt },
-          { role: 'user', content: rawMessage }
+          { role: 'user', content: "Analyze the context and return the intent JSON only." }
         ],
         temperature: 0.0,
         response_format: { type: "json_object" }
@@ -183,7 +184,11 @@ serve(async (req) => {
     const orchestratorData = await orchestratorResponse.json();
     const decision = JSON.parse(orchestratorData.choices[0].message.content);
     
-    console.log('[Orchestrator] Decision:', JSON.stringify(decision, null, 2));
+    console.log('[Orchestrator] Intent Classification:', JSON.stringify(decision, null, 2));
+    console.log(`[Orchestrator] → Intent: ${decision.intent}`);
+    console.log(`[Orchestrator] → Target State: ${decision.target_state}`);
+    console.log(`[Orchestrator] → Confidence: ${decision.confidence}`);
+    console.log(`[Orchestrator] → Reasoning: ${decision.reasoning}`);
 
     // ============================================================
     // STEP 3: EXECUTE ORCHESTRATOR DECISION
