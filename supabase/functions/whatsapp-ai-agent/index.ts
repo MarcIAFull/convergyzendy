@@ -937,25 +937,42 @@ ${validatedToolCalls.map((tc: any) => {
 
     console.log(`[State Update] ✅ State updated successfully`);
 
-    // Save message to database
-    await supabase
-      .from('messages')
-      .insert([
-        {
-          restaurant_id: restaurantId,
-          from_number: customerPhone,
-          to_number: restaurant.phone,
-          body: rawMessage,
-          direction: 'incoming'
-        },
-        {
+    // ============================================================
+    // SAVE AI RESPONSE TO DATABASE
+    // ============================================================
+    // Note: User's message is already saved by webhook
+    // Here we only save the AI's outbound response
+    
+    console.log('\n[Messages] ========== SAVING AI RESPONSE ==========');
+    
+    // Validate message before saving
+    if (!finalResponse || finalResponse.trim().length === 0) {
+      console.error('[Messages] ❌ Cannot save empty AI response');
+      throw new Error('Empty response - cannot save to database');
+    }
+
+    // Save ONLY the AI response (webhook already saved user message)
+    try {
+      const { error: messageError } = await supabase
+        .from('messages')
+        .insert({
           restaurant_id: restaurantId,
           from_number: restaurant.phone,
           to_number: customerPhone,
           body: finalResponse,
-          direction: 'outgoing'
-        }
-      ]);
+          direction: 'outbound'
+        });
+
+      if (messageError) {
+        console.error('[Messages] ❌ Failed to save AI response:', messageError);
+        throw messageError;
+      }
+      
+      console.log('[Messages] ✅ AI response saved to database');
+    } catch (saveError) {
+      console.error('[Messages] ❌ Exception saving AI response:', saveError);
+      // Don't throw - processing succeeded, just log the error
+    }
 
     console.log('\n[WhatsApp] ========== SENDING RESPONSE ==========');
     
