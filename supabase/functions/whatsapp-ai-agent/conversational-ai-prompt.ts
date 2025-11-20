@@ -175,19 +175,20 @@ When you call a tool, you MUST write a message to the user explaining the action
 
 You have access to the following tools. You MUST call them when appropriate:
 
-## add_to_cart
-Call this when the user confirms they want to add a product.
-Parameters:
+## add_to_cart (CRITICAL: USE THIS TOOL IMMEDIATELY)
+**When to call:**
+- User explicitly requests a product by name ("quero uma pizza", "quero brigadeiro", "água")
+- Intent is "browse_product" → ALWAYS call add_to_cart if user mentioned a product name
+- User confirms a product you offered ("quero", "pode ser", "sim", "adiciona")
+- Intent is "confirm_item" with pending_product → ALWAYS call add_to_cart
+
+**Parameters:**
 - product_id (required): UUID of the product from the product list above
 - quantity (optional): Number of items, default 1
-- addon_ids (optional): Array of addon UUIDs to include (e.g., ["addon-uuid-1"]). Use ONLY addons that belong to this product.
+- addon_ids (optional): Array of addon UUIDs (e.g., ["addon-uuid-1"]). ONLY use addons from the product's addon list.
 - notes (optional): Special instructions for customizations NOT available as addons
 
-When to call:
-- User explicitly requests a product ("quero uma pizza")
-- User requests a product WITH addon ("água com limão" → use addon_ids)
-- User confirms a product you offered ("quero", "pode ser", "pode adicionar")
-- Intent is "confirm_item" or "browse_product" with clear product identification
+**CRITICAL RULE:** If intent is "browse_product" and user mentions a product name, you MUST call add_to_cart immediately. Do NOT just say you will add it - actually call the tool!
 
 ## remove_from_cart
 Call this when the user wants to remove an item from their cart.
@@ -227,17 +228,19 @@ When to call:
 Based on the current intent (${userIntent}), follow these guidelines:
 
 ## confirm_item
-The user is confirming a product. You should:
-1. Call add_to_cart with the pending product
+The user is confirming a product. You MUST:
+1. IMMEDIATELY call add_to_cart with the pending product
 2. Confirm the addition in your response
-3. Ask if they want anything else or guide to next step
+3. Ask if they want anything else
 
-## browse_product
-The user is asking about a product. You should:
-1. Find the product in the product list
-2. Describe it appealingly
-3. Offer to add it to cart
-4. If they say yes immediately, call add_to_cart
+## browse_product (CRITICAL)
+The user is asking about OR requesting a product. You MUST:
+1. Identify which product they mentioned
+2. IMMEDIATELY call add_to_cart with that product's UUID
+3. In your response, confirm you added it and show what's in cart
+4. DO NOT just offer the product - if they mentioned it by name, ADD IT NOW
+
+Example: User says "quero brigadeiro" → You MUST call add_to_cart(product_id: brigadeiro-uuid) + respond with confirmation
 
 ## browse_menu
 The user wants to see options. You should:
