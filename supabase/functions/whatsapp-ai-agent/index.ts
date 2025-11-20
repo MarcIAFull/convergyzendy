@@ -201,12 +201,12 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: orchestratorPrompt },
           { role: 'user', content: "Analyze the context and return the intent JSON only." }
         ],
-        temperature: 0.0,
+        max_tokens: 500,
         response_format: { type: "json_object" }
       }),
     });
@@ -358,14 +358,14 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: conversationalPrompt },
           ...conversationHistory,
           { role: 'user', content: rawMessage }
         ],
         tools,
-        temperature: 0.7
+        max_tokens: 500
       }),
     });
 
@@ -424,6 +424,28 @@ serve(async (req) => {
             '[Tool Validation] ❌ Skipping add_to_cart: no explicit product request or valid confirmation (we rely on orchestrator intent + product context, not static keywords).',
           );
           continue; // ❌ do not execute this add_to_cart
+        }
+
+        // ============================================================
+        // AUTO-CORRECTION: Detect mentioned addons and add them if missing
+        // ============================================================
+        const availableAddons = product?.addons || [];
+        const mentionedAddons = availableAddons.filter((addon: any) =>
+          userMessage.includes(addon.name.toLowerCase())
+        );
+        
+        if (mentionedAddons.length > 0 && (!args.addon_ids || args.addon_ids.length === 0)) {
+          console.warn(
+            `[Tool Validation] ⚠️ User mentioned addon(s) "${mentionedAddons.map((a: any) => a.name).join(', ')}" but AI didn't include addon_ids. Auto-correcting...`
+          );
+          
+          // Auto-correct by adding addon_ids
+          args.addon_ids = mentionedAddons.map((a: any) => a.id);
+          
+          // Update the tool call arguments
+          toolCall.function.arguments = JSON.stringify(args);
+          
+          console.log(`[Tool Validation] ✅ Auto-corrected addon_ids: ${args.addon_ids.join(', ')}`);
         }
 
         console.log(
@@ -777,6 +799,93 @@ serve(async (req) => {
     
     console.log(`[Response] Final message to send: "${finalResponse}"`);
     console.log(`[Response] Message length: ${finalResponse.length} characters`);
+    
+    // ============================================================
+    // SECOND MESSAGE: Conversational follow-up after tool execution
+    // ============================================================
+    
+    let secondMessage = '';
+    
+    if (validatedToolCalls.length > 0) {
+      console.log('\n[Second Message] ========== GENERATING CONVERSATIONAL FOLLOW-UP ==========');
+      
+      // Build context for second message with UPDATED cart state
+      const updatedCartSummary = cartItems.length > 0
+        ? cartItems.map((item: any) => {
+            const addonText = item.addons && item.addons.length > 0
+              ? ` com ${item.addons.map((a: any) => a.name).join(', ')}`
+              : '';
+            return `${item.quantity}x ${item.product_name}${addonText} (€${item.total_price.toFixed(2)})`;
+          }).join(', ')
+        : 'Carrinho vazio';
+      
+      const updatedCartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
+      
+      const secondMessagePrompt = `Tu és o assistente de pedidos do ${restaurant.name}.
+
+As tools foram executadas com sucesso. Agora preciso que escrevas uma mensagem natural e amigável em Português para o cliente.
+
+**Estado atual do carrinho (ATUALIZADO):**
+${updatedCartSummary}
+**Total: €${updatedCartTotal.toFixed(2)}**
+
+**Estado atual:** ${newState}
+**Endereço de entrega:** ${newMetadata.delivery_address || 'Não definido'}
+**Método de pagamento:** ${newMetadata.payment_method || 'Não definido'}
+
+**Tools que foram executadas:**
+${validatedToolCalls.map((tc: any) => {
+  const fn = tc.function.name;
+  const args = JSON.parse(tc.function.arguments);
+  return `- ${fn}: ${JSON.stringify(args)}`;
+}).join('\n')}
+
+**Instruções:**
+1. Confirma as ações executadas de forma natural e conversacional
+2. Mostra o estado atual do carrinho se relevante
+3. Sugere o próximo passo lógico no fluxo de pedido
+4. Mantém a mensagem curta (2-3 frases)
+5. Usa emojis apropriados 
+6. Se o pedido foi finalizado, congratula o cliente e dá detalhes do pedido
+
+**IMPORTANTE:** NÃO chames tools novamente. Apenas escreve uma mensagem conversacional.`;
+
+      try {
+        const secondAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              { role: 'system', content: secondMessagePrompt },
+              { role: 'user', content: 'Gera a mensagem conversacional agora.' }
+            ],
+            max_tokens: 300
+          }),
+        });
+
+        if (secondAiResponse.ok) {
+          const secondAiData = await secondAiResponse.json();
+          secondMessage = secondAiData.choices[0].message.content || '';
+          
+          if (secondMessage && secondMessage.trim() !== '') {
+            console.log(`[Second Message] ✅ Generated: "${secondMessage}"`);
+            // Replace the first message with the second one (more contextual)
+            finalResponse = secondMessage;
+          } else {
+            console.log('[Second Message] ⚠️ Empty second message, keeping first message');
+          }
+        } else {
+          console.error('[Second Message] ❌ Failed to generate second message');
+        }
+      } catch (secondMsgError) {
+        console.error('[Second Message] ❌ Error generating second message:', secondMsgError);
+        // Keep first message as fallback
+      }
+    }
     
     // Detect if AI offered a product (for pending_product tracking)
     if (toolCalls.length === 0 && finalResponse) {
