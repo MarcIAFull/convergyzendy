@@ -7,8 +7,15 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('[EvolutionWebhook] Incoming request', {
+    method: req.method,
+    url: req.url,
+    headers: Object.fromEntries(req.headers.entries()),
+  });
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('[EvolutionWebhook] CORS preflight request');
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -17,44 +24,77 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // GET request for webhook verification
+    // GET request for webhook verification (if Evolution uses this)
     if (req.method === 'GET') {
+      console.log('[EvolutionWebhook] GET request received');
       const url = new URL(req.url);
       const mode = url.searchParams.get('hub.mode');
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
 
+      console.log('[EvolutionWebhook] Verification params:', { mode, token, challenge });
+
       const verifyToken = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || 'your_verify_token';
 
       if (mode === 'subscribe' && token === verifyToken) {
-        console.log('Webhook verified');
+        console.log('[EvolutionWebhook] Webhook verified successfully');
         return new Response(challenge, { status: 200 });
       } else {
+        console.log('[EvolutionWebhook] Webhook verification failed');
         return new Response('Forbidden', { status: 403 });
       }
     }
 
     // POST request for incoming messages
     if (req.method === 'POST') {
-      const body = await req.json();
-      console.log('[EvolutionWebhook] Incoming payload:', JSON.stringify(body, null, 2));
+      let body;
+      try {
+        const rawBody = await req.text();
+        console.log('[EvolutionWebhook] Raw body:', rawBody);
+        body = JSON.parse(rawBody);
+        console.log('[EvolutionWebhook] Parsed body:', JSON.stringify(body, null, 2));
+      } catch (parseError) {
+        console.error('[EvolutionWebhook] Failed to parse body:', parseError);
+        return new Response(JSON.stringify({ ok: true, error: 'Invalid JSON' }), {
+          status: 200, // Return 200 to avoid Evolution retries
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       // Parse Evolution API webhook payload
-      // Evolution sends: { event: "messages.upsert", instance: "...", data: { key, message, ... } }
+      // Evolution can send different event types and formats
       const event = body.event;
       const data = body.data;
 
+      console.log('[EvolutionWebhook] Event type:', event);
+      console.log('[EvolutionWebhook] Data:', JSON.stringify(data, null, 2));
+
       // Only process incoming messages
-      if (event !== 'messages.upsert' || !data || data.key?.fromMe) {
-        console.log('[EvolutionWebhook] Ignoring non-message or outbound event');
-        return new Response(JSON.stringify({ success: true }), {
+      if (event !== 'messages.upsert' || !data) {
+        console.log('[EvolutionWebhook] Ignoring event (not messages.upsert or no data)');
+        return new Response(JSON.stringify({ ok: true, note: 'Not a message event' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      // Check if this is an outbound message (sent by us)
+      if (data.key?.fromMe === true) {
+        console.log('[EvolutionWebhook] Ignoring outbound message');
+        return new Response(JSON.stringify({ ok: true, note: 'Outbound message' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
         });
       }
 
       // Extract phone number (remove @s.whatsapp.net suffix)
       const remoteJid = data.key?.remoteJid || '';
-      const from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      let from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      
+      // Ensure E.164 format (add + if not present)
+      if (from && !from.startsWith('+')) {
+        from = '+' + from;
+      }
       
       // Extract message text (Evolution supports multiple message types)
       const messageBody = 
@@ -63,14 +103,21 @@ serve(async (req) => {
         data.message?.imageMessage?.caption ||
         '';
 
+      console.log('[EvolutionWebhook] Extracted data:', {
+        from,
+        messageBody,
+        hasMessage: !!messageBody,
+      });
+
       if (!messageBody) {
         console.log('[EvolutionWebhook] No text content in message');
-        return new Response(JSON.stringify({ success: true }), {
+        return new Response(JSON.stringify({ ok: true, note: 'No text content' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
         });
       }
 
-      console.log(`[EvolutionWebhook] Normalized phone: ${from}, text: ${messageBody}`);
+      console.log(`[EvolutionWebhook] Test message received`, { phone: from, text: messageBody });
 
       // Find restaurant by instance name (single-tenant setup)
       // In a multi-tenant setup, you'd match by phone number from Evolution instance config
@@ -111,7 +158,7 @@ serve(async (req) => {
       console.log('[EvolutionWebhook] Message saved to database');
 
       // Call AI ordering agent (handles state machine, tools, and sends reply)
-      console.log('[EvolutionWebhook] Calling handleIncomingWhatsAppMessage via whatsapp-ai-agent');
+      console.log('[EvolutionWebhook] Calling whatsapp-ai-agent function');
       try {
         const { data: aiResponse, error: aiError } = await supabase.functions.invoke('whatsapp-ai-agent', {
           body: {
@@ -123,17 +170,25 @@ serve(async (req) => {
 
         if (aiError) {
           console.error('[EvolutionWebhook] Error calling AI agent:', aiError);
-          throw aiError;
+          // Don't throw - log and return success to Evolution
+          return new Response(JSON.stringify({ ok: true, error: 'AI agent failed', details: aiError }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          });
         }
         
-        console.log('[EvolutionWebhook] AI agent processed message successfully');
+        console.log('[EvolutionWebhook] AI agent response:', aiResponse);
         console.log('[EvolutionWebhook] Reply sent via Evolution API');
       } catch (aiError) {
         console.error('[EvolutionWebhook] AI agent error:', aiError);
-        throw aiError;
+        // Don't throw - log and return success to Evolution
+        return new Response(JSON.stringify({ ok: true, error: 'AI agent exception', details: String(aiError) }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
       }
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       });
@@ -142,9 +197,11 @@ serve(async (req) => {
     return new Response('Method not allowed', { status: 405 });
 
   } catch (error) {
-    console.error('Webhook error:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
-      status: 500,
+    console.error('[EvolutionWebhook] Webhook error:', error);
+    console.error('[EvolutionWebhook] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    // Always return 200 to Evolution to avoid retries
+    return new Response(JSON.stringify({ ok: true, error: error instanceof Error ? error.message : 'Unknown error' }), {
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
