@@ -148,3 +148,49 @@ export async function updateCustomerInsightsAfterOrder(
     console.error('[CustomerInsights] This is non-critical - continuing with order flow');
   }
 }
+
+/**
+ * Retrieves customer insights for a given phone number
+ * Returns a clean JSON structure suitable for AI consumption
+ */
+export async function getCustomerInsights(
+  supabase: SupabaseClient,
+  phone: string
+): Promise<any | null> {
+  try {
+    console.log(`[CustomerInsights] Fetching insights for phone: ${phone}`);
+    
+    const { data: insights, error } = await supabase
+      .from('customer_insights')
+      .select('*')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[CustomerInsights] Error fetching insights:', error);
+      return null;
+    }
+
+    if (!insights) {
+      console.log('[CustomerInsights] No insights found for phone:', phone);
+      return null;
+    }
+
+    // Return clean structure
+    return {
+      phone: insights.phone,
+      order_count: insights.order_count || 0,
+      average_ticket: insights.average_ticket ? parseFloat(insights.average_ticket.toFixed(2)) : null,
+      order_frequency_days: insights.order_frequency_days,
+      preferred_items: insights.preferred_items || [],
+      preferred_addons: insights.preferred_addons || [],
+      rejected_items: insights.rejected_items || [],
+      last_order_id: insights.last_order_id,
+      last_interaction_at: insights.last_interaction_at,
+      notes: insights.notes,
+    };
+  } catch (error) {
+    console.error('[CustomerInsights] Failed to get customer insights:', error);
+    return null;
+  }
+}
