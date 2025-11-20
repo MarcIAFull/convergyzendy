@@ -200,6 +200,51 @@ export type Database = {
           },
         ]
       }
+      customer_insights: {
+        Row: {
+          average_ticket: number | null
+          created_at: string | null
+          last_interaction_at: string | null
+          last_order_id: string | null
+          notes: string | null
+          order_count: number | null
+          order_frequency_days: number | null
+          phone: string
+          preferred_addons: Json | null
+          preferred_items: Json | null
+          rejected_items: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          average_ticket?: number | null
+          created_at?: string | null
+          last_interaction_at?: string | null
+          last_order_id?: string | null
+          notes?: string | null
+          order_count?: number | null
+          order_frequency_days?: number | null
+          phone: string
+          preferred_addons?: Json | null
+          preferred_items?: Json | null
+          rejected_items?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          average_ticket?: number | null
+          created_at?: string | null
+          last_interaction_at?: string | null
+          last_order_id?: string | null
+          notes?: string | null
+          order_count?: number | null
+          order_frequency_days?: number | null
+          phone?: string
+          preferred_addons?: Json | null
+          preferred_items?: Json | null
+          rejected_items?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           body: string
