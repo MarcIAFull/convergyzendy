@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type ConnectionStatus = 'connected' | 'waiting_qr' | 'disconnected' | 'unknown';
 
@@ -18,6 +19,7 @@ interface StatusResponse {
     qrBase64: string | null;
   };
   lastCheckedAt: string;
+  message?: string;
   error?: string;
 }
 
@@ -25,9 +27,12 @@ export default function WhatsAppConnection() {
   const { toast } = useToast();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
   const [testPhone, setTestPhone] = useState("+351912345678");
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste. 😊");
   const [sending, setSending] = useState(false);
+  const instanceName = "convergy"; // This would come from env in production
+  const webhookUrl = `${window.location.origin}/api/evolution/webhook`;
 
   const fetchStatus = async () => {
     try {
@@ -45,6 +50,39 @@ export default function WhatsAppConnection() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('evolution-connect');
+      
+      if (error) throw error;
+
+      setStatus(data);
+
+      if (data.error) {
+        toast({
+          title: "Erro",
+          description: data.error,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "✅ Sucesso",
+          description: data.message || "Instância criada/conectada com sucesso!",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to connect instance:', error);
+      toast({
+        title: "Erro ao conectar",
+        description: error instanceof Error ? error.message : "Não foi possível conectar à instância.",
+        variant: "destructive",
+      });
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -121,11 +159,11 @@ export default function WhatsAppConnection() {
       <div>
         <h1 className="text-3xl font-bold">Conexão WhatsApp</h1>
         <p className="text-muted-foreground mt-2">
-          Gerir a conexão do WhatsApp via Evolution API
+          Centro de controlo da integração Evolution API
         </p>
       </div>
 
-      {/* Status Card */}
+      {/* (A) Connection Status Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -133,8 +171,8 @@ export default function WhatsAppConnection() {
               <CardTitle>Estado da Conexão</CardTitle>
               <CardDescription>Estado atual do WhatsApp Business</CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={fetchStatus}>
-              <RefreshCw className="w-4 h-4" />
+            <Button variant="ghost" size="icon" onClick={fetchStatus} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </CardHeader>
@@ -154,46 +192,129 @@ export default function WhatsAppConnection() {
           </div>
 
           {status?.error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-              <p className="text-sm text-destructive">{status.error}</p>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {status.error}
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* (B) Instance Setup + QR Code Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuração da Instância</CardTitle>
+          <CardDescription>
+            Gerir a instância Evolution e código QR
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Instance Name */}
+          <div className="space-y-2">
+            <Label htmlFor="instance-name">Nome da Instância (Evolution)</Label>
+            <Input
+              id="instance-name"
+              type="text"
+              value={instanceName}
+              disabled
+              className="bg-muted"
+            />
+            <p className="text-xs text-muted-foreground">
+              Nome da instância configurada nas variáveis de ambiente
+            </p>
+          </div>
+
+          {/* Webhook URL */}
+          <div className="space-y-2">
+            <Label htmlFor="webhook-url">Webhook URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="webhook-url"
+                type="text"
+                value={webhookUrl}
+                readOnly
+                className="bg-muted"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(webhookUrl);
+                  toast({
+                    title: "✅ Copiado",
+                    description: "URL do webhook copiado para a área de transferência",
+                  });
+                }}
+              >
+                Copiar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure este URL no Evolution API para receber mensagens
+            </p>
+          </div>
+
+          {/* Connect Button */}
+          <Button 
+            onClick={handleConnect} 
+            disabled={connecting}
+            className="w-full"
+            size="lg"
+          >
+            {connecting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                A conectar...
+              </>
+            ) : (
+              <>
+                <Smartphone className="w-4 h-4 mr-2" />
+                Criar / Conectar Instância
+              </>
+            )}
+          </Button>
+
+          {/* QR Code Section */}
+          {status?.status === 'waiting_qr' && (status.qr.qrBase64 || status.qr.qrImageUrl) && (
+            <div className="pt-6 border-t space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold">Ligar WhatsApp Business</h3>
+                <p className="text-sm text-muted-foreground">
+                  Digitaliza este código QR para conectar a tua conta
+                </p>
+              </div>
+
+              <div className="flex flex-col items-center gap-4">
+                <div className="p-4 bg-white rounded-lg border-2 border-border">
+                  {status.qr.qrBase64 ? (
+                    <img 
+                      src={`data:image/png;base64,${status.qr.qrBase64}`} 
+                      alt="QR Code" 
+                      className="w-64 h-64"
+                    />
+                  ) : status.qr.qrImageUrl ? (
+                    <img 
+                      src={status.qr.qrImageUrl} 
+                      alt="QR Code" 
+                      className="w-64 h-64"
+                    />
+                  ) : null}
+                </div>
+                
+                <Alert>
+                  <Smartphone className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
+                  </AlertDescription>
+                </Alert>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* QR Code Card */}
-      {status?.status === 'waiting_qr' && (status.qr.qrBase64 || status.qr.qrImageUrl) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Código QR</CardTitle>
-            <CardDescription>
-              Digitalize este código QR na app WhatsApp para conectar
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-4">
-            <div className="p-4 bg-white rounded-lg">
-              {status.qr.qrBase64 ? (
-                <img 
-                  src={`data:image/png;base64,${status.qr.qrBase64}`} 
-                  alt="QR Code" 
-                  className="w-64 h-64"
-                />
-              ) : status.qr.qrImageUrl ? (
-                <img 
-                  src={status.qr.qrImageUrl} 
-                  alt="QR Code" 
-                  className="w-64 h-64"
-                />
-              ) : null}
-            </div>
-            <p className="text-sm text-center text-muted-foreground max-w-md">
-              Abra o WhatsApp no seu telemóvel, vá a <strong>Definições → Dispositivos ligados</strong> e digitalize este código.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Test Message Card */}
+      {/* (C) Send Test Message Card */}
       <Card>
         <CardHeader>
           <CardTitle>Enviar Mensagem de Teste</CardTitle>
@@ -243,9 +364,12 @@ export default function WhatsAppConnection() {
           </Button>
 
           {status?.status !== 'connected' && (
-            <p className="text-sm text-muted-foreground text-center">
-              ⚠️ A conexão WhatsApp deve estar ativa para enviar mensagens
-            </p>
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                A conexão WhatsApp deve estar ativa para enviar mensagens
+              </AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
