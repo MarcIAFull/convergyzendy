@@ -33,6 +33,16 @@ interface SessionState {
   };
 }
 
+interface CustomerProfile {
+  preferred_items: Array<{ id: string; name: string; count: number }>;
+  preferred_addons: Array<{ id: string; name: string; count: number }>;
+  rejected_items: Array<{ id: string; name: string; count: number }>;
+  average_ticket: number | null;
+  order_count: number;
+  order_frequency_days: number | null;
+  notes: string | null;
+}
+
 interface ConversationState {
   cart: CartItem[];
   delivery_address?: string;
@@ -173,6 +183,39 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    // Load customer insights for personalization
+    const { data: customerInsights } = await supabase
+      .from('customer_insights')
+      .select('*')
+      .eq('phone', customerPhone)
+      .maybeSingle();
+
+    // Build customer profile from insights or use defaults
+    const customerProfile = customerInsights ? {
+      preferred_items: customerInsights.preferred_items || [],
+      preferred_addons: customerInsights.preferred_addons || [],
+      rejected_items: customerInsights.rejected_items || [],
+      average_ticket: customerInsights.average_ticket,
+      order_count: customerInsights.order_count,
+      order_frequency_days: customerInsights.order_frequency_days,
+      notes: customerInsights.notes,
+    } : {
+      preferred_items: [],
+      preferred_addons: [],
+      rejected_items: [],
+      average_ticket: null,
+      order_count: 0,
+      order_frequency_days: null,
+      notes: null,
+    };
+
+    console.log('[CustomerProfile] Loaded profile:', JSON.stringify({
+      phone: customerPhone,
+      order_count: customerProfile.order_count,
+      preferred_items_count: customerProfile.preferred_items.length,
+      has_notes: !!customerProfile.notes,
+    }));
+
     // Build current state
     const cartItems: CartItem[] = cart?.cart_items?.map((item: any) => ({
       product_id: item.product_id,
@@ -234,7 +277,7 @@ serve(async (req) => {
     console.log('Current State:', currentState);
     console.log('Cart Total:', cartTotal);
 
-    // Build system prompt with session state
+    // Build system prompt with session state and customer profile
     const basePrompt = getStatePrompt(
       currentState,
       restaurant.name,
@@ -251,12 +294,22 @@ serve(async (req) => {
 ${JSON.stringify(sessionState, null, 2)}
 \`\`\`
 
+**CUSTOMER PROFILE** (Use this to personalize recommendations - READ ONLY):
+\`\`\`json
+${JSON.stringify({ customer_profile: customerProfile }, null, 2)}
+\`\`\`
+
 IMPORTANT RULES:
 - Use the session_state to understand conversation context instead of relying on full message history
+- Use customer_profile to personalize recommendations based on order history and preferences
 - If last_order exists and is recent (status: "new" or "completed"), do NOT reuse old carts
 - Understand short references like "o mesmo", "cancela", "só limão" by checking last_user_message and last_agent_message
 - If has_open_cart is false and user wants to order, start fresh
 - If current_state is "order_completed" and user sends a new message, transition to "browsing_menu" for a new order
+- When a customer says "o de sempre" or "o mesmo", check preferred_items and suggest those
+- Avoid suggesting items in rejected_items
+- If the customer has high order_count, you can be more familiar and casual
+- NEVER try to modify customer_profile - it's READ ONLY and managed by the backend
 `;
 
     // Build conversation history for OpenAI (reduced to last 5 messages)
