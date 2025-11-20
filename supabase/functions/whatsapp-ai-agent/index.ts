@@ -414,7 +414,8 @@ serve(async (req) => {
       .maybeSingle();
 
     // Build customer profile from insights or use defaults
-    const customerProfile = customerInsights ? {
+    // CRITICAL: This is HISTORICAL data for suggestions only, NOT the current cart
+    const historicalPreferences = customerInsights ? {
       preferred_items: customerInsights.preferred_items || [],
       preferred_addons: customerInsights.preferred_addons || [],
       rejected_items: customerInsights.rejected_items || [],
@@ -432,15 +433,15 @@ serve(async (req) => {
       notes: null,
     };
 
-    console.log('[CustomerProfile] Loaded profile:', JSON.stringify({
+    console.log('[AI-Agent] Loaded customer insights (HISTORICAL ONLY):', JSON.stringify({
       phone: customerPhone,
-      order_count: customerProfile.order_count,
-      preferred_items_count: customerProfile.preferred_items.length,
-      has_notes: !!customerProfile.notes,
+      order_count: historicalPreferences.order_count,
+      preferred_items_count: historicalPreferences.preferred_items.length,
+      has_notes: !!historicalPreferences.notes,
     }));
 
-    // Build current state
-    const cartItems: CartItem[] = cart?.cart_items?.map((item: any) => ({
+    // CRITICAL: Build current cart items - ONLY from active cart, NEVER from history
+    const currentCartItems: CartItem[] = cart?.cart_items?.map((item: any) => ({
       product_id: item.product_id,
       product_name: item.products.name,
       quantity: item.quantity,
@@ -453,11 +454,23 @@ serve(async (req) => {
       })) || [],
     })) || [];
 
-    const cartTotal = cartItems.reduce((sum, item) => {
+    const cartTotal = currentCartItems.reduce((sum, item) => {
       const itemTotal = item.price * item.quantity;
       const addonsTotal = item.addons.reduce((aSum, addon) => aSum + addon.price, 0) * item.quantity;
       return sum + itemTotal + addonsTotal;
     }, 0);
+
+    // Log current cart state clearly
+    if (cart) {
+      console.log(`[AI-Agent] ✅ Active cart for ${customerPhone} = ${cart.id} with ${currentCartItems.length} items (total: €${cartTotal.toFixed(2)})`);
+      if (currentCartItems.length > 0) {
+        console.log('[AI-Agent] Current cart contents:', currentCartItems.map(i => `${i.quantity}x ${i.product_name}`).join(', '));
+      } else {
+        console.log('[AI-Agent] Cart exists but is EMPTY (no items added yet)');
+      }
+    } else {
+      console.log(`[AI-Agent] ❌ No active cart exists for ${customerPhone} - will start fresh when customer adds first item`);
+    }
 
     // Extract last messages for session state
     const lastUserMessage = messageHistory?.filter((m: any) => m.direction === 'inbound').slice(-1)[0]?.body || null;
@@ -465,12 +478,12 @@ serve(async (req) => {
 
     // Determine current state from context
     let currentState: OrderState = 'idle';
-    const hasOpenCart = cart !== null && cartItems.length > 0;
+    const hasOpenCart = cart !== null && currentCartItems.length > 0;
     
     if (messageHistory && messageHistory.length > 0) {
       if (hasOpenCart) {
         currentState = 'browsing_menu'; // Has cart and conversation
-        if (cartItems.length > 0) {
+        if (currentCartItems.length > 0) {
           currentState = 'confirming_item';
         }
       }
@@ -480,7 +493,7 @@ serve(async (req) => {
     const sessionState: SessionState = {
       current_state: currentState,
       has_open_cart: hasOpenCart,
-      cart_item_count: cartItems.length,
+      cart_item_count: currentCartItems.length,
       cart_total: cartTotal,
       last_user_message: lastUserMessage,
       last_agent_message: lastAgentMessage,
@@ -497,7 +510,7 @@ serve(async (req) => {
     console.log('[SessionState] Built session state:', JSON.stringify(sessionState, null, 2));
 
     const conversationState: ConversationState = {
-      cart: cartItems,
+      cart: currentCartItems,
       state: currentState,
     };
 
@@ -526,22 +539,44 @@ Help the customer place a complete order in a simple, fast and friendly way.
 ${JSON.stringify(categories, null, 2)}
 \`\`\`
 
-**CURRENT CART** (AUTHORITATIVE - Single source of truth for this conversation):
+**CURRENT ORDER** (GROUND TRUTH - These are the ONLY items in the customer's current cart):
 \`\`\`json
-${cart ? JSON.stringify({ items: cartItems, subtotal: cartTotal, delivery_fee: restaurant.delivery_fee, total: cartTotal + restaurant.delivery_fee }, null, 2) : JSON.stringify({ status: "NO ACTIVE CART", message: "Customer has no open cart. Cart must be created when they add first item." }, null, 2)}
+${cart && currentCartItems.length > 0 
+  ? JSON.stringify({ 
+      cart_id: cart.id,
+      items: currentCartItems, 
+      subtotal: cartTotal, 
+      delivery_fee: restaurant.delivery_fee, 
+      total: cartTotal + restaurant.delivery_fee 
+    }, null, 2)
+  : JSON.stringify({ 
+      status: "EMPTY", 
+      message: cart 
+        ? "Cart exists but has NO items yet. Customer hasn't added anything." 
+        : "NO active cart exists. Customer is starting completely fresh." 
+    }, null, 2)
+}
 \`\`\`
 
-${cart ? "IMPORTANT: This cart contains ONLY items with status='active'. Completed/cancelled/abandoned orders are NOT included here." : "IMPORTANT: There is NO active cart. Do NOT reference items from completed orders. If customer wants to order, they are starting fresh."}
+${currentCartItems.length > 0 
+  ? `✅ CURRENT ORDER HAS ${currentCartItems.length} ITEM(S). These are the ONLY items in the customer's cart right now.`
+  : `⚠️ CURRENT ORDER IS EMPTY. Do NOT mention any items as being "in the cart". Customer has NOT added anything yet.`
+}
 
 **SESSION STATE** (Current conversation context):
 \`\`\`json
 ${JSON.stringify(sessionState, null, 2)}
 \`\`\`
 
-**CUSTOMER PROFILE** (Purchase history for personalization - READ ONLY):
+**HISTORICAL PREFERENCES** (Past orders for suggestions ONLY - NOT in current cart):
 \`\`\`json
-${JSON.stringify(customerProfile, null, 2)}
+${JSON.stringify(historicalPreferences, null, 2)}
 \`\`\`
+
+⚠️ CRITICAL DISTINCTION:
+- CURRENT ORDER = items actually in the cart RIGHT NOW (can be empty)
+- HISTORICAL PREFERENCES = what customer ordered BEFORE (use for suggestions like "last time you had X, want it again?")
+- NEVER say items from HISTORICAL PREFERENCES are "in your cart" or "in your current order"
 
 **CORE RULES**
 
@@ -1366,9 +1401,16 @@ Use these tools to execute the customer's requests accurately.
         const updatedCart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
         
         if (updatedCart) {
-          console.log(`[Cart] Reloaded active cart ${updatedCart.id} with ${updatedCart.cart_items?.length || 0} items`);
+          const itemCount = updatedCart.cart_items?.length || 0;
+          console.log(`[Cart] ✅ Reloaded active cart ${updatedCart.id} with ${itemCount} items`);
+          if (itemCount > 0) {
+            const itemSummary = updatedCart.cart_items.map((i: any) => `${i.quantity}x ${i.products.name}`).join(', ');
+            console.log(`[Cart] Items in cart: ${itemSummary}`);
+          } else {
+            console.log('[Cart] ⚠️ Cart is EMPTY (no items yet)');
+          }
         } else {
-          console.log('[Cart] No active cart after tool execution - cart was completed/cancelled or does not exist');
+          console.log('[Cart] ❌ No active cart after tool execution - cart was completed/cancelled or does not exist');
         }
         
         // If cart is no longer active (completed/cancelled), use empty cart
@@ -1457,7 +1499,7 @@ Use these tools to execute the customer's requests accurately.
         JSON.stringify({
           response: responseText,
           state: newState,
-          cart: cartItems,
+          cart: currentCartItems,
           delivery_address: deliveryAddress,
           payment_method: paymentMethod,
         }),
