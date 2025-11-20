@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.83.0';
 import { buildOrchestratorPrompt } from './orchestrator-prompt.ts';
 import { buildConversationalAIPrompt } from './conversational-ai-prompt.ts';
+import { detectOfferedProduct } from './product-detection.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 
 const corsHeaders = {
@@ -476,19 +477,16 @@ serve(async (req) => {
       }
     }
     
-    // Detect if AI mentioned a product (for pending_product)
+    // Detect if AI offered a product (for pending_product tracking)
     if (toolCalls.length === 0 && finalResponse) {
-      const mentionedProduct = availableProducts.find(p => 
-        finalResponse.toLowerCase().includes(p.name.toLowerCase()) &&
-        (finalResponse.toLowerCase().includes('temos') || 
-         finalResponse.toLowerCase().includes('custa') ||
-         finalResponse.toLowerCase().includes('€'))
-      );
+      const offeredProduct = detectOfferedProduct(finalResponse, availableProducts);
       
-      if (mentionedProduct) {
-        console.log('[AI] Product offered:', mentionedProduct.name);
-        newMetadata.pending_product = mentionedProduct;
-        newMetadata.last_shown_product = mentionedProduct;
+      if (offeredProduct) {
+        console.log(`[Product Detection] Product offered: ${offeredProduct.name}`);
+        newMetadata.pending_product = offeredProduct;
+        newMetadata.last_shown_product = offeredProduct;
+      } else {
+        console.log('[Product Detection] No product offer detected in response');
       }
     }
 
