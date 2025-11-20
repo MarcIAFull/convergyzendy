@@ -85,8 +85,8 @@ serve(async (req) => {
       .order('timestamp', { ascending: false })
       .limit(10);
 
-    const conversationHistory = (messageHistory || []).reverse().map(msg => ({
-      role: msg.direction === 'incoming' ? 'user' : 'assistant',
+    const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = (messageHistory || []).reverse().map(msg => ({
+      role: (msg.direction === 'incoming' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: msg.body
     }));
 
@@ -342,7 +342,8 @@ serve(async (req) => {
       cartTotal,
       currentState,
       userIntent: intent,
-      targetState
+      targetState,
+      conversationHistory // ✅ pass full history here
     });
 
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -383,8 +384,56 @@ serve(async (req) => {
     }
     
     // ============================================================
-    // STEP 4: EXECUTE TOOL CALLS
+    // STEP 4: VALIDATE AND EXECUTE TOOL CALLS
     // ============================================================
+    
+    console.log('\n[Tool Validation] ========== VALIDATING TOOL CALLS ==========');
+    console.log('[Tool Validation] Raw tool calls:', JSON.stringify(toolCalls, null, 2));
+    
+    const validatedToolCalls: typeof toolCalls = [];
+    const userMessage = rawMessage.toLowerCase().trim();
+    
+    for (const toolCall of toolCalls) {
+      const fn = toolCall.function?.name;
+      const args = toolCall.function?.arguments
+        ? JSON.parse(toolCall.function.arguments)
+        : {};
+
+      if (fn === 'add_to_cart') {
+        const product = availableProducts.find((p) => p.id === args.product_id);
+        const productName = product?.name?.toLowerCase() || '';
+
+        // 1) explicit request for a product, by name, in the current user message
+        const mentionsProductByName =
+          !!productName && userMessage.includes(productName);
+
+        // 2) orchestrator intent clearly related to products
+        const isProductIntent =
+          intent === 'browse_product' ||
+          (intent === 'confirm_item' && !!pendingProduct);
+
+        const isExplicitRequest = mentionsProductByName || isProductIntent;
+
+        if (!isExplicitRequest) {
+          console.log(
+            '[Tool Validation] ❌ Skipping add_to_cart: no explicit product request or valid confirmation (we rely on orchestrator intent + product context, not static keywords).',
+          );
+          continue; // ❌ do not execute this add_to_cart
+        }
+
+        console.log(
+          '[Tool Validation] ✅ add_to_cart validated by orchestrator intent + product context.',
+        );
+        validatedToolCalls.push(toolCall);
+        continue;
+      }
+
+      // For all other tools (set_delivery_address, set_payment_method, finalize_order, etc.)
+      // keep current behavior, just passing them through:
+      validatedToolCalls.push(toolCall);
+    }
+    
+    console.log(`[Tool Validation] Validated tool calls: ${validatedToolCalls.length} of ${toolCalls.length}`);
     
     console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
     
@@ -392,7 +441,7 @@ serve(async (req) => {
     let newMetadata = { ...stateMetadata };
     let finalizeSuccess = false; // Track if finalize_order succeeded
     
-    for (const toolCall of toolCalls) {
+    for (const toolCall of validatedToolCalls) {
       const functionName = toolCall.function.name;
       const args = JSON.parse(toolCall.function.arguments);
       
@@ -535,16 +584,16 @@ serve(async (req) => {
     }
     
     console.log(`\n[Response] ========== RESPONSE CONSTRUCTION ==========`);
-    console.log(`[Response] Tool calls executed: ${toolCalls.length}`);
+    console.log(`[Response] Tool calls validated and executed: ${validatedToolCalls.length}`);
     console.log(`[Response] AI-generated message: "${finalResponse || '(empty)'}"`);
     
     // Fallback: If AI didn't provide a message after tool execution, construct one
-    if ((!finalResponse || finalResponse.trim() === '') && toolCalls.length > 0) {
+    if ((!finalResponse || finalResponse.trim() === '') && validatedToolCalls.length > 0) {
       console.log('[Response] ⚠️ AI returned empty response, constructing fallback...');
       
       const confirmations: string[] = [];
       
-      for (const toolCall of toolCalls) {
+      for (const toolCall of validatedToolCalls) {
         const functionName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
         
@@ -694,9 +743,26 @@ serve(async (req) => {
       // Continue anyway - AI processing succeeded
     }
 
+    // ============================================================
+    // METRICS LOGGING
+    // ============================================================
+    
+    const metrics = {
+      orchestrator_intent: intent,
+      target_state: targetState,
+      tools_called_raw: toolCalls.length,
+      tools_executed: validatedToolCalls.length,
+      ai_response_empty: !finalResponse || finalResponse.trim() === '',
+      processing_time_ms: Date.now() - startTime,
+      state_transition: `${currentState} → ${newState}`
+    };
+
+    console.log('[Metrics]', JSON.stringify(metrics));
+    
     console.log('\n[Summary] ========== PROCESSING COMPLETE ==========');
     console.log(`[Summary] Intent classified: ${intent} (confidence: ${confidence})`);
-    console.log(`[Summary] Tools executed: ${toolCalls.length}`);
+    console.log(`[Summary] Tools called (raw): ${toolCalls.length}`);
+    console.log(`[Summary] Tools executed (validated): ${validatedToolCalls.length}`);
     console.log(`[Summary] State transition: ${currentState} → ${newState}`);
     console.log(`[Summary] Pending product: ${newMetadata.pending_product ? 'Set' : 'None'}`);
     console.log(`[Summary] Processing time: ${Date.now() - startTime} ms`);
