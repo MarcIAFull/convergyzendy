@@ -72,6 +72,121 @@ function canTransition(from: OrderState, to: OrderState): boolean {
   return STATE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+// Helper function to get or create a single active cart for a customer
+async function getOrCreateActiveCart(supabase: any, restaurantId: string, customerPhone: string) {
+  console.log('[CartSession] Getting or creating active cart for:', customerPhone);
+  
+  // Fetch ALL active carts (not using maybeSingle to catch edge cases)
+  const { data: activeCarts, error: fetchError } = await supabase
+    .from('carts')
+    .select(`
+      id,
+      status,
+      updated_at,
+      created_at,
+      cart_items (
+        id,
+        product_id,
+        quantity,
+        notes,
+        products (
+          id,
+          name,
+          price
+        ),
+        cart_item_addons (
+          addon_id,
+          addons (
+            id,
+            name,
+            price
+          )
+        )
+      )
+    `)
+    .eq('restaurant_id', restaurantId)
+    .eq('user_phone', customerPhone)
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false });
+
+  if (fetchError) {
+    console.error('[CartSession] Error fetching active carts:', fetchError);
+    throw fetchError;
+  }
+
+  console.log(`[CartSession] Found ${activeCarts?.length || 0} active cart(s)`);
+
+  // Handle edge case: multiple active carts exist
+  if (activeCarts && activeCarts.length > 1) {
+    console.warn(`[CartSession] ⚠️ Multiple active carts detected (${activeCarts.length}), cleaning up...`);
+    
+    // Keep the most recent one, abandon the rest
+    const cartsToAbandon = activeCarts.slice(1).map((c: any) => c.id);
+    
+    const { error: abandonError } = await supabase
+      .from('carts')
+      .update({ status: 'abandoned' })
+      .in('id', cartsToAbandon);
+    
+    if (abandonError) {
+      console.error('[CartSession] Error abandoning old carts:', abandonError);
+    } else {
+      console.log(`[CartSession] ✅ Abandoned ${cartsToAbandon.length} old cart(s):`, cartsToAbandon);
+    }
+  }
+
+  // If we have at least one active cart, return the most recent one
+  if (activeCarts && activeCarts.length > 0) {
+    const activeCart = activeCarts[0];
+    console.log(`[CartSession] Returning active cart ${activeCart.id}, updated ${activeCart.updated_at}`);
+    return activeCart;
+  }
+
+  // No active cart found, create a new one
+  console.log('[CartSession] No active cart found, creating new one...');
+  const { data: newCart, error: createError } = await supabase
+    .from('carts')
+    .insert({
+      restaurant_id: restaurantId,
+      user_phone: customerPhone,
+      status: 'active',
+    })
+    .select(`
+      id,
+      status,
+      updated_at,
+      created_at,
+      cart_items (
+        id,
+        product_id,
+        quantity,
+        notes,
+        products (
+          id,
+          name,
+          price
+        ),
+        cart_item_addons (
+          addon_id,
+          addons (
+            id,
+            name,
+            price
+          )
+        )
+      )
+    `)
+    .single();
+
+  if (createError) {
+    console.error('[CartSession] Error creating new cart:', createError);
+    throw createError;
+  }
+
+  console.log(`[CartSession] ✅ Created new cart: ${newCart.id}`);
+  return newCart;
+}
+
 // Helper function to get the last completed order for a phone number
 async function getLastCompletedOrderForPhone(supabase: any, phone: string, restaurantId: string) {
   console.log(`[LastOrder] Fetching last completed order for phone: ${phone}`);
@@ -204,54 +319,8 @@ serve(async (req) => {
       .order('timestamp', { ascending: true })
       .limit(15);
 
-    // Load active cart (only within 45-minute session window)
-    let { data: cart } = await supabase
-      .from('carts')
-      .select(`
-        id,
-        status,
-        updated_at,
-        cart_items (
-          id,
-          product_id,
-          quantity,
-          notes,
-          products (
-            id,
-            name,
-            price
-          ),
-          cart_item_addons (
-            addon_id,
-            addons (
-              id,
-              name,
-              price
-            )
-          )
-        )
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('user_phone', customerPhone)
-      .eq('status', 'active')
-      .gte('updated_at', new Date(Date.now() - 45 * 60 * 1000).toISOString())
-      .maybeSingle();
-
-    console.log('[CartSession] Active cart query result:', cart ? `Found cart ${cart.id}, updated ${cart.updated_at}` : 'No active cart within 45-minute window');
-
-    if (!cart) {
-      const { data: newCart } = await supabase
-        .from('carts')
-        .insert({
-          restaurant_id: restaurantId,
-          user_phone: customerPhone,
-          status: 'active',
-        })
-        .select()
-        .single();
-      cart = newCart;
-      console.log('[CartSession] Created new cart:', cart!.id);
-    }
+    // Load active cart using the refactored helper
+    const cart = await getOrCreateActiveCart(supabase, restaurantId, customerPhone);
 
     // Load recent order for session state
     const { data: lastOrder } = await supabase
