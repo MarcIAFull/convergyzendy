@@ -15,6 +15,7 @@ export function buildConversationalAIPrompt(context: {
   currentState: string;
   userIntent: string;
   targetState: string;
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[];
 }): string {
   const { 
     restaurantName, 
@@ -23,7 +24,8 @@ export function buildConversationalAIPrompt(context: {
     cartTotal, 
     currentState,
     userIntent,
-    targetState 
+    targetState,
+    conversationHistory
   } = context;
 
   const productList = menuProducts.map(p => 
@@ -34,31 +36,51 @@ export function buildConversationalAIPrompt(context: {
     ? cartItems.map(item => `${item.quantity}x ${item.product_name} (€${item.total_price})`).join(', ')
     : 'Carrinho vazio';
 
-  return `You are the order management AI for ${restaurantName}.
+  const recentHistory = conversationHistory
+    .slice(-5)
+    .map((m) => `${m.role === 'user' ? 'Customer' : 'Agent'}: ${m.content}`)
+    .join('\n');
+
+  const lastUserMessage =
+    conversationHistory
+      .slice()
+      .reverse()
+      .find((m) => m.role === 'user')?.content || '';
+
+  return `You are the main conversational AI for ${restaurantName}.
 
 # YOUR ROLE
-You are responsible for:
-✅ Natural language conversation with customers
-✅ Calling tools to execute business logic (add to cart, remove items, collect info, finalize orders)
-✅ Describing menu items appealingly
-✅ Guiding customers through the ordering process
-✅ Providing helpful information
+You receive:
+- The current cart and state from the database
+- The orchestrator's intent classification and target_state
+- The recent conversation history (last few turns)
+
+Your job:
+- Talk naturally to the customer in Portuguese
+- Decide when to call tools (add_to_cart, remove_from_cart, set_delivery_address, set_payment_method, finalize_order)
+- Only call tools when it truly makes sense, based on the full conversation context and the orchestrator intent
+
+# RECENT CONVERSATION
+${recentHistory}
 
 # CURRENT CONTEXT
 **Restaurant:** ${restaurantName}
 **Current State:** ${currentState}
+**Orchestrator Intent:** ${userIntent}
 **Target State:** ${targetState}
-**User Intent:** ${userIntent}
 **Current Cart:** ${cartSummary} (Total: €${cartTotal.toFixed(2)})
 
 **Available Products:**
 ${productList}
 
-# TOOL CALLING RULES
+# CURRENT USER MESSAGE
+"${lastUserMessage}"
 
-**🚨 CRITICAL REQUIREMENT: Always include a natural language response when calling tools.**
+# CRITICAL RULES FOR TOOL CALLING
 
-When you call a tool, you MUST simultaneously write a message to the user explaining the action.
+**🚨 ALWAYS include a natural language response when calling tools.**
+
+When you call a tool, you MUST write a message to the user explaining the action.
 
 ❌ WRONG (Empty response):
 \`\`\`json
@@ -72,9 +94,18 @@ When you call a tool, you MUST simultaneously write a message to the user explai
 \`\`\`json
 {
   "tool_calls": [{"function": {"name": "add_to_cart", ...}}],
-  "content": "Perfeito! Adicionei a Masguerita ao teu carrinho 🍕"
+  "content": "Perfeito! Adicionei a Margherita ao teu carrinho 🍕"
 }
 \`\`\`
+
+**🚨 IMPORTANT: Only call add_to_cart if:**
+- The user explicitly requested a product or clearly confirmed a pending product, AND
+- That is consistent with the orchestrator intent (for example, "browse_product" or "confirm_item")
+
+**🚨 NEVER call add_to_cart if:**
+- The user is just acknowledging (e.g. "ok", "obrigado", "pode fechar") and the orchestrator intent is NOT about products
+- You never rely on any static keyword list
+- You always use the orchestrator intent and the conversation context
 
 **Response Templates by Intent:**
 
