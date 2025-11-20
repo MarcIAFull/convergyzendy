@@ -49,7 +49,10 @@ function getConfig(): EvolutionConfig {
     throw new Error(`Evolution API not configured. Missing: ${missing.join(', ')}`);
   }
 
-  return { apiUrl, apiKey, instanceName };
+  // Remove trailing slash from apiUrl to avoid double slashes
+  const cleanApiUrl = apiUrl.replace(/\/+$/, '');
+
+  return { apiUrl: cleanApiUrl, apiKey, instanceName };
 }
 
 /**
@@ -125,6 +128,45 @@ export async function getInstanceQrCode(): Promise<{ code: string; base64: strin
     return data.qrcode;
   } catch (error) {
     console.error('[EvolutionClient] Error getting QR code:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create or connect to an Evolution instance
+ * @returns Instance information
+ */
+export async function createOrConnectInstance(): Promise<any> {
+  const config = getConfig();
+  const url = `${config.apiUrl}/instance/create`;
+  
+  console.log(`[EvolutionClient] Creating/connecting instance ${config.instanceName} at ${url}`);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.apiKey,
+      },
+      body: JSON.stringify({
+        instanceName: config.instanceName,
+        qrcode: true,
+        integration: 'WHATSAPP-BAILEYS',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[EvolutionClient] Failed to create/connect instance: ${response.status} - ${errorText}`);
+      throw new Error(`Failed to create/connect instance: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('[EvolutionClient] Instance created/connected successfully');
+    return data;
+  } catch (error) {
+    console.error('[EvolutionClient] Error creating/connecting instance:', error);
     throw error;
   }
 }

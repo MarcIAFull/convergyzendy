@@ -32,7 +32,22 @@ serve(async (req) => {
     try {
       instanceStatus = await getInstanceStatus();
     } catch (error) {
-      console.error('[EvolutionStatus] Failed to get instance status:', error);
+      console.error('[EvolutionStatusAPI] Failed to get instance status:', error);
+      
+      // Determine error message
+      let errorMessage = 'Erro ao verificar estado da instância';
+      if (error instanceof Error) {
+        if (error.message.includes('not configured')) {
+          errorMessage = 'Evolution API URL não configurado';
+        } else if (error.message.includes('ECONNREFUSED')) {
+          errorMessage = 'Falha ao conectar à Evolution API (ECONNREFUSED)';
+        } else if (error.message.includes('404')) {
+          errorMessage = 'Instância não encontrada';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       return new Response(
         JSON.stringify({
           status: 'unknown',
@@ -41,7 +56,7 @@ serve(async (req) => {
             qrBase64: null,
           },
           lastCheckedAt,
-          error: 'Failed to check instance status',
+          error: errorMessage,
         } as StatusResponse),
         {
           status: 200, // Return 200 even on error so frontend can handle gracefully
@@ -96,7 +111,21 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('[EvolutionStatus] Unexpected error:', error);
+    console.error('[EvolutionStatusAPI] Unexpected error:', error);
+    
+    // Determine error message
+    let errorMessage = 'Erro inesperado ao verificar estado';
+    if (error instanceof Error) {
+      if (error.message.includes('not configured')) {
+        errorMessage = 'Evolution API URL não configurado';
+      } else if (error.message.includes('ECONNREFUSED')) {
+        errorMessage = 'Falha ao conectar à Evolution API (ECONNREFUSED)';
+      } else if (error.message.includes('404')) {
+        errorMessage = 'Instância não encontrada';
+      } else {
+        errorMessage = error.message;
+      }
+    }
     
     const errorResponse: StatusResponse = {
       status: 'unknown',
@@ -105,7 +134,7 @@ serve(async (req) => {
         qrBase64: null,
       },
       lastCheckedAt,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: errorMessage,
     };
 
     return new Response(
