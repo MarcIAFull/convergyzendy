@@ -408,6 +408,18 @@ serve(async (req) => {
         const product = availableProducts.find((p) => p.id === args.product_id);
         const productName = product?.name?.toLowerCase() || '';
 
+        // CRITICAL VALIDATION: If intent is "confirm_item" with pending product, 
+        // the product_id MUST match the pending product
+        if (intent === 'confirm_item' && pendingProduct) {
+          if (args.product_id !== pendingProduct.id) {
+            console.log(
+              `[Tool Validation] ❌ Skipping add_to_cart: User is confirming "${pendingProduct.name}" but AI tried to add "${product?.name || 'unknown'}" (product_id mismatch)`
+            );
+            console.log(`[Tool Validation] Expected product_id: ${pendingProduct.id}, Got: ${args.product_id}`);
+            continue; // ❌ Reject this tool call
+          }
+        }
+
         // 1) explicit request for a product, by name, in the current user message
         const mentionsProductByName =
           !!productName && userMessage.includes(productName);
@@ -449,7 +461,7 @@ serve(async (req) => {
         }
 
         console.log(
-          '[Tool Validation] ✅ add_to_cart validated by orchestrator intent + product context.',
+          `[Tool Validation] ✅ add_to_cart validated: ${product?.name} (${args.product_id})`,
         );
         validatedToolCalls.push(toolCall);
         continue;
