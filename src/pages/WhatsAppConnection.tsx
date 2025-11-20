@@ -21,6 +21,7 @@ interface StatusResponse {
   lastCheckedAt: string;
   message?: string;
   error?: string;
+  raw?: any;
 }
 
 export default function WhatsAppConnection() {
@@ -276,41 +277,39 @@ export default function WhatsAppConnection() {
           </Button>
 
           {/* QR Code Section */}
-          {status?.status === 'waiting_qr' && (status.qr.qrBase64 || status.qr.qrImageUrl) && (
-            <div className="pt-6 border-t space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">Ligar WhatsApp Business</h3>
-                <p className="text-sm text-muted-foreground">
-                  Digitaliza este código QR para conectar a tua conta
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center gap-4">
-                <div className="p-4 bg-white rounded-lg border-2 border-border">
-                  {status.qr.qrBase64 ? (
-                    <img 
-                      src={`data:image/png;base64,${status.qr.qrBase64}`} 
-                      alt="QR Code" 
-                      className="w-64 h-64"
-                    />
-                  ) : status.qr.qrImageUrl ? (
-                    <img 
-                      src={status.qr.qrImageUrl} 
-                      alt="QR Code" 
-                      className="w-64 h-64"
-                    />
-                  ) : null}
+          {status?.status === 'waiting_qr' && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
+            const qrSrc = status.qr.qrImageUrl ?? (status.qr.qrBase64 ? `data:image/png;base64,${status.qr.qrBase64}` : null);
+            
+            if (!qrSrc) return null;
+            
+            return (
+              <div className="pt-6 border-t space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Ligar WhatsApp Business</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Digitaliza este código QR para conectar a tua conta
+                  </p>
                 </div>
-                
-                <Alert>
-                  <Smartphone className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
-                  </AlertDescription>
-                </Alert>
+
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-white rounded-lg border-2 border-border">
+                    <img 
+                      src={qrSrc} 
+                      alt="QR Code" 
+                      className="w-64 h-64"
+                    />
+                  </div>
+                  
+                  <Alert>
+                    <Smartphone className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
+                    </AlertDescription>
+                  </Alert>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 
