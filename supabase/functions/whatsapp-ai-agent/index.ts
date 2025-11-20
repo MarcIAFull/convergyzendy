@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { getStatePrompt, type OrderState } from "./state-prompts.ts";
-import { updateCustomerInsightsAfterOrder } from "../_shared/customerInsights.ts";
+import { updateCustomerInsightsAfterOrder, getCustomerInsights } from "../_shared/customerInsights.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -424,7 +424,13 @@ ${JSON.stringify(customerProfile, null, 2)}
    - If the user says "me manda o de sempre", interpret it using the customer_profile (preferred items), but confirm explicitly before finalizing.
    - Always re-check the current cart data before confirming or changing an order.
 
-4. **Use customer_profile to sell better (without being annoying)**
+4. **Use customer_profile and insights to sell better (without being annoying)**
+   - The customer_profile is loaded at the start of each conversation and shows historical preferences
+   - For greetings like "o de sempre", "faz igual da outra vez", or "o que costumo pedir?":
+     • If customer_profile.order_count >= 2, you can call get_customer_insights to get fresh data
+     • Suggest their most common order: "O teu pedido mais comum é [items]. Queres pedir isso hoje?"
+     • Optionally suggest preferred addons as upsell
+     • ALWAYS confirm with the user before adding anything to cart - NEVER auto-submit based only on habits
    - When customer_profile.preferred_items is not empty, you can say things like:
      "Da última vez pediste água e pizza Margherita. Queres repetir o mesmo pedido ou experimentar algo diferente?"
    - When there are preferred_addons, suggest them naturally:
@@ -469,6 +475,7 @@ You have access to tools for:
 - remove_from_cart: Remove items from cart
 - update_cart_item: Update quantities
 - cancel_order: Cancel the current order and cart (use when customer says "cancela tudo", "desiste", etc.)
+- get_customer_insights: Retrieve fresh customer insights (order history, preferences) - use for "o de sempre" requests
 - get_last_completed_order: Retrieve the customer's last completed order (use when they ask about past orders)
 - set_delivery_address: Set delivery address
 - set_payment_method: Set payment method (cash, card, mbway, multibanco)
@@ -578,6 +585,18 @@ Use these tools to execute the customer's requests accurately.
         function: {
           name: 'cancel_order',
           description: 'Cancel the current order and cart',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_customer_insights',
+          description: 'Retrieve fresh customer insights including order history and preferences',
           parameters: {
             type: 'object',
             properties: {},
@@ -1001,6 +1020,43 @@ Use these tools to execute the customer's requests accurately.
                   name: functionName,
                   content: JSON.stringify({ success: false, error: 'No active cart to cancel' }),
                 });
+              }
+              break;
+            }
+
+            case 'get_customer_insights': {
+              const insights = await getCustomerInsights(supabase, customerPhone);
+              
+              if (insights && insights.order_count >= 1) {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({
+                    success: true,
+                    insights: {
+                      order_count: insights.order_count,
+                      average_ticket: insights.average_ticket,
+                      order_frequency_days: insights.order_frequency_days,
+                      preferred_items: insights.preferred_items,
+                      preferred_addons: insights.preferred_addons,
+                      rejected_items: insights.rejected_items,
+                      last_interaction_at: insights.last_interaction_at,
+                    }
+                  }),
+                });
+                console.log(`[CustomerInsights] ✅ Retrieved insights for ${customerPhone}: ${insights.order_count} orders`);
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({
+                    success: false,
+                    message: 'No order history found for this customer. This is their first interaction.'
+                  }),
+                });
+                console.log(`[CustomerInsights] No order history found for ${customerPhone}`);
               }
               break;
             }
