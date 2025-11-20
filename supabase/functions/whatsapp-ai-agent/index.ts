@@ -17,13 +17,18 @@ serve(async (req) => {
   }
 
   try {
+    const startTime = Date.now();
+    
     const { messageBody: rawMessage, customerPhone, restaurantId } = await req.json();
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[WhatsApp AI] Processing message from ${customerPhone}`);
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[WhatsApp AI] ========== NEW MESSAGE RECEIVED ==========`);
+    console.log(`[WhatsApp AI] From: ${customerPhone}`);
+    console.log(`[WhatsApp AI] Restaurant ID: ${restaurantId}`);
     console.log(`[WhatsApp AI] Message: "${rawMessage}"`);
-    console.log(`${'='.repeat(60)}\n`);
+    console.log(`[WhatsApp AI] Timestamp: ${new Date().toISOString()}`);
+    console.log(`${'='.repeat(80)}\n`);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -138,14 +143,44 @@ serve(async (req) => {
 
     const currentState = conversationState?.state || 'idle';
     const stateMetadata = conversationState?.metadata || {};
+    const pendingProduct = stateMetadata.pending_product || null;
+    const lastShownProduct = stateMetadata.last_shown_product || null;
 
+    // ============================================================
+    // CONTEXT VALIDATION & LOGGING
+    // ============================================================
+    
+    console.log('\n[Context] ========== CONTEXT VALIDATION ==========');
+    console.log(`[Context] User message: "${rawMessage}"`);
+    console.log(`[Context] History length: ${conversationHistory.length} messages`);
     console.log(`[Context] Current state: ${currentState}`);
+    console.log(`[Context] Pending product: ${pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'}`);
+    console.log(`[Context] Last shown product: ${lastShownProduct ? `${lastShownProduct.name} (ID: ${lastShownProduct.id})` : 'None'}`);
+    console.log(`[Context] Cart items: ${cartItems.length} items, Total: €${cartTotal.toFixed(2)}`);
+    console.log(`[Context] Available products: ${availableProducts.length}`);
+    
+    if (conversationHistory.length > 0) {
+      const recentHistory = conversationHistory.slice(-3);
+      console.log(`[Context] Recent conversation (last 3):`);
+      recentHistory.forEach((msg, idx) => {
+        const role = msg.role === 'user' ? 'Customer' : 'Agent';
+        const preview = msg.content.substring(0, 60);
+        console.log(`[Context]   ${idx + 1}. ${role}: "${preview}${msg.content.length > 60 ? '...' : ''}"`);
+      });
+    }
+    
+    console.log('[Context] ===========================================\n');
 
     // ============================================================
     // STEP 2: CALL ORDER ORCHESTRATOR
     // ============================================================
     
-    console.log('\n[Orchestrator] ========== CALLING ORCHESTRATOR ==========');
+    console.log('[Orchestrator] ========== CALLING ORCHESTRATOR ==========');
+    console.log('[Orchestrator] Context being passed:');
+    console.log(`[Orchestrator]   - History: ${conversationHistory.length} messages (FULL)`);
+    console.log(`[Orchestrator]   - State: ${currentState}`);
+    console.log(`[Orchestrator]   - Pending: ${pendingProduct?.name || 'None'}`);
+    console.log(`[Orchestrator]   - Cart: ${cartItems.length} items`);
     
     const orchestratorPrompt = buildOrchestratorPrompt({
       userMessage: rawMessage,
@@ -153,8 +188,8 @@ serve(async (req) => {
       cartItems,
       cartTotal,
       menuProducts: availableProducts,
-      pendingProduct: stateMetadata.pending_product || null,
-      lastShownProduct: stateMetadata.last_shown_product || null,
+      pendingProduct: pendingProduct,
+      lastShownProduct: lastShownProduct,
       restaurantName: restaurant.name,
       conversationHistory
     });
@@ -198,6 +233,14 @@ serve(async (req) => {
     console.log('\n[Main AI] ========== CALLING MAIN AI WITH TOOLS ==========');
     
     const { intent, target_state: targetState, confidence } = decision;
+    
+    console.log('[Main AI] Context being passed:');
+    console.log(`[Main AI]   - History: ${conversationHistory.length} messages (FULL - SAME AS ORCHESTRATOR)`);
+    console.log(`[Main AI]   - State: ${currentState}`);
+    console.log(`[Main AI]   - Target State: ${targetState}`);
+    console.log(`[Main AI]   - Intent: ${intent}`);
+    console.log(`[Main AI]   - Pending: ${pendingProduct?.name || 'None'}`);
+    console.log(`[Main AI]   - Cart: ${cartItems.length} items`);
     
     // Define tool schemas
     const tools = [
@@ -329,12 +372,21 @@ serve(async (req) => {
     let finalResponse = aiMessage.content || '';
     const toolCalls = aiMessage.tool_calls || [];
     
-    console.log(`[Main AI] Response: ${finalResponse.substring(0, 100)}...`);
-    console.log(`[Main AI] Tool calls: ${toolCalls.length}`);
+    console.log(`[Main AI] Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
+    console.log(`[Main AI] Tool calls received: ${toolCalls.length}`);
+    
+    if (toolCalls.length > 0) {
+      console.log('[Main AI] Tools to execute:');
+      toolCalls.forEach((tc: any, idx: number) => {
+        console.log(`[Main AI]   ${idx + 1}. ${tc.function.name}(${tc.function.arguments})`);
+      });
+    }
     
     // ============================================================
     // STEP 4: EXECUTE TOOL CALLS
     // ============================================================
+    
+    console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
     
     let newState = targetState;
     let newMetadata = { ...stateMetadata };
@@ -343,7 +395,9 @@ serve(async (req) => {
       const functionName = toolCall.function.name;
       const args = JSON.parse(toolCall.function.arguments);
       
-      console.log(`\n[Tool] Executing: ${functionName}`, args);
+      console.log(`[Tool] ──────────────────────────────────────────────`);
+      console.log(`[Tool] Executing: ${functionName}`);
+      console.log(`[Tool] Arguments:`, JSON.stringify(args, null, 2));
       
       switch (functionName) {
         case 'add_to_cart': {
@@ -494,6 +548,13 @@ serve(async (req) => {
     // STEP 5: UPDATE STATE & SEND RESPONSE
     // ============================================================
     
+    console.log('\n[State Update] ========== UPDATING STATE ==========');
+    console.log(`[State Update] State transition: ${currentState} → ${newState}`);
+    console.log(`[State Update] Pending product: ${newMetadata.pending_product?.name || 'None'}`);
+    console.log(`[State Update] Last shown product: ${newMetadata.last_shown_product?.name || 'None'}`);
+    console.log(`[State Update] Delivery address: ${newMetadata.delivery_address || 'Not set'}`);
+    console.log(`[State Update] Payment method: ${newMetadata.payment_method || 'Not set'}`);
+    
     // Update conversation state
     await supabase
       .from('conversation_state')
@@ -505,7 +566,7 @@ serve(async (req) => {
       })
       .eq('id', conversationState!.id);
 
-    console.log(`[State] Updated: ${currentState} → ${newState}`);
+    console.log(`[State Update] ✅ State updated successfully`);
 
     // Save message to database
     await supabase
@@ -527,16 +588,26 @@ serve(async (req) => {
         }
       ]);
 
+    console.log('\n[Response] ========== SENDING RESPONSE ==========');
+    console.log(`[Response] Final message: "${finalResponse.substring(0, 150)}${finalResponse.length > 150 ? '...' : ''}"`);
+    console.log(`[Response] Message length: ${finalResponse.length} characters`);
+    
     // Send WhatsApp response (non-blocking for test environments)
     try {
       await sendWhatsAppMessage(customerPhone, finalResponse);
-      console.log(`[WhatsApp AI] ✅ WhatsApp message sent\n`);
+      console.log(`[Response] ✅ WhatsApp message sent successfully`);
     } catch (whatsappError: any) {
-      console.warn(`[WhatsApp AI] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);
+      console.warn(`[Response] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);
       // Continue anyway - AI processing succeeded
     }
 
-    console.log(`[WhatsApp AI] ✅ Processing complete\n`);
+    console.log('\n[Summary] ========== PROCESSING COMPLETE ==========');
+    console.log(`[Summary] Intent classified: ${intent} (confidence: ${confidence})`);
+    console.log(`[Summary] Tools executed: ${toolCalls.length}`);
+    console.log(`[Summary] State transition: ${currentState} → ${newState}`);
+    console.log(`[Summary] Pending product: ${newMetadata.pending_product ? 'Set' : 'None'}`);
+    console.log(`[Summary] Processing time: ${Date.now() - startTime} ms`);
+    console.log('[Summary] ===============================================\n');
 
     return new Response(
       JSON.stringify({ 
