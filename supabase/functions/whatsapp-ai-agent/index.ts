@@ -129,12 +129,13 @@ serve(async (req) => {
       .order('timestamp', { ascending: true })
       .limit(15);
 
-    // Load or create active cart
+    // Load active cart (only within 45-minute session window)
     let { data: cart } = await supabase
       .from('carts')
       .select(`
         id,
         status,
+        updated_at,
         cart_items (
           id,
           product_id,
@@ -158,7 +159,10 @@ serve(async (req) => {
       .eq('restaurant_id', restaurantId)
       .eq('user_phone', customerPhone)
       .eq('status', 'active')
+      .gte('updated_at', new Date(Date.now() - 45 * 60 * 1000).toISOString())
       .maybeSingle();
+
+    console.log('[CartSession] Active cart query result:', cart ? `Found cart ${cart.id}, updated ${cart.updated_at}` : 'No active cart within 45-minute window');
 
     if (!cart) {
       const { data: newCart } = await supabase
@@ -171,6 +175,7 @@ serve(async (req) => {
         .select()
         .single();
       cart = newCart;
+      console.log('[CartSession] Created new cart:', cart!.id);
     }
 
     // Load recent order for session state
@@ -242,17 +247,21 @@ serve(async (req) => {
 
     // Determine current state from context
     let currentState: OrderState = 'idle';
+    const hasOpenCart = cart && cartItems.length > 0;
+    
     if (messageHistory && messageHistory.length > 0) {
-      currentState = 'browsing_menu'; // Default to browsing if conversation exists
-      if (cartItems.length > 0) {
-        currentState = 'confirming_item';
+      if (hasOpenCart) {
+        currentState = 'browsing_menu'; // Has cart and conversation
+        if (cartItems.length > 0) {
+          currentState = 'confirming_item';
+        }
       }
     }
 
     // Build structured session state
-    const sessionState = {
+    const sessionState: SessionState = {
       current_state: currentState,
-      has_open_cart: cartItems.length > 0,
+      has_open_cart: hasOpenCart,
       cart_item_count: cartItems.length,
       cart_total: cartTotal,
       last_user_message: lastUserMessage,
@@ -365,12 +374,18 @@ ${JSON.stringify(customerProfile, null, 2)}
    - Always answer in European Portuguese, even if the customer mixes other languages.
    - If the user writes something totally off-topic, answer politely and try to bring the conversation back to the ordering flow.
 
+**HANDLING "WHAT IS MY CURRENT ORDER?"**
+- If the user asks about their current order ("qual é o meu pedido?", "o que tenho no carrinho?"):
+  - Check session_state.has_open_cart
+  - If true: Show the current cart items and total
+  - If false: Reply in European Portuguese that there is no open order at the moment and offer to start a new one
+
 **AVAILABLE TOOLS**
 You have access to tools for:
 - add_to_cart: Add products with quantities and addons
 - remove_from_cart: Remove items from cart
 - update_cart_item: Update quantities
-- clear_cart: Clear entire cart
+- cancel_order: Cancel the current order and cart (use when customer says "cancela tudo", "desiste", etc.)
 - set_delivery_address: Set delivery address
 - set_payment_method: Set payment method (cash, card, mbway, multibanco)
 - finalize_order: Create the final order (only after clear confirmation)
@@ -471,6 +486,18 @@ Use these tools to execute the customer's requests accurately.
               },
             },
             required: ['method'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'cancel_order',
+          description: 'Cancel the current order and cart',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
           },
         },
       },
@@ -768,7 +795,7 @@ Use these tools to execute the customer's requests accurately.
                   return sum + itemTotal + addonsTotal;
                 }, 0) + restaurant.delivery_fee;
 
-                // Create order
+                // Create order with status 'completed'
                 const { data: newOrder, error: orderError } = await supabase
                   .from('orders')
                   .insert({
@@ -778,7 +805,7 @@ Use these tools to execute the customer's requests accurately.
                     delivery_address: deliveryAddress,
                     payment_method: paymentMethod,
                     total_amount: finalTotal,
-                    status: 'new',
+                    status: 'completed',
                   })
                   .select()
                   .single();
@@ -788,13 +815,15 @@ Use these tools to execute the customer's requests accurately.
                   throw orderError;
                 }
 
-                console.log(`[OrderCreation] ✅ Order created: ${newOrder.id}`);
+                console.log(`[OrderCreation] ✅ Order created: ${newOrder.id} with status: completed`);
 
                 // Mark cart as completed
                 await supabase
                   .from('carts')
                   .update({ status: 'completed' })
                   .eq('id', cart!.id);
+
+                console.log(`[CartSession] ✅ Cart ${cart!.id} marked as completed`);
 
                 // Update customer insights (best-effort, non-blocking)
                 try {
@@ -824,7 +853,7 @@ Use these tools to execute the customer's requests accurately.
                   tool_call_id: toolCall.id,
                   role: 'tool',
                   name: functionName,
-                  content: JSON.stringify({ success: true, total: finalTotal }),
+                  content: JSON.stringify({ success: true, total: finalTotal, order_id: newOrder.id }),
                 });
               } else {
                 toolResults.push({
@@ -832,6 +861,49 @@ Use these tools to execute the customer's requests accurately.
                   role: 'tool',
                   name: functionName,
                   content: JSON.stringify({ success: false, error: 'Missing address or payment method' }),
+                });
+              }
+              break;
+            }
+
+            case 'cancel_order': {
+              if (cart && cart.id) {
+                // Mark cart as cancelled
+                await supabase
+                  .from('carts')
+                  .update({ status: 'cancelled' })
+                  .eq('id', cart.id);
+
+                console.log(`[CartSession] ✅ Cart ${cart.id} cancelled`);
+
+                // If there's an associated order, mark it as cancelled too
+                const { data: existingOrder } = await supabase
+                  .from('orders')
+                  .select('id')
+                  .eq('cart_id', cart.id)
+                  .maybeSingle();
+
+                if (existingOrder) {
+                  await supabase
+                    .from('orders')
+                    .update({ status: 'cancelled' })
+                    .eq('id', existingOrder.id);
+                  console.log(`[OrderCancellation] ✅ Order ${existingOrder.id} cancelled`);
+                }
+
+                newState = 'idle';
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: true, message: 'Order cancelled' }),
+                });
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'No active cart to cancel' }),
                 });
               }
               break;
