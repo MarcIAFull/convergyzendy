@@ -12,8 +12,10 @@ interface EvolutionConfig {
 interface InstanceStatus {
   instance: {
     instanceName: string;
-    status: string;
+    status?: string;
+    state?: string;
   };
+  state?: string;
   qrcode?: {
     code: string;
     base64: string;
@@ -79,6 +81,8 @@ export async function getInstanceStatus(): Promise<InstanceStatus> {
       },
     });
 
+    console.log(`[EvolutionClient][RAW_STATUS] HTTP ${response.status} from ${url}`);
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[EvolutionClient] Failed to get instance status: ${response.status} - ${errorText}`);
@@ -86,7 +90,8 @@ export async function getInstanceStatus(): Promise<InstanceStatus> {
     }
 
     const data = await response.json();
-    console.log('[EvolutionClient] Instance status retrieved successfully:', data.instance?.status);
+    console.log('[EvolutionClient][RAW_STATUS] Full response:', JSON.stringify(data, null, 2));
+    console.log('[EvolutionClient] Instance status retrieved successfully:', data.instance?.state || data.instance?.status || data.state);
     return data;
   } catch (error) {
     console.error('[EvolutionClient] Error getting instance status:', error);
@@ -111,6 +116,8 @@ export async function getInstanceQrCode(): Promise<{ code: string; base64: strin
       },
     });
 
+    console.log(`[EvolutionClient][RAW_STATUS] HTTP ${response.status} from ${url}`);
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[EvolutionClient] Failed to get QR code: ${response.status} - ${errorText}`);
@@ -118,14 +125,16 @@ export async function getInstanceQrCode(): Promise<{ code: string; base64: strin
     }
 
     const data = await response.json();
+    console.log('[EvolutionClient][RAW_STATUS] QR response:', JSON.stringify(data, null, 2));
     
-    if (!data.qrcode) {
+    if (!data.qrcode && !data.code && !data.base64) {
       console.error('[EvolutionClient] No QR code in response. Instance might already be connected.');
       throw new Error('No QR code available. Instance might already be connected.');
     }
 
     console.log('[EvolutionClient] QR code retrieved successfully');
-    return data.qrcode;
+    // Support multiple response formats
+    return data.qrcode || { code: data.code, base64: data.base64 };
   } catch (error) {
     console.error('[EvolutionClient] Error getting QR code:', error);
     throw error;

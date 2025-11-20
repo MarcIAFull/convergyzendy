@@ -15,6 +15,7 @@ interface StatusResponse {
   lastCheckedAt: string;
   message?: string;
   error?: string;
+  raw?: any;
 }
 
 serve(async (req) => {
@@ -42,9 +43,16 @@ serve(async (req) => {
     const statusData = await getInstanceStatus();
     console.log('[EvolutionConnectAPI] Instance status:', statusData.instance?.status);
 
-    // Map status
+    // Map status - support multiple field names
     let status: 'connected' | 'waiting_qr' | 'disconnected' | 'unknown' = 'unknown';
-    const rawStatus = statusData.instance?.status?.toLowerCase() || '';
+    const rawStatus = (
+      statusData.instance?.state || 
+      statusData.instance?.status || 
+      statusData.state ||
+      ''
+    ).toLowerCase();
+
+    console.log('[EvolutionConnectAPI] Raw status field:', rawStatus);
 
     if (rawStatus.includes('open') || rawStatus.includes('connected')) {
       status = 'connected';
@@ -62,6 +70,7 @@ serve(async (req) => {
       },
       lastCheckedAt: new Date().toISOString(),
       message: 'Instância criada/conectada com sucesso',
+      raw: statusData,
     };
 
     // If waiting for QR, try to get it
@@ -112,6 +121,7 @@ serve(async (req) => {
       },
       lastCheckedAt: new Date().toISOString(),
       error: errorMessage,
+      raw: null,
     };
 
     return new Response(

@@ -14,6 +14,7 @@ interface StatusResponse {
   };
   lastCheckedAt: string;
   error?: string;
+  raw?: any;
 }
 
 serve(async (req) => {
@@ -66,18 +67,26 @@ serve(async (req) => {
     }
 
     // Determine connection status from Evolution API response
-    const rawStatus = instanceStatus.instance?.status?.toLowerCase() || 'unknown';
+    // Support multiple field names: instance.state, instance.status, state
+    const rawStatus = (
+      instanceStatus.instance?.state || 
+      instanceStatus.instance?.status || 
+      instanceStatus.state ||
+      'unknown'
+    ).toLowerCase();
+    
     let status: StatusResponse['status'] = 'unknown';
     
+    // Map Evolution statuses to our statuses
     if (rawStatus === 'open' || rawStatus === 'connected') {
       status = 'connected';
     } else if (rawStatus === 'close' || rawStatus === 'closed' || rawStatus === 'disconnected') {
       status = 'disconnected';
-    } else if (rawStatus === 'connecting' || rawStatus === 'qr') {
+    } else if (rawStatus === 'connecting' || rawStatus === 'qr' || rawStatus === 'qrreadcode') {
       status = 'waiting_qr';
     }
 
-    console.log(`[EvolutionStatus] Instance status: ${rawStatus} -> mapped to: ${status}`);
+    console.log(`[EvolutionStatus] Raw status field: ${rawStatus} -> mapped to: ${status}`);
 
     // Try to get QR code if not connected
     let qrData = null;
@@ -98,9 +107,10 @@ serve(async (req) => {
         qrBase64: qrData?.base64 || null,
       },
       lastCheckedAt,
+      raw: instanceStatus, // Include raw response for debugging
     };
 
-    console.log('[EvolutionStatus] Returning response:', { status: response.status, hasQr: !!qrData });
+    console.log('[EvolutionStatus] Returning response:', { status: response.status, hasQr: !!qrData, rawStatus });
 
     return new Response(
       JSON.stringify(response),
@@ -135,6 +145,7 @@ serve(async (req) => {
       },
       lastCheckedAt,
       error: errorMessage,
+      raw: null,
     };
 
     return new Response(
