@@ -1131,6 +1131,11 @@ Use these tools to execute the customer's requests accurately.
 
                 console.log(`[CartSession] ✅ Cart ${cart!.id} marked as completed`);
 
+                // CRITICAL: Clear cart reference - order is now completed, cart is no longer active
+                const completedCartId = cart!.id;
+                cart = null;
+                console.log(`[CartSession] ✅ Cart reference cleared - ${completedCartId} is no longer active`);
+
                 // Update customer insights (best-effort, non-blocking)
                 try {
                   const orderItems = finalCart!.cart_items.map((item: any) => ({
@@ -1182,11 +1187,16 @@ Use these tools to execute the customer's requests accurately.
 
                 console.log(`[CartSession] ✅ Cart ${cart.id} cancelled`);
 
+                // CRITICAL: Clear cart reference - cart is now cancelled, no longer active
+                const cancelledCartId = cart.id;
+                cart = null;
+                console.log(`[CartSession] ✅ Cart reference cleared - ${cancelledCartId} is no longer active`);
+
                 // If there's an associated order, mark it as cancelled too
                 const { data: existingOrder } = await supabase
                   .from('orders')
                   .select('id')
-                  .eq('cart_id', cart.id)
+                  .eq('cart_id', cancelledCartId)
                   .maybeSingle();
 
                 if (existingOrder) {
@@ -1354,6 +1364,12 @@ Use these tools to execute the customer's requests accurately.
         // Reload active cart after tool execution
         // CRITICAL: Always use getActiveCartWithItems to ensure we only work with active carts
         const updatedCart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
+        
+        if (updatedCart) {
+          console.log(`[Cart] Reloaded active cart ${updatedCart.id} with ${updatedCart.cart_items?.length || 0} items`);
+        } else {
+          console.log('[Cart] No active cart after tool execution - cart was completed/cancelled or does not exist');
+        }
         
         // If cart is no longer active (completed/cancelled), use empty cart
         const updatedCartItems: CartItem[] = updatedCart?.cart_items?.map((item: any) => ({
