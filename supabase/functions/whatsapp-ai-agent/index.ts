@@ -1335,7 +1335,7 @@ Execute your role with clarity, efficiency, and friendliness.
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages,
         tools,
         temperature: 0.7,
@@ -1917,7 +1917,7 @@ Execute your role with clarity, efficiency, and friendliness.
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4o',
           messages: followUpMessages,
           temperature: 0.7,
         }),
