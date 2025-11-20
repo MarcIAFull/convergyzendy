@@ -147,6 +147,38 @@ serve(async (req) => {
     const pendingProduct = stateMetadata.pending_product || null;
     const lastShownProduct = stateMetadata.last_shown_product || null;
 
+    // Load customer profile
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone', customerPhone)
+      .maybeSingle();
+
+    console.log(`[Context] Customer: ${customer ? 'Found' : 'New'}`);
+
+    // Load pending items
+    const { data: pendingItemsData } = await supabase
+      .from('conversation_pending_items')
+      .select(`
+        id, quantity, notes, status, product_id,
+        products (id, name, price)
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('user_phone', customerPhone)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    const pendingItems = pendingItemsData?.map((item: any) => ({
+      id: item.id,
+      product_id: item.product_id,
+      product_name: item.products.name,
+      quantity: item.quantity,
+      price: item.products.price,
+      notes: item.notes
+    })) || [];
+
+    console.log(`[Context] Pending items: ${pendingItems.length}`);
+
     // ============================================================
     // CONTEXT VALIDATION & LOGGING
     // ============================================================
@@ -349,7 +381,9 @@ serve(async (req) => {
       currentState,
       userIntent: intent,
       targetState,
-      conversationHistory // ✅ pass full history here
+      conversationHistory, // ✅ pass full history here
+      customer,
+      pendingItems
     });
 
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
