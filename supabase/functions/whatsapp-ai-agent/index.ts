@@ -401,6 +401,8 @@ serve(async (req) => {
                 .eq('product_id', args.product_id)
                 .maybeSingle();
 
+              let cartItemId: string;
+
               if (existingItem) {
                 // Update quantity
                 const { error: updateError } = await supabase
@@ -412,6 +414,7 @@ serve(async (req) => {
                   console.error('Error updating cart item:', updateError);
                   throw updateError;
                 }
+                cartItemId = existingItem.id;
               } else {
                 // Insert new cart item
                 const { data: newItem, error: insertError } = await supabase
@@ -429,11 +432,23 @@ serve(async (req) => {
                   console.error('Error inserting cart item:', insertError);
                   throw insertError;
                 }
+                cartItemId = newItem!.id;
+              }
 
-                // Add addons if provided
-                if (args.addon_ids && args.addon_ids.length > 0) {
-                  const addonInserts = args.addon_ids.map((addonId: string) => ({
-                    cart_item_id: newItem!.id,
+              // Add addons if provided (works for both new and existing items)
+              if (args.addon_ids && args.addon_ids.length > 0) {
+                // Check which addons are already added to avoid duplicates
+                const { data: existingAddons } = await supabase
+                  .from('cart_item_addons')
+                  .select('addon_id')
+                  .eq('cart_item_id', cartItemId);
+
+                const existingAddonIds = new Set(existingAddons?.map(a => a.addon_id) || []);
+                const newAddonIds = args.addon_ids.filter((id: string) => !existingAddonIds.has(id));
+
+                if (newAddonIds.length > 0) {
+                  const addonInserts = newAddonIds.map((addonId: string) => ({
+                    cart_item_id: cartItemId,
                     addon_id: addonId,
                   }));
                   const { error: addonError } = await supabase
@@ -442,7 +457,9 @@ serve(async (req) => {
 
                   if (addonError) {
                     console.error('Error adding addons:', addonError);
+                    throw addonError;
                   }
+                  console.log(`Added ${newAddonIds.length} addon(s) to cart item ${cartItemId}`);
                 }
               }
 
