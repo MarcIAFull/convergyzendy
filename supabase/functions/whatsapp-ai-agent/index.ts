@@ -16,12 +16,12 @@ serve(async (req) => {
   }
 
   try {
-    const { message, customerPhone, restaurantId } = await req.json();
-    const messageBody = message.toLowerCase().trim();
+    const { messageBody: rawMessage, customerPhone, restaurantId } = await req.json();
+    const messageBody = rawMessage?.toLowerCase().trim() || '';
 
     console.log(`\n${'='.repeat(60)}`);
     console.log(`[WhatsApp AI] Processing message from ${customerPhone}`);
-    console.log(`[WhatsApp AI] Message: "${message}"`);
+    console.log(`[WhatsApp AI] Message: "${rawMessage}"`);
     console.log(`${'='.repeat(60)}\n`);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -167,7 +167,7 @@ serve(async (req) => {
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: orchestratorPrompt },
-          { role: 'user', content: message }
+          { role: 'user', content: rawMessage }
         ],
         temperature: 0.0,
         response_format: { type: "json_object" }
@@ -395,7 +395,7 @@ serve(async (req) => {
             messages: [
               { role: 'system', content: conversationalPrompt },
               ...conversationHistory.slice(-6),
-              { role: 'user', content: message }
+              { role: 'user', content: rawMessage }
             ],
             temperature: 0.7
           }),
@@ -450,7 +450,7 @@ serve(async (req) => {
           restaurant_id: restaurantId,
           from_number: customerPhone,
           to_number: restaurant.phone,
-          body: message,
+          body: rawMessage,
           direction: 'incoming'
         },
         {
