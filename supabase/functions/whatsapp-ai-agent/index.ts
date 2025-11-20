@@ -475,6 +475,30 @@ serve(async (req) => {
     
     console.log(`[Tool Validation] Validated tool calls: ${validatedToolCalls.length} of ${toolCalls.length}`);
     
+    // CRITICAL CHECK: If AI tried to call tools but ALL were rejected by validation
+    if (toolCalls.length > 0 && validatedToolCalls.length === 0) {
+      console.error('[Tool Validation] ❌ CRITICAL: AI called tools but ALL were rejected by validation');
+      console.error('[Tool Validation] Common causes:');
+      console.error('  - Product ID mismatch in confirm_item intent');
+      console.error('  - Invalid product request without explicit user mention');
+      console.error('  - Tool validation rules blocked all attempted actions');
+      console.error('[Tool Validation] → Aborting execution to prevent misleading success messages');
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Tool validation failed',
+          details: 'AI attempted tool calls but they were rejected by validation rules. No actions were taken.',
+          attempted_tools: toolCalls.length,
+          validated_tools: 0
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
     console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
     
     let newState = targetState;
@@ -804,10 +828,26 @@ serve(async (req) => {
       console.log(`[Response] Fallback message constructed: "${finalResponse}"`);
     }
     
-    // Additional safety check
+    // CRITICAL CHECK: If we still have no response, something went wrong
     if (!finalResponse || finalResponse.trim() === '') {
-      console.error('[Response] ❌ CRITICAL: Still no message after fallback!');
-      finalResponse = '✅ Pedido atualizado com sucesso!'; // Generic fallback
+      console.error('[Response] ❌ CRITICAL: No response generated and no valid tools executed');
+      console.error('[Response] This should not happen - AI must either:');
+      console.error('  1. Generate a conversational message, OR');
+      console.error('  2. Execute validated tools with fallback confirmations');
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No response generated',
+          details: 'AI did not generate a message and no tools produced output',
+          state: currentState,
+          intent: decision?.intent
+        }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
     
     console.log(`[Response] Final message to send: "${finalResponse}"`);
