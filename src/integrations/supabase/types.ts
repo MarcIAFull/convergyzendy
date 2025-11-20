@@ -205,6 +205,7 @@ export type Database = {
           cart_id: string | null
           created_at: string
           id: string
+          metadata: Json | null
           restaurant_id: string
           state: string
           updated_at: string
@@ -214,6 +215,7 @@ export type Database = {
           cart_id?: string | null
           created_at?: string
           id?: string
+          metadata?: Json | null
           restaurant_id: string
           state?: string
           updated_at?: string
@@ -223,6 +225,7 @@ export type Database = {
           cart_id?: string | null
           created_at?: string
           id?: string
+          metadata?: Json | null
           restaurant_id?: string
           state?: string
           updated_at?: string
