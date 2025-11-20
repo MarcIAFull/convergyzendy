@@ -386,10 +386,15 @@ serve(async (req) => {
       .order('timestamp', { ascending: true })
       .limit(15);
 
-    // Load active cart using the refactored helper
-    // CRITICAL: This always returns exactly ONE active cart (never completed/cancelled/abandoned)
-    const cart = await getOrCreateActiveCart(supabase, restaurantId, customerPhone);
-    console.log(`[AI-Agent] Starting conversation with cart ${cart.id}, has ${cart.cart_items?.length || 0} items`);
+    // Load active cart (does NOT auto-create)
+    // CRITICAL: Only returns carts with status='active', returns NULL if none exists
+    let cart = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
+    
+    if (cart) {
+      console.log(`[AI-Agent] Found active cart ${cart.id} with ${cart.cart_items?.length || 0} items`);
+    } else {
+      console.log(`[AI-Agent] No active cart exists for ${customerPhone}`);
+    }
 
     // Load recent order for session state
     const { data: lastOrder } = await supabase
@@ -460,7 +465,7 @@ serve(async (req) => {
 
     // Determine current state from context
     let currentState: OrderState = 'idle';
-    const hasOpenCart = cart && cartItems.length > 0;
+    const hasOpenCart = cart !== null && cartItems.length > 0;
     
     if (messageHistory && messageHistory.length > 0) {
       if (hasOpenCart) {
@@ -523,10 +528,10 @@ ${JSON.stringify(categories, null, 2)}
 
 **CURRENT CART** (AUTHORITATIVE - Single source of truth for this conversation):
 \`\`\`json
-${JSON.stringify({ items: cartItems, subtotal: cartTotal, delivery_fee: restaurant.delivery_fee, total: cartTotal + restaurant.delivery_fee }, null, 2)}
+${cart ? JSON.stringify({ items: cartItems, subtotal: cartTotal, delivery_fee: restaurant.delivery_fee, total: cartTotal + restaurant.delivery_fee }, null, 2) : JSON.stringify({ status: "NO ACTIVE CART", message: "Customer has no open cart. Cart must be created when they add first item." }, null, 2)}
 \`\`\`
 
-IMPORTANT: This cart contains ONLY items with status='active'. Completed/cancelled/abandoned orders are NOT included here.
+${cart ? "IMPORTANT: This cart contains ONLY items with status='active'. Completed/cancelled/abandoned orders are NOT included here." : "IMPORTANT: There is NO active cart. Do NOT reference items from completed orders. If customer wants to order, they are starting fresh."}
 
 **SESSION STATE** (Current conversation context):
 \`\`\`json
@@ -569,9 +574,10 @@ ${JSON.stringify(customerProfile, null, 2)}
    - This cart was loaded using strict rules: only status='active', never completed/cancelled/abandoned carts
    - NEVER assume cart contents from old messages or timestamps
    - NEVER reference items from completed orders as if they're in the current cart
-   - If CURRENT CART is empty and user asks "what's in my order?", it means there IS NO current order
-   - When a user starts a new conversation, they start with a fresh active cart (or empty cart if none exists)
+   - If CURRENT CART shows "NO ACTIVE CART", it means there IS NO current order - not even an empty one
+   - When a user starts a new conversation after a completed order, they have NO cart until they add first item
    - Completed orders are in the past and NOT in the current cart unless the user explicitly re-added them
+   - Do NOT say things like "your cart has X" when CURRENT CART shows "NO ACTIVE CART"
 
 5. **Use customer_profile and insights to sell better (without being annoying)**
    - The customer_profile is loaded at the start of each conversation and shows historical preferences
@@ -852,6 +858,12 @@ Use these tools to execute the customer's requests accurately.
         try {
           switch (functionName) {
             case 'add_to_cart': {
+              // Ensure cart exists before adding items
+              if (!cart) {
+                console.log('[Cart] Creating new cart for first item');
+                cart = await createNewCart(supabase, restaurantId, customerPhone);
+              }
+
               // Validate product exists
               const { data: product, error: productError } = await supabase
                 .from('products')
@@ -958,6 +970,16 @@ Use these tools to execute the customer's requests accurately.
             }
 
             case 'remove_from_cart': {
+              if (!cart) {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'No active cart' }),
+                });
+                break;
+              }
+
               const { data: itemToRemove } = await supabase
                 .from('cart_items')
                 .select('id')
@@ -985,6 +1007,16 @@ Use these tools to execute the customer's requests accurately.
             }
 
             case 'update_cart_item': {
+              if (!cart) {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'No active cart' }),
+                });
+                break;
+              }
+
               const { data: itemToUpdate } = await supabase
                 .from('cart_items')
                 .select('id')
@@ -1032,6 +1064,16 @@ Use these tools to execute the customer's requests accurately.
             }
 
             case 'finalize_order': {
+              if (!cart) {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({ success: false, error: 'No active cart to finalize' }),
+                });
+                break;
+              }
+
               if (args.confirmed && deliveryAddress && paymentMethod) {
                 // Calculate final total
                 const { data: finalCart } = await supabase
