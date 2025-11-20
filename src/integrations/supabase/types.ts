@@ -134,6 +134,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          metadata: Json | null
           restaurant_id: string
           status: string
           updated_at: string
@@ -142,6 +143,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          metadata?: Json | null
           restaurant_id: string
           status?: string
           updated_at?: string
@@ -150,6 +152,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          metadata?: Json | null
           restaurant_id?: string
           status?: string
           updated_at?: string
@@ -193,6 +196,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "categories_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_pending_items: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          product_id: string
+          quantity: number
+          restaurant_id: string
+          status: string
+          updated_at: string
+          user_phone: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id: string
+          quantity?: number
+          restaurant_id: string
+          status?: string
+          updated_at?: string
+          user_phone: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+          restaurant_id?: string
+          status?: string
+          updated_at?: string
+          user_phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_pending_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_pending_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -293,6 +347,39 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          created_at: string
+          default_address: Json | null
+          default_payment_method: string | null
+          id: string
+          metadata: Json | null
+          name: string | null
+          phone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_address?: Json | null
+          default_payment_method?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          phone: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_address?: Json | null
+          default_payment_method?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          phone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           body: string
@@ -337,6 +424,7 @@ export type Database = {
           created_at: string
           delivery_address: string
           id: string
+          order_notes: string | null
           payment_method: string
           restaurant_id: string
           status: string
@@ -349,6 +437,7 @@ export type Database = {
           created_at?: string
           delivery_address: string
           id?: string
+          order_notes?: string | null
           payment_method: string
           restaurant_id: string
           status?: string
@@ -361,6 +450,7 @@ export type Database = {
           created_at?: string
           delivery_address?: string
           id?: string
+          order_notes?: string | null
           payment_method?: string
           restaurant_id?: string
           status?: string
