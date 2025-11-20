@@ -59,11 +59,35 @@ export interface Addon {
   updated_at: string;
 }
 
+export interface Customer {
+  id: string;
+  phone: string;
+  name: string | null;
+  default_address: Record<string, any> | null;
+  default_payment_method: 'cash' | 'card' | 'mbway' | 'multibanco' | null;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationPendingItem {
+  id: string;
+  user_phone: string;
+  restaurant_id: string;
+  product_id: string;
+  quantity: number;
+  notes: string | null;
+  status: 'pending' | 'confirmed' | 'discarded';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Cart {
   id: string;
   user_phone: string;
   restaurant_id: string;
   status: 'active' | 'completed' | 'abandoned';
+  metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
@@ -93,6 +117,7 @@ export interface Order {
   total_amount: number;
   payment_method: 'cash' | 'card' | 'mbway' | 'multibanco';
   delivery_address: string;
+  order_notes: string | null;
   status: 'new' | 'preparing' | 'out_for_delivery' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -143,4 +168,8 @@ export interface CartWithItems extends Cart {
 
 export interface OrderWithDetails extends Order {
   items: CartItemWithDetails[];
+}
+
+export interface ConversationPendingItemWithDetails extends ConversationPendingItem {
+  product: Product;
 }
