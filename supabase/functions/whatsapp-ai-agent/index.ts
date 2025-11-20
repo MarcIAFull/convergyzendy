@@ -531,6 +531,78 @@ serve(async (req) => {
       }
     }
     
+    console.log(`\n[Response] ========== RESPONSE CONSTRUCTION ==========`);
+    console.log(`[Response] Tool calls executed: ${toolCalls.length}`);
+    console.log(`[Response] AI-generated message: "${finalResponse || '(empty)'}"`);
+    
+    // Fallback: If AI didn't provide a message after tool execution, construct one
+    if ((!finalResponse || finalResponse.trim() === '') && toolCalls.length > 0) {
+      console.log('[Response] ⚠️ AI returned empty response, constructing fallback...');
+      
+      const confirmations: string[] = [];
+      
+      for (const toolCall of toolCalls) {
+        const functionName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
+        
+        switch (functionName) {
+          case 'add_to_cart': {
+            const product = availableProducts.find(p => p.id === args.product_id);
+            if (product) {
+              const qty = args.quantity || 1;
+              confirmations.push(`✅ Adicionei ${qty}x ${product.name} ao teu carrinho!`);
+            }
+            break;
+          }
+          
+          case 'remove_from_cart': {
+            const product = availableProducts.find(p => p.id === args.product_id);
+            if (product) {
+              confirmations.push(`❌ Removi ${product.name} do carrinho.`);
+            }
+            break;
+          }
+          
+          case 'set_delivery_address': {
+            confirmations.push(`📍 Endereço guardado: ${args.address}`);
+            break;
+          }
+          
+          case 'set_payment_method': {
+            const methodNames: { [key: string]: string } = {
+              cash: 'Dinheiro',
+              card: 'Cartão',
+              mbway: 'MBWay'
+            };
+            confirmations.push(`💳 Pagamento: ${methodNames[args.method] || args.method}`);
+            break;
+          }
+          
+          case 'finalize_order': {
+            const newCartTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+            confirmations.push(`🎉 Pedido confirmado! Total: €${newCartTotal.toFixed(2)}`);
+            confirmations.push(`O teu pedido chegará em breve!`);
+            break;
+          }
+          
+          default:
+            confirmations.push(`✅ Ação executada: ${functionName}`);
+        }
+      }
+      
+      finalResponse = confirmations.join(' ');
+      console.log(`[Response] Fallback message constructed: "${finalResponse}"`);
+    }
+    
+    // Additional safety check
+    if (!finalResponse || finalResponse.trim() === '') {
+      console.error('[Response] ❌ CRITICAL: Still no message after fallback!');
+      finalResponse = '✅ Pedido atualizado com sucesso!'; // Generic fallback
+    }
+    
+    console.log(`[Response] Final message to send: "${finalResponse}"`);
+    console.log(`[Response] Message length: ${finalResponse.length} characters`);
+    
     // Detect if AI offered a product (for pending_product tracking)
     if (toolCalls.length === 0 && finalResponse) {
       const offeredProduct = detectOfferedProduct(finalResponse, availableProducts);
@@ -588,16 +660,23 @@ serve(async (req) => {
         }
       ]);
 
-    console.log('\n[Response] ========== SENDING RESPONSE ==========');
-    console.log(`[Response] Final message: "${finalResponse.substring(0, 150)}${finalResponse.length > 150 ? '...' : ''}"`);
-    console.log(`[Response] Message length: ${finalResponse.length} characters`);
+    console.log('\n[WhatsApp] ========== SENDING RESPONSE ==========');
+    
+    // Validate message before sending
+    if (!finalResponse || finalResponse.trim().length === 0) {
+      console.error('[WhatsApp] ❌ Cannot send empty message to WhatsApp');
+      throw new Error('Empty response after tool execution - this should never happen');
+    }
+    
+    console.log(`[WhatsApp] Message to send: "${finalResponse.substring(0, 150)}${finalResponse.length > 150 ? '...' : ''}"`);
+    console.log(`[WhatsApp] Message length: ${finalResponse.length} characters`);
     
     // Send WhatsApp response (non-blocking for test environments)
     try {
       await sendWhatsAppMessage(customerPhone, finalResponse);
-      console.log(`[Response] ✅ WhatsApp message sent successfully`);
+      console.log(`[WhatsApp] ✅ WhatsApp message sent successfully`);
     } catch (whatsappError: any) {
-      console.warn(`[Response] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);
+      console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);
       // Continue anyway - AI processing succeeded
     }
 
