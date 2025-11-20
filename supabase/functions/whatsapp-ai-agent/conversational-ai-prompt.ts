@@ -30,7 +30,7 @@ export function buildConversationalAIPrompt(context: {
 
   const productList = menuProducts.map(p => {
     const addonsText = p.addons && p.addons.length > 0
-      ? `\n  Addons disponíveis: ${p.addons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`
+      ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.map((a: any) => `     → ${a.name} (ID: ${a.id}) (+€${a.price})`).join('\n')}`
       : '';
     return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
   }).join('\n');
@@ -81,17 +81,45 @@ ${productList}
 
 # CRITICAL RULES FOR TOOL CALLING
 
-## Handling ADDONS:
-When user mentions customizations like "água com limão", "pizza com borda de catupiry", "brigadeiro com morango":
-1. Find the product in the available products list
-2. Check if that product has the mentioned addon in its addons list
-3. If addon exists: call add_to_cart with product_id + addon_ids array containing the addon UUID
-4. If addon doesn't exist: use notes field for special instructions
+## 🚨 HANDLING ADDONS (CRITICAL):
 
-Examples:
-- User: "quero uma água com limão" → add_to_cart(product_id: água-uuid, addon_ids: [limão-uuid])
-- User: "pizza com borda de catupiry" → add_to_cart(product_id: pizza-uuid, addon_ids: [catupiry-uuid])  
-- User: "água sem gelo" (addon não existe) → add_to_cart(product_id: água-uuid, notes: "sem gelo")
+**ALWAYS check the "⭐ ADDONS DISPONÍVEIS" section for each product BEFORE calling add_to_cart!**
+
+### When user mentions customizations:
+
+**STEP 1:** Identify the base product (e.g., "água", "pizza", "brigadeiro")
+**STEP 2:** Look at the product's addon list in the "⭐ ADDONS DISPONÍVEIS PARA [PRODUTO]" section
+**STEP 3:** Check if the mentioned customization is listed as an addon
+**STEP 4:** 
+  - ✅ If addon EXISTS → use addon_ids parameter with the addon UUID(s)
+  - ❌ If addon DOESN'T EXIST → use notes parameter for special instructions
+
+### Examples (CORRECT behavior):
+
+✅ User: "quero uma água com limão"
+   → Check: Does Água have "Limão" in its addons list?
+   → YES → add_to_cart(product_id: água-uuid, addon_ids: [limão-uuid])
+   
+✅ User: "pizza com borda de catupiry"
+   → Check: Does Pizza have "Borda de Catupiry" in its addons list?
+   → YES → add_to_cart(product_id: pizza-uuid, addon_ids: [catupiry-uuid])
+   
+✅ User: "água sem gelo"
+   → Check: Does Água have "Sem gelo" in its addons list?
+   → NO → add_to_cart(product_id: água-uuid, notes: "sem gelo")
+
+### Anti-patterns (WRONG behavior - NEVER DO THIS):
+
+❌ WRONG: User says "água com limão" → you call add_to_cart(product_id: água-uuid) WITHOUT checking addons
+❌ WRONG: User says "adiciona limão" → you add a NEW product called "Limão" instead of using addon
+❌ WRONG: User says "água com limão" → you use notes: "com limão" even though "Limão" IS an available addon
+❌ WRONG: You ignore the "⭐ ADDONS DISPONÍVEIS" section and always use notes
+
+### Multiple addons:
+
+✅ User: "pizza com borda de catupiry e extra queijo"
+   → Check both addons exist
+   → add_to_cart(product_id: pizza-uuid, addon_ids: [catupiry-uuid, extra-queijo-uuid])
 
 **🚨 ALWAYS include a natural language response when calling tools.**
 
