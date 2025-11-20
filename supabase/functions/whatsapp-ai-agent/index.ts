@@ -102,6 +102,159 @@ function canTransition(from: OrderState, to: OrderState): boolean {
 }
 
 /**
+ * Get or create conversation state from database.
+ * Ensures exactly ONE active conversation state per (restaurant_id, user_phone).
+ * If multiple exist (edge case), keeps the most recent.
+ */
+async function getOrCreateConversationState(
+  supabase: any,
+  restaurantId: string,
+  customerPhone: string,
+  cartId: string | null
+): Promise<{ id: string; state: OrderState; cart_id: string | null }> {
+  console.log('[ConversationState] Loading state for:', customerPhone);
+
+  // Fetch all states for this user (should be 0 or 1, but handle edge cases)
+  const { data: states, error: fetchError } = await supabase
+    .from('conversation_state')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .eq('user_phone', customerPhone)
+    .order('updated_at', { ascending: false });
+
+  if (fetchError) {
+    console.error('[ConversationState] Error fetching state:', fetchError);
+    throw fetchError;
+  }
+
+  // If multiple states exist (shouldn't happen due to UNIQUE constraint), clean up
+  if (states && states.length > 1) {
+    console.warn(`[ConversationState] ⚠️ Multiple states found (${states.length}), keeping most recent`);
+    const stateToKeep = states[0];
+    const statesToDelete = states.slice(1).map((s: any) => s.id);
+
+    const { error: deleteError } = await supabase
+      .from('conversation_state')
+      .delete()
+      .in('id', statesToDelete);
+
+    if (deleteError) {
+      console.error('[ConversationState] Error cleaning up duplicate states:', deleteError);
+    }
+
+    console.log(`[ConversationState] ✅ Loaded existing state: ${stateToKeep.state} (cart: ${stateToKeep.cart_id || 'none'})`);
+    return stateToKeep;
+  }
+
+  // If exactly one state exists, return it
+  if (states && states.length === 1) {
+    console.log(`[ConversationState] ✅ Loaded existing state: ${states[0].state} (cart: ${states[0].cart_id || 'none'})`);
+    return states[0];
+  }
+
+  // No state exists, create one
+  console.log('[ConversationState] Creating new state (idle)');
+  const { data: newState, error: createError } = await supabase
+    .from('conversation_state')
+    .insert({
+      restaurant_id: restaurantId,
+      user_phone: customerPhone,
+      state: 'idle',
+      cart_id: cartId,
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    console.error('[ConversationState] Error creating state:', createError);
+    throw createError;
+  }
+
+  console.log(`[ConversationState] ✅ Created new state: idle`);
+  return newState;
+}
+
+/**
+ * Update conversation state in database.
+ * This is the SINGLE SOURCE OF TRUTH for the current state.
+ */
+async function updateConversationState(
+  supabase: any,
+  stateId: string,
+  newState: OrderState,
+  cartId: string | null
+) {
+  console.log(`[ConversationState] Updating state: ${newState} (cart: ${cartId || 'none'})`);
+
+  const { error } = await supabase
+    .from('conversation_state')
+    .update({
+      state: newState,
+      cart_id: cartId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', stateId);
+
+  if (error) {
+    console.error('[ConversationState] Error updating state:', error);
+    throw error;
+  }
+
+  console.log(`[ConversationState] ✅ State updated to: ${newState}`);
+}
+
+/**
+ * Determine next state based on tool execution.
+ * SERVER-SIDE deterministic state transitions.
+ */
+function determineNextState(
+  currentState: OrderState,
+  toolName: string,
+  hasCartItems: boolean,
+  hasAddress: boolean,
+  hasPayment: boolean
+): OrderState {
+  console.log(`[StateMachine] Determining next state from ${currentState} after tool: ${toolName}`);
+  console.log(`[StateMachine] Context: hasCartItems=${hasCartItems}, hasAddress=${hasAddress}, hasPayment=${hasPayment}`);
+
+  switch (toolName) {
+    case 'add_to_cart':
+      // After adding item, go to confirming or browsing
+      return hasCartItems ? 'confirming_item' : 'adding_item';
+
+    case 'remove_from_cart':
+    case 'update_cart_item':
+      // After modifying cart, stay in browsing if items remain
+      return hasCartItems ? 'confirming_item' : 'browsing_menu';
+
+    case 'set_delivery_address':
+      // After address, collect payment
+      return 'collecting_payment';
+
+    case 'set_payment_method':
+      // After payment, confirm order
+      return 'confirming_order';
+
+    case 'finalize_order':
+      // Order completed
+      return 'order_completed';
+
+    case 'cancel_order':
+      // Back to idle
+      return 'idle';
+
+    case 'transition_state':
+      // LLM explicitly requested state change (allow but log)
+      console.log('[StateMachine] ⚠️ LLM requested explicit state transition');
+      return currentState; // Don't change here, handled separately
+
+    default:
+      // No state change for other tools
+      return currentState;
+  }
+}
+
+/**
  * CART RETRIEVAL HELPERS
  * ======================
  * These functions enforce strict cart status filtering to prevent mixing
@@ -396,6 +549,18 @@ serve(async (req) => {
       console.log(`[AI-Agent] No active cart exists for ${customerPhone}`);
     }
 
+    // Load or create conversation state from database
+    // This is the SINGLE SOURCE OF TRUTH for the current state
+    const conversationStateRecord = await getOrCreateConversationState(
+      supabase,
+      restaurantId,
+      customerPhone,
+      cart?.id || null
+    );
+
+    let currentState: OrderState = conversationStateRecord.state as OrderState;
+    console.log(`[StateMachine] Current state from DB: ${currentState}`);
+
     // Load recent order for session state
     const { data: lastOrder } = await supabase
       .from('orders')
@@ -476,20 +641,9 @@ serve(async (req) => {
     const lastUserMessage = messageHistory?.filter((m: any) => m.direction === 'inbound').slice(-1)[0]?.body || null;
     const lastAgentMessage = messageHistory?.filter((m: any) => m.direction === 'outbound').slice(-1)[0]?.body || null;
 
-    // Determine current state from context
-    let currentState: OrderState = 'idle';
+    // Build structured session state using DB-backed state
     const hasOpenCart = cart !== null && currentCartItems.length > 0;
-    
-    if (messageHistory && messageHistory.length > 0) {
-      if (hasOpenCart) {
-        currentState = 'browsing_menu'; // Has cart and conversation
-        if (currentCartItems.length > 0) {
-          currentState = 'confirming_item';
-        }
-      }
-    }
 
-    // Build structured session state
     const sessionState: SessionState = {
       current_state: currentState,
       has_open_cart: hasOpenCart,
@@ -1367,6 +1521,46 @@ Use these tools to execute the customer's requests accurately.
         }
       }
 
+      // CRITICAL: Determine next state based on tool executions (SERVER-SIDE LOGIC)
+      // Do NOT rely solely on LLM's state suggestion - backend is authoritative
+      if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+        const lastToolName = aiMessage.tool_calls[aiMessage.tool_calls.length - 1].function.name;
+        
+        // Reload cart to check current items
+        const cartAfterTools = await getActiveCartWithItems(supabase, restaurantId, customerPhone);
+        const hasItems = cartAfterTools && cartAfterTools.cart_items && cartAfterTools.cart_items.length > 0;
+        const hasAddress = !!deliveryAddress;
+        const hasPayment = !!paymentMethod;
+        
+        // Only apply deterministic state transitions if LLM didn't explicitly request a transition
+        if (lastToolName !== 'transition_state') {
+          // Determine next state based on tool and context
+          const determinedState = determineNextState(
+            currentState,
+            lastToolName,
+            hasItems,
+            hasAddress,
+            hasPayment
+          );
+          
+          // Update state if it changed
+          if (determinedState !== currentState) {
+            newState = determinedState;
+            console.log(`[StateMachine] ✅ State transition: ${currentState} -> ${newState} (triggered by ${lastToolName})`);
+          }
+        } else {
+          console.log(`[StateMachine] ✅ State transition: ${currentState} -> ${newState} (LLM explicit request)`);
+        }
+        
+        // Update conversation state in database
+        await updateConversationState(
+          supabase,
+          conversationStateRecord.id,
+          newState,
+          cartAfterTools?.id || null
+        );
+      }
+
       // Make second OpenAI call with tool results to get final response
       const followUpMessages = [
         ...messages,
@@ -1471,7 +1665,30 @@ Use these tools to execute the customer's requests accurately.
       // No tool calls, use direct response
       const responseText = aiMessage.content || 'Olá! Como posso ajudar?';
 
-      console.log(`State transition: ${currentState} -> ${newState}`);
+      // For no-tool-call scenarios, potentially transition state based on conversation flow
+      // If user says hi/hello and state is order_completed, reset to idle
+      if (currentState === 'order_completed') {
+        newState = 'idle';
+        await updateConversationState(
+          supabase,
+          conversationStateRecord.id,
+          newState,
+          null // No cart for idle state
+        );
+        console.log(`[StateMachine] ✅ Reset to idle after order completion`);
+      } else if (currentState === 'idle' && (currentCartItems.length > 0 || messageBody.toLowerCase().includes('menu') || messageBody.toLowerCase().includes('cardápio'))) {
+        // If in idle and user asks about menu or has items, transition to browsing
+        newState = 'browsing_menu';
+        await updateConversationState(
+          supabase,
+          conversationStateRecord.id,
+          newState,
+          cart?.id || null
+        );
+        console.log(`[StateMachine] ✅ Transition to browsing_menu`);
+      }
+
+      console.log(`State: ${currentState} -> ${newState} (no tool calls)`);
 
       // Save outgoing message
       await supabase.from('messages').insert({

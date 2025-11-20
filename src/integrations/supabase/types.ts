@@ -200,6 +200,51 @@ export type Database = {
           },
         ]
       }
+      conversation_state: {
+        Row: {
+          cart_id: string | null
+          created_at: string
+          id: string
+          restaurant_id: string
+          state: string
+          updated_at: string
+          user_phone: string
+        }
+        Insert: {
+          cart_id?: string | null
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          state?: string
+          updated_at?: string
+          user_phone: string
+        }
+        Update: {
+          cart_id?: string | null
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          state?: string
+          updated_at?: string
+          user_phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_state_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_state_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_insights: {
         Row: {
           average_ticket: number | null

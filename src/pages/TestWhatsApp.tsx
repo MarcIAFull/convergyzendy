@@ -26,6 +26,7 @@ interface CartItem {
 interface OrderState {
   state: string;
   cart: CartItem[];
+  cart_id?: string;
   delivery_address?: string;
   payment_method?: string;
 }
@@ -50,6 +51,35 @@ export default function TestWhatsApp() {
     }
   }, [messages]);
 
+  // Fetch conversation state from database
+  useEffect(() => {
+    if (restaurantId) {
+      loadConversationState();
+      
+      // Set up real-time subscription for state changes
+      const channel = supabase
+        .channel('conversation-state-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversation_state',
+            filter: `restaurant_id=eq.${restaurantId}`
+          },
+          () => {
+            console.log('[TestWhatsApp] Conversation state changed, reloading...');
+            loadConversationState();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [restaurantId]);
+
   const loadRestaurant = async () => {
     // For single-tenant MVP, just get the first restaurant
     const { data: restaurant, error } = await supabase
@@ -72,6 +102,83 @@ export default function TestWhatsApp() {
       title: "Restaurante carregado",
       description: `Teste com número: ${testPhone}`
     });
+  };
+
+  const loadConversationState = async () => {
+    if (!restaurantId) return;
+
+    try {
+      // Load conversation state from database
+      const { data: stateData, error: stateError } = await supabase
+        .from('conversation_state')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('user_phone', testPhone)
+        .maybeSingle();
+
+      if (stateError) {
+        console.error('Error loading conversation state:', stateError);
+        return;
+      }
+
+      if (!stateData) {
+        // No state yet, set defaults
+        setOrderState({
+          state: 'idle',
+          cart: [],
+          cart_id: undefined,
+          delivery_address: undefined,
+          payment_method: undefined,
+        });
+        return;
+      }
+
+      // Load cart items if cart_id exists
+      let cartItems: CartItem[] = [];
+      if (stateData.cart_id) {
+        const { data: cartData } = await supabase
+          .from('cart_items')
+          .select(`
+            quantity,
+            notes,
+            products (
+              name,
+              price
+            ),
+            cart_item_addons (
+              addons (
+                name,
+                price
+              )
+            )
+          `)
+          .eq('cart_id', stateData.cart_id);
+
+        if (cartData) {
+          cartItems = cartData.map((item: any) => ({
+            product_name: item.products.name,
+            quantity: item.quantity,
+            price: item.products.price,
+            addons: item.cart_item_addons.map((cia: any) => ({
+              name: cia.addons.name,
+              price: cia.addons.price,
+            })),
+          }));
+        }
+      }
+
+      setOrderState({
+        state: stateData.state,
+        cart: cartItems,
+        cart_id: stateData.cart_id,
+        delivery_address: undefined,
+        payment_method: undefined,
+      });
+
+      console.log('[TestWhatsApp] Loaded state:', stateData.state, 'with', cartItems.length, 'items');
+    } catch (error) {
+      console.error('Error loading conversation state:', error);
+    }
   };
 
   const sendTestMessage = async () => {
@@ -113,15 +220,8 @@ export default function TestWhatsApp() {
         setMessages(prev => [...prev, aiMessage]);
       }
 
-      // Update order state with all response data
-      if (data) {
-        setOrderState({
-          state: data.state || 'idle',
-          cart: data.cart || [],
-          delivery_address: data.delivery_address,
-          payment_method: data.payment_method,
-        });
-      }
+      // Reload state from database (more reliable than response data)
+      await loadConversationState();
 
       toast({
         title: "Mensagem enviada",
@@ -136,6 +236,48 @@ export default function TestWhatsApp() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const clearAllCarts = async () => {
+    if (!restaurantId) return;
+
+    try {
+      // Cancel all active carts for this test phone
+      const { error } = await supabase
+        .from('carts')
+        .update({ status: 'cancelled' })
+        .eq('restaurant_id', restaurantId)
+        .eq('user_phone', testPhone)
+        .eq('status', 'active');
+
+      if (error) throw error;
+
+      // Reset conversation state to idle
+      await supabase
+        .from('conversation_state')
+        .delete()
+        .eq('restaurant_id', restaurantId)
+        .eq('user_phone', testPhone);
+
+      // Clear messages and state
+      setMessages([]);
+      setOrderState(null);
+
+      // Reload state
+      await loadConversationState();
+
+      toast({
+        title: "Carrinhos cancelados",
+        description: "Todos os carrinhos ativos foram cancelados e o estado foi resetado"
+      });
+    } catch (error: any) {
+      console.error('Error clearing carts:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao limpar carrinhos",
+        variant: "destructive"
+      });
     }
   };
 
@@ -186,13 +328,17 @@ export default function TestWhatsApp() {
             <p className="text-sm text-muted-foreground">Cliente: {testPhone}</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={clearAllCarts}>
+              <Database className="h-4 w-4 mr-2" />
+              Resetar Tudo
+            </Button>
             <Button variant="outline" size="sm" onClick={checkDatabase}>
               <Database className="h-4 w-4 mr-2" />
               Ver BD
             </Button>
             <Button variant="outline" size="sm" onClick={clearTest}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Limpar
+              Limpar Chat
             </Button>
           </div>
         </div>
@@ -282,7 +428,14 @@ export default function TestWhatsApp() {
             <div className="space-y-4">
               {/* Current State */}
               <div>
-                <h3 className="font-medium mb-2">Estado Atual</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium">Estado Atual (DB)</h3>
+                  {orderState.cart_id && (
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {orderState.cart_id.slice(0, 8)}
+                    </Badge>
+                  )}
+                </div>
                 <Badge variant="secondary" className="text-sm">
                   {orderState.state}
                 </Badge>
