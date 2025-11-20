@@ -530,6 +530,19 @@ serve(async (req) => {
       .eq('restaurant_id', restaurantId)
       .order('sort_order');
 
+    // Extract product context for AI (with explicit product_id references)
+    const availableProducts = categories?.flatMap(cat => 
+      cat.products?.filter((p: any) => p.is_available).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        category: cat.name,
+        has_addons: (p.addons?.length || 0) > 0
+      })) || []
+    ) || [];
+    
+    console.log(`[Product Context] Loaded ${availableProducts.length} available products for AI reference`);
+
     // Load conversation history (last 15 messages for session state)
     const { data: messageHistory } = await supabase
       .from('messages')
@@ -785,20 +798,66 @@ ${categories?.map((cat: any) => `
 ${cat.products?.map((p: any) => `- ${p.name}: €${p.price}${p.description ? ` - ${p.description}` : ''}`).join('\n')}
 `).join('\n')}
 
+====================================================================
+### PRODUCT REFERENCE TABLE (FOR TOOL CALLS)
+====================================================================
+
+When calling add_to_cart, you MUST use these EXACT product_id values:
+
+${availableProducts.slice(0, 30).map(p => 
+  `• ${p.name} (${p.category}): product_id = "${p.id}" | €${p.price}${p.has_addons ? ' | HAS ADDONS' : ''}`
+).join('\n')}
+
+${availableProducts.length > 30 ? `\n... and ${availableProducts.length - 30} more products` : ''}
+
+**CRITICAL:** Never invent or guess product_id. Always use the exact UUID from this table.
+
 --------------------------------------------------------------------
 #### **B) User selects a product**
 User shows interest in a specific item, or responds with acceptance.
 
-Examples:
-- "quero essa pizza"
-- "pode ser"
-- "sim, essa mesmo"
-- "é essa"
-- "ok, quero essa pizza"
-- User replies affirmatively right after you describe a product.
+**Semantic Intent Recognition (NOT keyword matching):**
+You must understand the USER'S INTENT, not match exact phrases.
+
+**Few-Shot Examples:**
+
+Example 1:
+User: "quero uma pizza"
+You describe: "Temos a Margherita por €9.98..."
+User: "pode adicionar"
+→ INTENT: User is confirming the pizza they just asked about
+→ ACTION: Call add_to_cart with product_id for Margherita
+
+Example 2:
+User: "me dá um brigadeiro"
+→ INTENT: Direct product request
+→ ACTION: Call add_to_cart with product_id for Brigadeiro
+
+Example 3:
+User: "essa mesmo"
+(Said after you mentioned a product)
+→ INTENT: Confirmation of previously discussed product
+→ ACTION: Call add_to_cart with the product_id you just referenced
+
+Example 4:
+User: "ok, coloca essa no pedido"
+→ INTENT: Confirmation to add item
+→ ACTION: Call add_to_cart
+
+Example 5:
+User: "sim, quero"
+(After discussing a specific product)
+→ INTENT: Affirmative response = confirmation
+→ ACTION: Call add_to_cart with the contextual product
+
+**Recognition Signals:**
+- Affirmative responses after product discussion: "sim", "ok", "pode ser", "é essa"
+- Direct requests: "quero X", "adiciona X", "me dá X"
+- Implicit confirmations: "essa", "essa mesmo", "perfeito"
+- Action verbs: "coloca", "põe", "adiciona", "pode adicionar"
 
 → ACTION:
-1. Identify EXACT product (from menu or last product shown).
+1. Identify EXACT product from conversation context or explicit request.
 2. Call **add_to_cart** with:
    - product_id
    - quantity = 1
@@ -1153,7 +1212,23 @@ Execute your role with clarity, efficiency, and friendliness.
       },
     ];
 
-    // Call OpenAI
+    // Determine if we should force tool consideration based on state
+    // States that typically require tools: browsing_menu (add_to_cart), confirming_item (modify/remove),
+    // collecting_address (set_delivery_address), collecting_payment (set_payment_method)
+    const statesRequiringTools: OrderState[] = [
+      'browsing_menu',
+      'confirming_item', 
+      'collecting_address',
+      'collecting_payment'
+    ];
+    
+    const shouldForceToolConsideration = statesRequiringTools.includes(currentState);
+    
+    console.log(`[OpenAI Call] Current state: ${currentState}`);
+    console.log(`[OpenAI Call] User message: "${messageBody}"`);
+    console.log(`[OpenAI Call] Force tool consideration: ${shouldForceToolConsideration}`);
+
+    // Call OpenAI with state-driven tool_choice
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1164,7 +1239,8 @@ Execute your role with clarity, efficiency, and friendliness.
         model: 'gpt-4o',
         messages,
         tools,
-        temperature: 0.7,
+        temperature: 0.2, // Lower temperature for more deterministic behavior
+        ...(shouldForceToolConsideration && { tool_choice: 'auto' }), // Force AI to consider tools when in key states
       }),
     });
 
@@ -1178,12 +1254,20 @@ Execute your role with clarity, efficiency, and friendliness.
     const aiMessage = aiData.choices[0].message;
 
     console.log('[AI-Agent] ========== AI RESPONSE ==========');
+    console.log('[AI-Agent] User message:', messageBody);
+    console.log('[AI-Agent] Current state:', currentState);
+    console.log('[AI-Agent] Tool choice forced:', shouldForceToolConsideration);
     console.log('[AI-Agent] Response text:', aiMessage.content);
     console.log('[AI-Agent] Tool calls:', aiMessage.tool_calls ? `${aiMessage.tool_calls.length} tool(s)` : 'none');
     if (aiMessage.tool_calls) {
       aiMessage.tool_calls.forEach((tc: any) => {
-        console.log(`[AI-Agent]   - ${tc.function.name}:`, tc.function.arguments);
+        console.log(`[AI-Agent]   ✅ ${tc.function.name}:`, tc.function.arguments);
       });
+    } else {
+      console.log('[AI-Agent]   ❌ NO TOOL CALLS - AI responded with text only');
+      if (shouldForceToolConsideration) {
+        console.log('[AI-Agent]   ⚠️  WARNING: Expected tool call in state:', currentState);
+      }
     }
     console.log('[AI-Agent] =======================================');
 
