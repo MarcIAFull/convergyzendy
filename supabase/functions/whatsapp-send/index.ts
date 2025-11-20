@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { sendWhatsAppMessage } from "../_shared/evolutionClient.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,51 +54,8 @@ serve(async (req) => {
       );
     }
 
-    // Get Evolution API credentials
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL');
-    const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY');
-    const evolutionInstanceName = Deno.env.get('EVOLUTION_INSTANCE_NAME');
-
-    if (!evolutionApiUrl || !evolutionApiKey || !evolutionInstanceName) {
-      console.error('Evolution API credentials not configured');
-      return new Response(
-        JSON.stringify({ error: 'WhatsApp service not configured' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    // Format phone number for WhatsApp (remove + and add @s.whatsapp.net)
-    const formattedPhone = customerPhone.replace(/\+/g, '') + '@s.whatsapp.net';
-
-    console.log(`Sending message to ${formattedPhone} via Evolution API`);
-
-    // Send message via Evolution API
-    const evolutionResponse = await fetch(
-      `${evolutionApiUrl}/message/sendText/${evolutionInstanceName}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionApiKey,
-        },
-        body: JSON.stringify({
-          number: formattedPhone,
-          text: messageText,
-        }),
-      }
-    );
-
-    if (!evolutionResponse.ok) {
-      const errorText = await evolutionResponse.text();
-      console.error('Evolution API error:', evolutionResponse.status, errorText);
-      throw new Error(`Failed to send message via Evolution API: ${errorText}`);
-    }
-
-    const evolutionData = await evolutionResponse.json();
-    console.log('Message sent successfully:', evolutionData);
+    // Send message via Evolution API client
+    const evolutionData = await sendWhatsAppMessage(customerPhone, messageText);
 
     // Log outbound message to database
     const { error: messageError } = await supabase
