@@ -72,6 +72,81 @@ function canTransition(from: OrderState, to: OrderState): boolean {
   return STATE_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+// Helper function to get the last completed order for a phone number
+async function getLastCompletedOrderForPhone(supabase: any, phone: string, restaurantId: string) {
+  console.log(`[LastOrder] Fetching last completed order for phone: ${phone}`);
+  
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      created_at,
+      total_amount,
+      delivery_address,
+      payment_method,
+      cart_id,
+      carts!inner (
+        cart_items (
+          id,
+          quantity,
+          notes,
+          products (
+            id,
+            name,
+            price
+          ),
+          cart_item_addons (
+            addon_id,
+            addons (
+              id,
+              name,
+              price
+            )
+          )
+        )
+      )
+    `)
+    .eq('user_phone', phone)
+    .eq('restaurant_id', restaurantId)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[LastOrder] Error fetching last order:', error);
+    return null;
+  }
+
+  if (!order) {
+    console.log('[LastOrder] No completed orders found');
+    return null;
+  }
+
+  // Transform the data into a readable format
+  const items = order.carts.cart_items.map((item: any) => ({
+    product_name: item.products.name,
+    quantity: item.quantity,
+    price: item.products.price,
+    notes: item.notes,
+    addons: item.cart_item_addons.map((cia: any) => ({
+      name: cia.addons.name,
+      price: cia.addons.price,
+    })),
+  }));
+
+  console.log(`[LastOrder] Found order ${order.id} with ${items.length} items`);
+
+  return {
+    id: order.id,
+    created_at: order.created_at,
+    total: order.total_amount,
+    delivery_address: order.delivery_address,
+    payment_method: order.payment_method,
+    items,
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -374,11 +449,19 @@ ${JSON.stringify(customerProfile, null, 2)}
    - Always answer in European Portuguese, even if the customer mixes other languages.
    - If the user writes something totally off-topic, answer politely and try to bring the conversation back to the ordering flow.
 
-**HANDLING "WHAT IS MY CURRENT ORDER?"**
-- If the user asks about their current order ("qual é o meu pedido?", "o que tenho no carrinho?"):
-  - Check session_state.has_open_cart
-  - If true: Show the current cart items and total
-  - If false: Reply in European Portuguese that there is no open order at the moment and offer to start a new one
+**HANDLING "WHAT IS MY CURRENT ORDER?" vs "WHAT WAS MY LAST ORDER?"**
+
+When the user asks about orders, distinguish between:
+
+1. **Current/Active Order** ("qual é o meu pedido?", "o que tenho no carrinho?"):
+   - Check session_state.has_open_cart
+   - If true: Show the current cart items and total
+   - If false: Reply in European Portuguese that there is no open order at the moment and offer to start a new one
+
+2. **Last Completed Order** ("qual era o meu pedido?", "o que pedi da última vez?", "o que costumo pedir?"):
+   - Use the get_last_completed_order tool to retrieve the most recent completed order
+   - Show items, addons, total in European Portuguese
+   - Optionally ask if they want to repeat or adapt that order
 
 **AVAILABLE TOOLS**
 You have access to tools for:
@@ -386,6 +469,7 @@ You have access to tools for:
 - remove_from_cart: Remove items from cart
 - update_cart_item: Update quantities
 - cancel_order: Cancel the current order and cart (use when customer says "cancela tudo", "desiste", etc.)
+- get_last_completed_order: Retrieve the customer's last completed order (use when they ask about past orders)
 - set_delivery_address: Set delivery address
 - set_payment_method: Set payment method (cash, card, mbway, multibanco)
 - finalize_order: Create the final order (only after clear confirmation)
@@ -494,6 +578,18 @@ Use these tools to execute the customer's requests accurately.
         function: {
           name: 'cancel_order',
           description: 'Cancel the current order and cart',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_last_completed_order',
+          description: 'Retrieve the customer\'s last completed order with items and addons',
           parameters: {
             type: 'object',
             properties: {},
@@ -905,6 +1001,42 @@ Use these tools to execute the customer's requests accurately.
                   name: functionName,
                   content: JSON.stringify({ success: false, error: 'No active cart to cancel' }),
                 });
+              }
+              break;
+            }
+
+            case 'get_last_completed_order': {
+              const lastOrder = await getLastCompletedOrderForPhone(supabase, customerPhone, restaurantId);
+              
+              if (lastOrder) {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({
+                    success: true,
+                    order: {
+                      id: lastOrder.id,
+                      date: lastOrder.created_at,
+                      total: lastOrder.total,
+                      items: lastOrder.items,
+                      delivery_address: lastOrder.delivery_address,
+                      payment_method: lastOrder.payment_method,
+                    }
+                  }),
+                });
+                console.log(`[LastOrder] ✅ Retrieved last order for ${customerPhone}: ${lastOrder.id}`);
+              } else {
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  role: 'tool',
+                  name: functionName,
+                  content: JSON.stringify({
+                    success: false,
+                    message: 'No completed orders found for this customer'
+                  }),
+                });
+                console.log(`[LastOrder] No completed orders found for ${customerPhone}`);
               }
               break;
             }
