@@ -12,6 +12,7 @@ import OrderDetail from "@/pages/OrderDetail";
 import Settings from "@/pages/Settings";
 import Messages from "@/pages/Messages";
 import TestWhatsApp from "@/pages/TestWhatsApp";
+import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 
@@ -34,6 +35,7 @@ const App = () => (
               <Route path="/messages" element={<Messages />} />
               <Route path="/test-whatsapp" element={<TestWhatsApp />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
