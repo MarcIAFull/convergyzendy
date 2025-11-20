@@ -248,7 +248,7 @@ serve(async (req) => {
         type: "function",
         function: {
           name: "add_to_cart",
-          description: "Add a product to the customer's cart",
+          description: "Add a product to the customer's cart with optional addons",
           parameters: {
             type: "object",
             properties: {
@@ -260,9 +260,14 @@ serve(async (req) => {
                 type: "number",
                 description: "Quantity to add, default 1"
               },
+              addon_ids: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of addon UUIDs to include with this product (e.g., ['addon-uuid-1', 'addon-uuid-2']). Only use addons that belong to this specific product."
+              },
               notes: {
                 type: "string",
-                description: "Optional special instructions"
+                description: "Optional special instructions or customizations that are NOT available as addons"
               }
             },
             required: ["product_id"]
@@ -452,7 +457,7 @@ serve(async (req) => {
       
       switch (functionName) {
         case 'add_to_cart': {
-          const { product_id, quantity = 1, notes } = args;
+          const { product_id, quantity = 1, addon_ids = [], notes } = args;
           
           const product = availableProducts.find(p => p.id === product_id);
           if (!product) {
@@ -475,19 +480,43 @@ serve(async (req) => {
           }
           
           // Add item to cart
-          const { error: addError } = await supabase
+          const { data: cartItem, error: addError } = await supabase
             .from('cart_items')
             .insert({
               cart_id: activeCart!.id,
               product_id,
               quantity,
               notes
-            });
+            })
+            .select()
+            .single();
           
           if (addError) {
             console.error('[Tool] Add to cart error:', addError);
           } else {
             console.log(`[Tool] ✅ Added ${quantity}x ${product.name}${notes ? ` (${notes})` : ''} to cart`);
+            
+            // Add addons if specified
+            if (addon_ids && addon_ids.length > 0) {
+              const addonInserts = addon_ids.map((addon_id: string) => ({
+                cart_item_id: cartItem.id,
+                addon_id
+              }));
+              
+              const { error: addonError } = await supabase
+                .from('cart_item_addons')
+                .insert(addonInserts);
+              
+              if (addonError) {
+                console.error('[Tool] Error adding addons:', addonError);
+              } else {
+                const addedAddons = (product.addons || [])
+                  .filter((a: any) => addon_ids.includes(a.id))
+                  .map((a: any) => a.name);
+                console.log(`[Tool] ✅ Added addons: ${addedAddons.join(', ')}`);
+              }
+            }
+            
             newState = 'confirming_item';
             cartModified = true; // Mark that cart needs re-fetch
             newMetadata.pending_product = null;
@@ -613,16 +642,38 @@ serve(async (req) => {
           .single();
         
         if (refreshedCart) {
+          const cartId = refreshedCart.id;
           activeCart = refreshedCart;
-          // Update cartItems with fresh data
-          const refreshedItems = refreshedCart.cart_items?.map((item: any) => ({
-            product_id: item.product_id,
-            product_name: item.products.name,
-            quantity: item.quantity,
-            price: item.products.price,
-            total_price: item.quantity * item.products.price,
-            notes: item.notes
-          })) || [];
+          
+          // Re-fetch cart items with addons
+          const { data: itemsWithAddons } = await supabase
+            .from('cart_items')
+            .select(`
+              *,
+              products (id, name, price),
+              cart_item_addons (
+                id,
+                addons (id, name, price)
+              )
+            `)
+            .eq('cart_id', cartId);
+          
+          // Update cartItems with fresh data including addons
+          const refreshedItems = (itemsWithAddons || []).map((item: any) => {
+            const addonsTotal = (item.cart_item_addons || []).reduce(
+              (sum: number, cia: any) => sum + (cia.addons?.price || 0), 
+              0
+            );
+            return {
+              product_id: item.product_id,
+              product_name: item.products.name,
+              quantity: item.quantity,
+              price: item.products.price,
+              total_price: item.quantity * (item.products.price + addonsTotal),
+              notes: item.notes,
+              addons: item.cart_item_addons?.map((cia: any) => cia.addons) || []
+            };
+          });
           
           // Replace old cartItems with fresh data
           cartItems.length = 0;
@@ -657,8 +708,12 @@ serve(async (req) => {
             const product = availableProducts.find(p => p.id === args.product_id);
             if (product) {
               const qty = args.quantity || 1;
+              const addonNames = (args.addon_ids || [])
+                .map((id: string) => product.addons?.find((a: any) => a.id === id)?.name)
+                .filter(Boolean);
+              const addonText = addonNames.length > 0 ? ` com ${addonNames.join(', ')}` : '';
               const notesText = args.notes ? ` (${args.notes})` : '';
-              confirmations.push(`✅ Adicionei ${qty}x ${product.name}${notesText} ao teu carrinho!`);
+              confirmations.push(`✅ Adicionei ${qty}x ${product.name}${addonText}${notesText} ao teu carrinho!`);
             }
             break;
           }

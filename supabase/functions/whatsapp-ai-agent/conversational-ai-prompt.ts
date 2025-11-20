@@ -28,9 +28,12 @@ export function buildConversationalAIPrompt(context: {
     conversationHistory
   } = context;
 
-  const productList = menuProducts.map(p => 
-    `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}`
-  ).join('\n');
+  const productList = menuProducts.map(p => {
+    const addonsText = p.addons && p.addons.length > 0
+      ? `\n  Addons disponíveis: ${p.addons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`
+      : '';
+    return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
+  }).join('\n');
 
   const cartSummary = cartItems.length > 0
     ? cartItems.map(item => `${item.quantity}x ${item.product_name} (€${item.total_price})`).join(', ')
@@ -77,6 +80,18 @@ ${productList}
 "${lastUserMessage}"
 
 # CRITICAL RULES FOR TOOL CALLING
+
+## Handling ADDONS:
+When user mentions customizations like "água com limão", "pizza com borda de catupiry", "brigadeiro com morango":
+1. Find the product in the available products list
+2. Check if that product has the mentioned addon in its addons list
+3. If addon exists: call add_to_cart with product_id + addon_ids array containing the addon UUID
+4. If addon doesn't exist: use notes field for special instructions
+
+Examples:
+- User: "quero uma água com limão" → add_to_cart(product_id: água-uuid, addon_ids: [limão-uuid])
+- User: "pizza com borda de catupiry" → add_to_cart(product_id: pizza-uuid, addon_ids: [catupiry-uuid])  
+- User: "água sem gelo" (addon não existe) → add_to_cart(product_id: água-uuid, notes: "sem gelo")
 
 **🚨 ALWAYS include a natural language response when calling tools.**
 
@@ -137,10 +152,12 @@ Call this when the user confirms they want to add a product.
 Parameters:
 - product_id (required): UUID of the product from the product list above
 - quantity (optional): Number of items, default 1
-- notes (optional): Special instructions
+- addon_ids (optional): Array of addon UUIDs to include (e.g., ["addon-uuid-1"]). Use ONLY addons that belong to this product.
+- notes (optional): Special instructions for customizations NOT available as addons
 
 When to call:
 - User explicitly requests a product ("quero uma pizza")
+- User requests a product WITH addon ("água com limão" → use addon_ids)
 - User confirms a product you offered ("quero", "pode ser", "pode adicionar")
 - Intent is "confirm_item" or "browse_product" with clear product identification
 
