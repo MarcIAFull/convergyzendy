@@ -440,6 +440,7 @@ serve(async (req) => {
     let newState = targetState;
     let newMetadata = { ...stateMetadata };
     let finalizeSuccess = false; // Track if finalize_order succeeded
+    let cartModified = false; // Track if we need to re-fetch cart data
     
     for (const toolCall of validatedToolCalls) {
       const functionName = toolCall.function.name;
@@ -486,8 +487,9 @@ serve(async (req) => {
           if (addError) {
             console.error('[Tool] Add to cart error:', addError);
           } else {
-            console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to cart`);
+            console.log(`[Tool] ✅ Added ${quantity}x ${product.name}${notes ? ` (${notes})` : ''} to cart`);
             newState = 'confirming_item';
+            cartModified = true; // Mark that cart needs re-fetch
             newMetadata.pending_product = null;
             newMetadata.last_shown_product = product;
           }
@@ -512,6 +514,7 @@ serve(async (req) => {
             console.error('[Tool] Remove error:', removeError);
           } else {
             console.log(`[Tool] ✅ Removed product from cart`);
+            cartModified = true; // Mark that cart needs re-fetch
           }
           break;
         }
@@ -573,13 +576,65 @@ serve(async (req) => {
               .update({ status: 'completed' })
               .eq('id', activeCart.id);
             
-            // Clear metadata
+            // Clear metadata and nullify cart for clean slate
             newMetadata = {};
             newState = 'idle';
+            activeCart = null; // CRITICAL: Clear cart reference so next message starts fresh
+            cartModified = true; // Force re-fetch (will be null)
             finalizeSuccess = true; // Mark as successful
           }
           break;
         }
+      }
+    }
+    
+    // ============================================================
+    // RE-FETCH CART DATA AFTER MODIFICATIONS
+    // ============================================================
+    
+    if (cartModified) {
+      console.log('[Cart Refresh] ========== RE-FETCHING CART DATA ==========');
+      
+      if (activeCart) {
+        // Re-fetch cart items with updated data
+        const { data: refreshedCart } = await supabase
+          .from('carts')
+          .select(`
+            *,
+            cart_items (
+              id,
+              product_id,
+              quantity,
+              notes,
+              products (id, name, price)
+            )
+          `)
+          .eq('id', activeCart.id)
+          .single();
+        
+        if (refreshedCart) {
+          activeCart = refreshedCart;
+          // Update cartItems with fresh data
+          const refreshedItems = refreshedCart.cart_items?.map((item: any) => ({
+            product_id: item.product_id,
+            product_name: item.products.name,
+            quantity: item.quantity,
+            price: item.products.price,
+            total_price: item.quantity * item.products.price,
+            notes: item.notes
+          })) || [];
+          
+          // Replace old cartItems with fresh data
+          cartItems.length = 0;
+          cartItems.push(...refreshedItems);
+          
+          const newCartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
+          console.log(`[Cart Refresh] ✅ Cart refreshed: ${cartItems.length} items, Total: €${newCartTotal.toFixed(2)}`);
+        }
+      } else {
+        // Cart was nullified (e.g., after finalize)
+        cartItems.length = 0;
+        console.log('[Cart Refresh] ✅ Cart cleared (no active cart)');
       }
     }
     
@@ -602,7 +657,8 @@ serve(async (req) => {
             const product = availableProducts.find(p => p.id === args.product_id);
             if (product) {
               const qty = args.quantity || 1;
-              confirmations.push(`✅ Adicionei ${qty}x ${product.name} ao teu carrinho!`);
+              const notesText = args.notes ? ` (${args.notes})` : '';
+              confirmations.push(`✅ Adicionei ${qty}x ${product.name}${notesText} ao teu carrinho!`);
             }
             break;
           }
@@ -632,8 +688,9 @@ serve(async (req) => {
           
           case 'finalize_order': {
             if (finalizeSuccess) {
-              const newCartTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-              confirmations.push(`🎉 Pedido confirmado! Total: €${newCartTotal.toFixed(2)}`);
+              // Use fresh cart data (re-fetched after tool execution)
+              const finalTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+              confirmations.push(`🎉 Pedido confirmado! Total: €${finalTotal.toFixed(2)}`);
               confirmations.push(`O teu pedido chegará em breve!`);
             } else {
               // Finalize failed - ask for missing info
