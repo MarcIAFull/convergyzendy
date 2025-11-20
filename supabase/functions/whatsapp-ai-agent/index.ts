@@ -195,14 +195,14 @@ serve(async (req) => {
       conversationHistory
     });
 
-    const orchestratorResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const orchestratorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: orchestratorPrompt },
           { role: 'user', content: "Analyze the context and return the intent JSON only." }
@@ -352,14 +352,14 @@ serve(async (req) => {
       conversationHistory // ✅ pass full history here
     });
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: conversationalPrompt },
           ...conversationHistory,
@@ -864,14 +864,14 @@ ${validatedToolCalls.map((tc: any) => {
 **IMPORTANTE:** NÃO chames tools novamente. Apenas escreve uma mensagem conversacional.`;
 
       try {
-        const secondAiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        const secondAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${lovableApiKey}`,
+            'Authorization': `Bearer ${openaiApiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'gpt-4o',
             messages: [
               { role: 'system', content: secondMessagePrompt },
               { role: 'user', content: 'Gera a mensagem conversacional agora.' }
