@@ -3,13 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Agent } from '@/types/agent';
+import { Agent, AgentTool } from '@/types/agent';
 import { Loader2 } from 'lucide-react';
-import { ModelSettings } from '@/components/ai-config/ModelSettings';
-import { PromptBlocksEditor } from '@/components/ai-config/PromptBlocksEditor';
-import { ToolsManager } from '@/components/ai-config/ToolsManager';
-import { OrchestrationRules } from '@/components/ai-config/OrchestrationRules';
-import { BehaviorSettings } from '@/components/ai-config/BehaviorSettings';
+import { UnifiedPromptEditor } from '@/components/ai-config/UnifiedPromptEditor';
+import { CompactToolsList } from '@/components/ai-config/CompactToolsList';
+import { ModelParametersCard } from '@/components/ai-config/ModelParametersCard';
+import { BehaviorConfigCard } from '@/components/ai-config/BehaviorConfigCard';
 
 export default function AIConfiguration() {
   const { toast } = useToast();
@@ -17,12 +16,22 @@ export default function AIConfiguration() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [promptBlocks, setPromptBlocks] = useState<any[]>([]);
+  const [tools, setTools] = useState<AgentTool[]>([]);
+  const [unifiedPrompt, setUnifiedPrompt] = useState('');
 
   const selectedAgent = agents.find(a => a.id === selectedAgentId);
 
   useEffect(() => {
     loadAgents();
   }, []);
+
+  useEffect(() => {
+    if (selectedAgentId) {
+      loadPromptBlocks();
+      loadTools();
+    }
+  }, [selectedAgentId]);
 
   const loadAgents = async () => {
     try {
@@ -34,7 +43,6 @@ export default function AIConfiguration() {
 
       if (error) throw error;
       
-      // Cast the data to Agent type
       const agents = (data || []).map(d => ({
         ...d,
         type: d.type as 'orchestrator' | 'assistant',
@@ -49,12 +57,54 @@ export default function AIConfiguration() {
     } catch (error) {
       console.error('Error loading agents:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to load agents',
+        title: 'Erro',
+        description: 'Falha ao carregar agentes',
         variant: 'destructive'
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPromptBlocks = async () => {
+    if (!selectedAgentId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('agent_prompt_blocks')
+        .select('*')
+        .eq('agent_id', selectedAgentId)
+        .order('ordering');
+
+      if (error) throw error;
+      
+      setPromptBlocks(data || []);
+      
+      // Concatenate all blocks into unified prompt
+      const combined = (data || [])
+        .map(block => `# ${block.title}\n\n${block.content}`)
+        .join('\n\n---\n\n');
+      setUnifiedPrompt(combined);
+    } catch (error) {
+      console.error('Error loading prompt blocks:', error);
+    }
+  };
+
+  const loadTools = async () => {
+    if (!selectedAgentId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('agent_tools')
+        .select('*')
+        .eq('agent_id', selectedAgentId)
+        .order('ordering');
+
+      if (error) throw error;
+      
+      setTools(data || []);
+    } catch (error) {
+      console.error('Error loading tools:', error);
     }
   };
 
@@ -66,11 +116,13 @@ export default function AIConfiguration() {
   };
 
   const handleSave = async () => {
-    if (!selectedAgent) return;
+    if (!selectedAgent || !selectedAgentId) return;
 
     try {
       setSaving(true);
-      const { error } = await supabase
+      
+      // Save agent settings
+      const { error: agentError } = await supabase
         .from('agents')
         .update({
           model: selectedAgent.model,
@@ -84,19 +136,58 @@ export default function AIConfiguration() {
         })
         .eq('id', selectedAgent.id);
 
-      if (error) throw error;
+      if (agentError) throw agentError;
+
+      // Save unified prompt as single block
+      const { error: promptError } = await supabase
+        .from('agent_prompt_blocks')
+        .delete()
+        .eq('agent_id', selectedAgentId);
+
+      if (promptError) throw promptError;
+
+      const { error: insertError } = await supabase
+        .from('agent_prompt_blocks')
+        .insert({
+          agent_id: selectedAgentId,
+          title: 'System Prompt',
+          content: unifiedPrompt,
+          ordering: 0,
+          is_locked: false
+        });
+
+      if (insertError) throw insertError;
+
+      // Save tools
+      for (const tool of tools) {
+        const { error: toolError } = await supabase
+          .from('agent_tools')
+          .upsert({
+            id: tool.id,
+            agent_id: selectedAgentId,
+            tool_name: tool.tool_name,
+            enabled: tool.enabled,
+            usage_rules: tool.usage_rules,
+            description_override: tool.description_override,
+            ordering: tool.ordering
+          });
+
+        if (toolError) throw toolError;
+      }
 
       toast({
-        title: 'Success',
-        description: 'Agent configuration saved successfully'
+        title: 'Sucesso',
+        description: 'Configuração salva com sucesso'
       });
       
       await loadAgents();
+      await loadPromptBlocks();
+      await loadTools();
     } catch (error) {
-      console.error('Error saving agent:', error);
+      console.error('Error saving configuration:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to save agent configuration',
+        title: 'Erro',
+        description: 'Falha ao salvar configuração',
         variant: 'destructive'
       });
     } finally {
@@ -106,10 +197,52 @@ export default function AIConfiguration() {
 
   const handleRevert = () => {
     loadAgents();
+    loadPromptBlocks();
+    loadTools();
     toast({
-      title: 'Reverted',
-      description: 'All changes have been discarded'
+      title: 'Revertido',
+      description: 'Todas as alterações foram descartadas'
     });
+  };
+
+  const handleToggleTool = async (toolName: string, enabled: boolean) => {
+    setTools(prev => prev.map(t => 
+      t.tool_name === toolName ? { ...t, enabled } : t
+    ));
+  };
+
+  const handleUpdateTool = async (toolName: string, updates: Partial<AgentTool>) => {
+    setTools(prev => prev.map(t => 
+      t.tool_name === toolName ? { ...t, ...updates } : t
+    ));
+  };
+
+  const handleDeleteTool = async (toolName: string) => {
+    if (!selectedAgentId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('agent_tools')
+        .delete()
+        .eq('agent_id', selectedAgentId)
+        .eq('tool_name', toolName);
+
+      if (error) throw error;
+
+      setTools(prev => prev.filter(t => t.tool_name !== toolName));
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Ferramenta removida'
+      });
+    } catch (error) {
+      console.error('Error deleting tool:', error);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao remover ferramenta',
+        variant: 'destructive'
+      });
+    }
   };
 
   if (loading) {
@@ -122,75 +255,69 @@ export default function AIConfiguration() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-[1800px] mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">AI Configuration</h1>
+            <h1 className="text-3xl font-bold">Configuração de IA</h1>
             <p className="text-muted-foreground mt-1">
-              Configure AI agents, prompts, tools, and behavior
+              Configure completamente o comportamento dos agentes de IA
             </p>
           </div>
           
           <div className="flex items-center gap-3">
             <Select value={selectedAgentId || ''} onValueChange={setSelectedAgentId}>
               <SelectTrigger className="w-[280px]">
-                <SelectValue placeholder="Select an agent" />
+                <SelectValue placeholder="Selecione um agente" />
               </SelectTrigger>
               <SelectContent>
                 {agents.map(agent => (
                   <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name === 'orchestrator' ? 'Orchestrator Agent' : 'Conversation & Sales Agent'}
+                    {agent.name === 'orchestrator' ? 'Agente Orquestrador' : 'Agente de Conversação & Vendas'}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
             <Button variant="outline" onClick={handleRevert}>
-              Revert Changes
+              Reverter
             </Button>
             
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
+              Salvar Configuração
             </Button>
           </div>
         </div>
 
-        {/* Three-column layout */}
+        {/* Unified layout */}
         {selectedAgent && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Column 1: Model & Behavior */}
-            <div className="space-y-6">
-              <ModelSettings 
-                agent={selectedAgent} 
-                onUpdate={handleAgentUpdate} 
-              />
-              <PromptBlocksEditor 
-                agentId={selectedAgent.id} 
-              />
-            </div>
+          <div className="space-y-6">
+            {/* Model Parameters */}
+            <ModelParametersCard 
+              agent={selectedAgent}
+              onUpdate={handleAgentUpdate}
+            />
 
-            {/* Column 2: Tools & Orchestration */}
-            <div className="space-y-6">
-              <ToolsManager 
-                agentId={selectedAgent.id} 
-              />
-              {selectedAgent.type === 'orchestrator' && (
-                <OrchestrationRules 
-                  agent={selectedAgent}
-                  onUpdate={handleAgentUpdate}
-                />
-              )}
-            </div>
+            {/* Unified Prompt Editor */}
+            <UnifiedPromptEditor 
+              prompt={unifiedPrompt}
+              onChange={setUnifiedPrompt}
+            />
 
-            {/* Column 3: Customer & Pending Products */}
-            <div className="space-y-6">
-              <BehaviorSettings 
-                agent={selectedAgent}
-                onUpdate={handleAgentUpdate}
-              />
-            </div>
+            {/* Tools */}
+            <CompactToolsList 
+              tools={tools}
+              onToggleTool={handleToggleTool}
+              onUpdateTool={handleUpdateTool}
+              onDeleteTool={handleDeleteTool}
+            />
+
+            {/* Behavior Config */}
+            <BehaviorConfigCard 
+              agent={selectedAgent}
+              onUpdate={handleAgentUpdate}
+            />
           </div>
         )}
       </div>
