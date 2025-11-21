@@ -6,6 +6,7 @@ import { buildConversationalAIPrompt } from './conversational-ai-prompt.ts';
 import { detectOfferedProduct } from './product-detection.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
+import { updateCustomerInsightsAfterOrder } from '../_shared/customerInsights.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -227,29 +228,6 @@ serve(async (req) => {
 
     console.log(`[Context] Customer: ${customer ? 'Found' : 'New'}`);
 
-    // Load pending items
-    const { data: pendingItemsData } = await supabase
-      .from('conversation_pending_items')
-      .select(`
-        id, quantity, notes, status, product_id,
-        products (id, name, price)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('user_phone', customerPhone)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-
-    const pendingItems = pendingItemsData?.map((item: any) => ({
-      id: item.id,
-      product_id: item.product_id,
-      product_name: item.products.name,
-      quantity: item.quantity,
-      price: item.products.price,
-      notes: item.notes
-    })) || [];
-
-    console.log(`[Context] Pending items: ${pendingItems.length}`);
-
     // ============================================================
     // CONTEXT VALIDATION & LOGGING
     // ============================================================
@@ -431,7 +409,7 @@ serve(async (req) => {
       targetState,
       conversationHistory,
       customer,
-      pendingItems
+      pendingItems: [] // Removed pending items workflow
     });
     
     let conversationalSystemPrompt = buildSystemPromptFromBlocks(
@@ -446,7 +424,6 @@ serve(async (req) => {
         menu_products: formatMenuForPrompt(availableProducts),
         cart_summary: formatCartForPrompt(cartItems, cartTotal),
         customer_info: formatCustomerForPrompt(customer),
-        pending_items: formatPendingItemsForPrompt(pendingItems),
         conversation_history: formatHistoryForPrompt(conversationHistory.slice(-5)),
         current_state: currentState,
         user_intent: intent,
@@ -761,7 +738,6 @@ serve(async (req) => {
           
           if (!newMetadata.delivery_address || !newMetadata.payment_method) {
             console.error('[Tool] Cannot finalize: missing address or payment');
-            // Don't set finalizeSuccess, leave it false
             continue;
           }
           
@@ -792,12 +768,72 @@ serve(async (req) => {
               .update({ status: 'completed' })
               .eq('id', activeCart.id);
             
+            // Update customer insights
+            try {
+              await updateCustomerInsightsAfterOrder(supabase as any, {
+                phone: customerPhone,
+                orderId: order.id,
+                total: orderTotal,
+                items: cartItems.map((item: any) => ({
+                  productId: item.product_id,
+                  productName: item.product_name,
+                  addons: (item.addons || []).map((a: any) => ({
+                    addonId: a.id,
+                    addonName: a.name
+                  }))
+                })),
+                status: 'confirmed'
+              });
+              console.log('[Tool] ✅ Customer insights updated');
+            } catch (insightError) {
+              console.error('[Tool] ⚠️ Customer insights update failed:', insightError);
+            }
+            
             // Clear metadata and nullify cart for clean slate
             newMetadata = {};
             newState = 'idle';
-            activeCart = null; // CRITICAL: Clear cart reference so next message starts fresh
-            cartModified = true; // Force re-fetch (will be null)
-            finalizeSuccess = true; // Mark as successful
+            activeCart = null;
+            cartModified = true;
+            finalizeSuccess = true;
+          }
+          break;
+        }
+        
+        case 'update_customer_profile': {
+          const { name, default_address, default_payment_method } = args;
+          
+          const updateData: any = { phone: customerPhone };
+          if (name !== undefined) updateData.name = name;
+          if (default_address !== undefined) updateData.default_address = default_address;
+          if (default_payment_method !== undefined) updateData.default_payment_method = default_payment_method;
+          
+          const { error: profileError } = await supabase
+            .from('customers')
+            .upsert(updateData, { onConflict: 'phone' });
+          
+          if (profileError) {
+            console.error('[Tool] Update customer profile error:', profileError);
+          } else {
+            console.log('[Tool] ✅ Updated customer profile');
+          }
+          break;
+        }
+        
+        case 'show_cart': {
+          // AI uses this to display cart contents - no action needed
+          console.log('[Tool] ✅ Showing cart');
+          break;
+        }
+        
+        case 'clear_cart': {
+          if (activeCart) {
+            await supabase
+              .from('cart_items')
+              .delete()
+              .eq('cart_id', activeCart.id);
+            
+            cartModified = true;
+            console.log('[Tool] ✅ Cleared cart');
           }
           break;
         }
@@ -1281,17 +1317,6 @@ function formatCustomerForPrompt(customer: any | null): string {
   if (customer.default_payment_method) parts.push(`Payment: ${customer.default_payment_method}`);
   
   return parts.length > 0 ? parts.join(', ') : 'Customer exists but no saved preferences';
-}
-
-/**
- * Format pending items for prompt injection
- */
-function formatPendingItemsForPrompt(pendingItems: any[]): string {
-  if (pendingItems.length === 0) return 'No pending items';
-  
-  return pendingItems.map(item => 
-    `${item.quantity}x ${item.product_name}${item.notes ? ` (${item.notes})` : ''}`
-  ).join(', ');
 }
 
 /**
