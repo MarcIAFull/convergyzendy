@@ -150,56 +150,6 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     }
   },
   
-  add_pending_item: {
-    type: "function",
-    function: {
-      name: "add_pending_item",
-      description: "Add a product to pending items (not yet in cart, awaiting confirmation)",
-      parameters: {
-        type: "object",
-        properties: {
-          product_id: {
-            type: "string",
-            description: "UUID of the product"
-          },
-          quantity: {
-            type: "number",
-            description: "Quantity, default 1"
-          },
-          notes: {
-            type: "string",
-            description: "Optional notes"
-          }
-        },
-        required: ["product_id"]
-      }
-    }
-  },
-  
-  clear_pending_items: {
-    type: "function",
-    function: {
-      name: "clear_pending_items",
-      description: "Clear all pending items",
-      parameters: {
-        type: "object",
-        properties: {}
-      }
-    }
-  },
-  
-  confirm_pending_items: {
-    type: "function",
-    function: {
-      name: "confirm_pending_items",
-      description: "Move all pending items to the cart",
-      parameters: {
-        type: "object",
-        properties: {}
-      }
-    }
-  },
-  
   show_cart: {
     type: "function",
     function: {

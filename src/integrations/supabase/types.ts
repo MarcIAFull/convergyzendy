@@ -342,57 +342,6 @@ export type Database = {
           },
         ]
       }
-      conversation_pending_items: {
-        Row: {
-          created_at: string
-          id: string
-          notes: string | null
-          product_id: string
-          quantity: number
-          restaurant_id: string
-          status: string
-          updated_at: string
-          user_phone: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          notes?: string | null
-          product_id: string
-          quantity?: number
-          restaurant_id: string
-          status?: string
-          updated_at?: string
-          user_phone: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          notes?: string | null
-          product_id?: string
-          quantity?: number
-          restaurant_id?: string
-          status?: string
-          updated_at?: string
-          user_phone?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "conversation_pending_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "conversation_pending_items_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       conversation_state: {
         Row: {
           cart_id: string | null
