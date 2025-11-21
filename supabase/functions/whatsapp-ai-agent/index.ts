@@ -385,29 +385,36 @@ serve(async (req) => {
     // Build tools array dynamically from database or use fallback
     let tools: any[];
     
-    if (useConversationalDB && enabledToolsConfig.length > 0) {
-      tools = enabledToolsConfig.map(toolConfig => {
-        const baseTool = getBaseToolDefinition(toolConfig.tool_name);
-        
-        if (!baseTool) {
-          console.warn(`[Tools] Unknown tool: ${toolConfig.tool_name}, skipping`);
-          return null;
-        }
-        
-        return {
-          type: "function",
-          function: {
-            ...baseTool.function,
-            description: toolConfig.description_override || baseTool.function.description
+    if (useConversationalDB) {
+      if (enabledToolsConfig.length > 0) {
+        // Use database-configured tools
+        tools = enabledToolsConfig.map(toolConfig => {
+          const baseTool = getBaseToolDefinition(toolConfig.tool_name);
+          
+          if (!baseTool) {
+            console.warn(`[Tools] ⚠️ Unknown tool: ${toolConfig.tool_name}, skipping`);
+            return null;
           }
-        };
-      }).filter(Boolean);
-      
-      console.log(`[Tools] Using ${tools.length} database-configured tools`);
+          
+          return {
+            type: "function",
+            function: {
+              ...baseTool.function,
+              description: toolConfig.description_override || baseTool.function.description
+            }
+          };
+        }).filter(Boolean);
+        
+        console.log(`[Tools] ✅ Using ${tools.length} database-configured tools: ${enabledToolsConfig.map(t => t.tool_name).join(', ')}`);
+      } else {
+        // No tools enabled in DB - agent will respond in natural language only
+        tools = [];
+        console.log(`[Tools] ⚠️ No tools enabled in database - agent will respond without tool calling`);
+      }
     } else {
-      // Fallback to hard-coded tools
+      // Fallback to hard-coded tools when no DB config exists
       tools = Object.values(BASE_TOOLS);
-      console.log(`[Tools] Using ${tools.length} fallback tools`);
+      console.log(`[Tools] ⚠️ Using ${tools.length} fallback hard-coded tools (no database config)`);
     }
     
     // Build conversational AI system prompt
@@ -475,7 +482,7 @@ serve(async (req) => {
           ...conversationHistory,
           { role: 'user', content: rawMessage }
         ],
-        tools,
+        ...(tools.length > 0 && { tools }),
         max_tokens: conversationalAgent?.max_tokens || 500,
         temperature: conversationalAgent?.temperature ?? 1.0,
         ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
