@@ -287,14 +287,24 @@ serve(async (req) => {
     console.log(`[Orchestrator]   - Cart: ${cartItems.length} items`);
     
     // Build orchestrator system prompt
-    let orchestratorSystemPrompt: string;
+    const orchestratorFallbackPrompt = buildOrchestratorPrompt({
+      userMessage: rawMessage,
+      currentState,
+      cartItems,
+      cartTotal,
+      menuProducts: availableProducts,
+      pendingProduct: pendingProduct,
+      lastShownProduct: lastShownProduct,
+      restaurantName: restaurant.name,
+      conversationHistory
+    });
+    
+    let orchestratorSystemPrompt = buildSystemPromptFromBlocks(
+      orchestratorPromptBlocks,
+      orchestratorFallbackPrompt
+    );
     
     if (useOrchestratorDB && orchestratorPromptBlocks.length > 0) {
-      // Use database-configured prompt blocks
-      orchestratorSystemPrompt = orchestratorPromptBlocks
-        .map(block => block.content)
-        .join('\n\n');
-      
       // Apply template variables
       orchestratorSystemPrompt = applyTemplateVariables(orchestratorSystemPrompt, {
         restaurant_name: restaurant.name,
@@ -312,23 +322,13 @@ serve(async (req) => {
         orchestratorSystemPrompt += buildOrchestrationRulesSection(orchestrationConfig.intents);
       }
       
-      console.log('[Orchestrator] Using database-configured prompt with template variables');
+      console.log('[Orchestrator] ✅ Using database-configured prompt with template variables');
     } else {
-      // Fallback to hard-coded prompt builder
-      orchestratorSystemPrompt = buildOrchestratorPrompt({
-        userMessage: rawMessage,
-        currentState,
-        cartItems,
-        cartTotal,
-        menuProducts: availableProducts,
-        pendingProduct: pendingProduct,
-        lastShownProduct: lastShownProduct,
-        restaurantName: restaurant.name,
-        conversationHistory
-      });
-      
-      console.log('[Orchestrator] Using fallback hard-coded prompt');
+      console.log('[Orchestrator] ⚠️ Using fallback hard-coded prompt');
     }
+    
+    console.log(`[Orchestrator] Prompt length: ${orchestratorSystemPrompt.length} characters`);
+    console.log(`[Orchestrator] Prompt blocks used: ${orchestratorPromptBlocks.length}`);
 
     const orchestratorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -411,14 +411,25 @@ serve(async (req) => {
     }
     
     // Build conversational AI system prompt
-    let conversationalSystemPrompt: string;
+    const conversationalFallbackPrompt = buildConversationalAIPrompt({
+      restaurantName: restaurant.name,
+      menuProducts: availableProducts,
+      cartItems,
+      cartTotal,
+      currentState,
+      userIntent: intent,
+      targetState,
+      conversationHistory,
+      customer,
+      pendingItems
+    });
+    
+    let conversationalSystemPrompt = buildSystemPromptFromBlocks(
+      conversationalPromptBlocks,
+      conversationalFallbackPrompt
+    );
     
     if (useConversationalDB && conversationalPromptBlocks.length > 0) {
-      // Use database-configured prompt blocks
-      conversationalSystemPrompt = conversationalPromptBlocks
-        .map(block => block.content)
-        .join('\n\n');
-      
       // Apply template variables
       conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
         restaurant_name: restaurant.name,
@@ -443,24 +454,13 @@ serve(async (req) => {
         conversationalSystemPrompt += buildBehaviorConfigSection(behaviorConfig);
       }
       
-      console.log('[Main AI] Using database-configured prompt with template variables');
+      console.log('[Main AI] ✅ Using database-configured prompt with template variables');
     } else {
-      // Fallback to hard-coded prompt builder
-      conversationalSystemPrompt = buildConversationalAIPrompt({
-        restaurantName: restaurant.name,
-        menuProducts: availableProducts,
-        cartItems,
-        cartTotal,
-        currentState,
-        userIntent: intent,
-        targetState,
-        conversationHistory,
-        customer,
-        pendingItems
-      });
-      
-      console.log('[Main AI] Using fallback hard-coded prompt');
+      console.log('[Main AI] ⚠️ Using fallback hard-coded prompt');
     }
+    
+    console.log(`[Main AI] Prompt length: ${conversationalSystemPrompt.length} characters`);
+    console.log(`[Main AI] Prompt blocks used: ${conversationalPromptBlocks.length}`);
 
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1196,6 +1196,20 @@ ${validatedToolCalls.map((tc: any) => {
 // ============================================================
 // HELPER FUNCTIONS FOR TEMPLATE VARIABLES AND FORMATTING
 // ============================================================
+
+/**
+ * Build system prompt from agent_prompt_blocks or use fallback
+ */
+function buildSystemPromptFromBlocks(
+  blocks: any[] | null | undefined,
+  fallback: string
+): string {
+  if (!blocks || blocks.length === 0) {
+    return fallback;
+  }
+  
+  return blocks.map(block => block.content).join('\n\n');
+}
 
 /**
  * Apply template variables to a prompt string
