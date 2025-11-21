@@ -5,6 +5,7 @@ import { buildOrchestratorPrompt } from './orchestrator-prompt.ts';
 import { buildConversationalAIPrompt } from './conversational-ai-prompt.ts';
 import { detectOfferedProduct } from './product-detection.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
+import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,7 +39,77 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ============================================================
-    // STEP 1: LOAD CONTEXT
+    // STEP 1: LOAD AGENT CONFIGURATION FROM DATABASE
+    // ============================================================
+    
+    console.log('[Agent Config] ========== LOADING AGENT CONFIGURATION ==========');
+    
+    // Load Orchestrator Agent
+    const { data: orchestratorAgent } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('name', 'orchestrator')
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    const useOrchestratorDB = !!orchestratorAgent;
+    console.log(`[Agent Config] Orchestrator: ${useOrchestratorDB ? `✅ Loaded from DB (ID: ${orchestratorAgent.id}, Model: ${orchestratorAgent.model})` : '⚠️ Using fallback (hard-coded)'}`);
+    
+    // Load Conversational Agent
+    const { data: conversationalAgent } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('name', 'conversational_ai')
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    const useConversationalDB = !!conversationalAgent;
+    console.log(`[Agent Config] Conversational: ${useConversationalDB ? `✅ Loaded from DB (ID: ${conversationalAgent.id}, Model: ${conversationalAgent.model})` : '⚠️ Using fallback (hard-coded)'}`);
+    
+    // Load Orchestrator Prompt Blocks
+    let orchestratorPromptBlocks: any[] = [];
+    if (orchestratorAgent) {
+      const { data: blocks } = await supabase
+        .from('agent_prompt_blocks')
+        .select('*')
+        .eq('agent_id', orchestratorAgent.id)
+        .order('ordering');
+      orchestratorPromptBlocks = blocks || [];
+      console.log(`[Agent Config] Orchestrator prompt blocks: ${orchestratorPromptBlocks.length} blocks loaded`);
+    }
+    
+    // Load Conversational Prompt Blocks
+    let conversationalPromptBlocks: any[] = [];
+    if (conversationalAgent) {
+      const { data: blocks } = await supabase
+        .from('agent_prompt_blocks')
+        .select('*')
+        .eq('agent_id', conversationalAgent.id)
+        .order('ordering');
+      conversationalPromptBlocks = blocks || [];
+      console.log(`[Agent Config] Conversational prompt blocks: ${conversationalPromptBlocks.length} blocks loaded`);
+    }
+    
+    // Load Enabled Tools for Conversational Agent
+    let enabledToolsConfig: any[] = [];
+    if (conversationalAgent) {
+      const { data: tools } = await supabase
+        .from('agent_tools')
+        .select('*')
+        .eq('agent_id', conversationalAgent.id)
+        .eq('enabled', true)
+        .order('ordering');
+      enabledToolsConfig = tools || [];
+      console.log(`[Agent Config] Enabled tools: ${enabledToolsConfig.length} tools configured`);
+      if (enabledToolsConfig.length > 0) {
+        console.log(`[Agent Config] Tool list: ${enabledToolsConfig.map(t => t.tool_name).join(', ')}`);
+      }
+    }
+    
+    console.log('[Agent Config] =============================================\n');
+
+    // ============================================================
+    // STEP 2: LOAD CONTEXT
     // ============================================================
     
     // Load restaurant
@@ -215,17 +286,49 @@ serve(async (req) => {
     console.log(`[Orchestrator]   - Pending: ${pendingProduct?.name || 'None'}`);
     console.log(`[Orchestrator]   - Cart: ${cartItems.length} items`);
     
-    const orchestratorPrompt = buildOrchestratorPrompt({
-      userMessage: rawMessage,
-      currentState,
-      cartItems,
-      cartTotal,
-      menuProducts: availableProducts,
-      pendingProduct: pendingProduct,
-      lastShownProduct: lastShownProduct,
-      restaurantName: restaurant.name,
-      conversationHistory
-    });
+    // Build orchestrator system prompt
+    let orchestratorSystemPrompt: string;
+    
+    if (useOrchestratorDB && orchestratorPromptBlocks.length > 0) {
+      // Use database-configured prompt blocks
+      orchestratorSystemPrompt = orchestratorPromptBlocks
+        .map(block => block.content)
+        .join('\n\n');
+      
+      // Apply template variables
+      orchestratorSystemPrompt = applyTemplateVariables(orchestratorSystemPrompt, {
+        restaurant_name: restaurant.name,
+        menu_products: formatMenuForPrompt(availableProducts),
+        cart_summary: formatCartForPrompt(cartItems, cartTotal),
+        customer_info: formatCustomerForPrompt(customer),
+        conversation_history: formatHistoryForPrompt(conversationHistory),
+        current_state: currentState,
+        pending_product: pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'
+      });
+      
+      // Apply orchestration config if present
+      const orchestrationConfig = orchestratorAgent.orchestration_config as any;
+      if (orchestrationConfig?.intents) {
+        orchestratorSystemPrompt += buildOrchestrationRulesSection(orchestrationConfig.intents);
+      }
+      
+      console.log('[Orchestrator] Using database-configured prompt with template variables');
+    } else {
+      // Fallback to hard-coded prompt builder
+      orchestratorSystemPrompt = buildOrchestratorPrompt({
+        userMessage: rawMessage,
+        currentState,
+        cartItems,
+        cartTotal,
+        menuProducts: availableProducts,
+        pendingProduct: pendingProduct,
+        lastShownProduct: lastShownProduct,
+        restaurantName: restaurant.name,
+        conversationHistory
+      });
+      
+      console.log('[Orchestrator] Using fallback hard-coded prompt');
+    }
 
     const orchestratorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -234,12 +337,16 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: orchestratorAgent?.model || 'gpt-4o',
         messages: [
-          { role: 'system', content: orchestratorPrompt },
+          { role: 'system', content: orchestratorSystemPrompt },
           { role: 'user', content: "Analyze the context and return the intent JSON only." }
         ],
-        max_tokens: 500,
+        max_tokens: orchestratorAgent?.max_tokens || 500,
+        temperature: orchestratorAgent?.temperature ?? 1.0,
+        ...(orchestratorAgent?.top_p !== null && orchestratorAgent?.top_p !== undefined && { top_p: orchestratorAgent.top_p }),
+        ...(orchestratorAgent?.frequency_penalty !== null && orchestratorAgent?.frequency_penalty !== undefined && { frequency_penalty: orchestratorAgent.frequency_penalty }),
+        ...(orchestratorAgent?.presence_penalty !== null && orchestratorAgent?.presence_penalty !== undefined && { presence_penalty: orchestratorAgent.presence_penalty }),
         response_format: { type: "json_object" }
       }),
     });
@@ -275,116 +382,85 @@ serve(async (req) => {
     console.log(`[Main AI]   - Pending: ${pendingProduct?.name || 'None'}`);
     console.log(`[Main AI]   - Cart: ${cartItems.length} items`);
     
-    // Define tool schemas
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "add_to_cart",
-          description: "Add a product to the customer's cart with optional addons",
-          parameters: {
-            type: "object",
-            properties: {
-              product_id: {
-                type: "string",
-                description: "UUID of the product to add (from the product list)"
-              },
-              quantity: {
-                type: "number",
-                description: "Quantity to add, default 1"
-              },
-              addon_ids: {
-                type: "array",
-                items: { type: "string" },
-                description: "Array of addon UUIDs to include with this product (e.g., ['addon-uuid-1', 'addon-uuid-2']). Only use addons that belong to this specific product."
-              },
-              notes: {
-                type: "string",
-                description: "Optional special instructions or customizations that are NOT available as addons"
-              }
-            },
-            required: ["product_id"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "remove_from_cart",
-          description: "Remove a product from the customer's cart",
-          parameters: {
-            type: "object",
-            properties: {
-              product_id: {
-                type: "string",
-                description: "UUID of the product to remove"
-              }
-            },
-            required: ["product_id"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "set_delivery_address",
-          description: "Set the delivery address for the order",
-          parameters: {
-            type: "object",
-            properties: {
-              address: {
-                type: "string",
-                description: "Full delivery address"
-              }
-            },
-            required: ["address"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "set_payment_method",
-          description: "Set the payment method for the order",
-          parameters: {
-            type: "object",
-            properties: {
-              method: {
-                type: "string",
-                enum: ["cash", "card", "mbway"],
-                description: "Payment method"
-              }
-            },
-            required: ["method"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "finalize_order",
-          description: "Finalize and place the order",
-          parameters: {
-            type: "object",
-            properties: {}
-          }
-        }
-      }
-    ];
+    // Build tools array dynamically from database or use fallback
+    let tools: any[];
     
-    // Build AI prompt with intent context
-    const conversationalPrompt = buildConversationalAIPrompt({
-      restaurantName: restaurant.name,
-      menuProducts: availableProducts,
-      cartItems,
-      cartTotal,
-      currentState,
-      userIntent: intent,
-      targetState,
-      conversationHistory, // ✅ pass full history here
-      customer,
-      pendingItems
-    });
+    if (useConversationalDB && enabledToolsConfig.length > 0) {
+      tools = enabledToolsConfig.map(toolConfig => {
+        const baseTool = getBaseToolDefinition(toolConfig.tool_name);
+        
+        if (!baseTool) {
+          console.warn(`[Tools] Unknown tool: ${toolConfig.tool_name}, skipping`);
+          return null;
+        }
+        
+        return {
+          type: "function",
+          function: {
+            ...baseTool.function,
+            description: toolConfig.description_override || baseTool.function.description
+          }
+        };
+      }).filter(Boolean);
+      
+      console.log(`[Tools] Using ${tools.length} database-configured tools`);
+    } else {
+      // Fallback to hard-coded tools
+      tools = Object.values(BASE_TOOLS);
+      console.log(`[Tools] Using ${tools.length} fallback tools`);
+    }
+    
+    // Build conversational AI system prompt
+    let conversationalSystemPrompt: string;
+    
+    if (useConversationalDB && conversationalPromptBlocks.length > 0) {
+      // Use database-configured prompt blocks
+      conversationalSystemPrompt = conversationalPromptBlocks
+        .map(block => block.content)
+        .join('\n\n');
+      
+      // Apply template variables
+      conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
+        restaurant_name: restaurant.name,
+        menu_products: formatMenuForPrompt(availableProducts),
+        cart_summary: formatCartForPrompt(cartItems, cartTotal),
+        customer_info: formatCustomerForPrompt(customer),
+        pending_items: formatPendingItemsForPrompt(pendingItems),
+        conversation_history: formatHistoryForPrompt(conversationHistory.slice(-5)),
+        current_state: currentState,
+        user_intent: intent,
+        target_state: targetState
+      });
+      
+      // Add tool usage rules section
+      if (enabledToolsConfig.length > 0) {
+        conversationalSystemPrompt += buildToolUsageRulesSection(enabledToolsConfig);
+      }
+      
+      // Apply behavior config if present
+      const behaviorConfig = conversationalAgent.behavior_config as any;
+      if (behaviorConfig) {
+        conversationalSystemPrompt += buildBehaviorConfigSection(behaviorConfig);
+      }
+      
+      console.log('[Main AI] Using database-configured prompt with template variables');
+    } else {
+      // Fallback to hard-coded prompt builder
+      conversationalSystemPrompt = buildConversationalAIPrompt({
+        restaurantName: restaurant.name,
+        menuProducts: availableProducts,
+        cartItems,
+        cartTotal,
+        currentState,
+        userIntent: intent,
+        targetState,
+        conversationHistory,
+        customer,
+        pendingItems
+      });
+      
+      console.log('[Main AI] Using fallback hard-coded prompt');
+    }
 
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -393,14 +469,18 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: conversationalAgent?.model || 'gpt-4o',
         messages: [
-          { role: 'system', content: conversationalPrompt },
+          { role: 'system', content: conversationalSystemPrompt },
           ...conversationHistory,
           { role: 'user', content: rawMessage }
         ],
         tools,
-        max_tokens: 500
+        max_tokens: conversationalAgent?.max_tokens || 500,
+        temperature: conversationalAgent?.temperature ?? 1.0,
+        ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
+        ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && { frequency_penalty: conversationalAgent.frequency_penalty }),
+        ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && { presence_penalty: conversationalAgent.presence_penalty })
       }),
     });
 
@@ -1112,3 +1192,153 @@ ${validatedToolCalls.map((tc: any) => {
     );
   }
 });
+
+// ============================================================
+// HELPER FUNCTIONS FOR TEMPLATE VARIABLES AND FORMATTING
+// ============================================================
+
+/**
+ * Apply template variables to a prompt string
+ */
+function applyTemplateVariables(prompt: string, variables: Record<string, string>): string {
+  let result = prompt;
+  
+  for (const [key, value] of Object.entries(variables)) {
+    const placeholder = `{{${key}}}`;
+    result = result.replaceAll(placeholder, value);
+  }
+  
+  return result;
+}
+
+/**
+ * Format menu products for prompt injection
+ */
+function formatMenuForPrompt(products: any[]): string {
+  return products.map(p => {
+    const addonsText = p.addons && p.addons.length > 0
+      ? `\n  Addons: ${p.addons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`
+      : '';
+    return `• ${p.name} (ID: ${p.id}) - €${p.price}${p.description ? ` - ${p.description}` : ''}${addonsText}`;
+  }).join('\n');
+}
+
+/**
+ * Format cart for prompt injection
+ */
+function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
+  if (cartItems.length === 0) return 'Empty cart';
+  
+  const itemsText = cartItems.map(item => 
+    `${item.quantity}x ${item.product_name} (€${item.total_price})`
+  ).join(', ');
+  
+  return `${itemsText} | Total: €${cartTotal.toFixed(2)}`;
+}
+
+/**
+ * Format customer info for prompt injection
+ */
+function formatCustomerForPrompt(customer: any | null): string {
+  if (!customer) return 'New customer - no saved data';
+  
+  const parts = [];
+  if (customer.name) parts.push(`Name: ${customer.name}`);
+  if (customer.default_address) {
+    const addr = typeof customer.default_address === 'string' 
+      ? customer.default_address 
+      : JSON.stringify(customer.default_address);
+    parts.push(`Address: ${addr}`);
+  }
+  if (customer.default_payment_method) parts.push(`Payment: ${customer.default_payment_method}`);
+  
+  return parts.length > 0 ? parts.join(', ') : 'Customer exists but no saved preferences';
+}
+
+/**
+ * Format pending items for prompt injection
+ */
+function formatPendingItemsForPrompt(pendingItems: any[]): string {
+  if (pendingItems.length === 0) return 'No pending items';
+  
+  return pendingItems.map(item => 
+    `${item.quantity}x ${item.product_name}${item.notes ? ` (${item.notes})` : ''}`
+  ).join(', ');
+}
+
+/**
+ * Format conversation history for prompt injection
+ */
+function formatHistoryForPrompt(history: any[]): string {
+  if (history.length === 0) return 'No previous conversation';
+  
+  return history.map(msg => 
+    `${msg.role === 'user' ? 'Customer' : 'Agent'}: ${msg.content}`
+  ).join('\n');
+}
+
+/**
+ * Build orchestration rules section from config
+ */
+function buildOrchestrationRulesSection(intents: Record<string, any>): string {
+  let section = '\n\n# ORCHESTRATION RULES (FROM DATABASE CONFIG)\n\n';
+  
+  for (const [intentName, intentConfig] of Object.entries(intents)) {
+    section += `## Intent: ${intentName}\n`;
+    
+    if (intentConfig.decision_hint) {
+      section += `Decision Hint: ${intentConfig.decision_hint}\n`;
+    }
+    
+    if (intentConfig.allowed_tools && intentConfig.allowed_tools.length > 0) {
+      section += `Allowed Tools: ${intentConfig.allowed_tools.join(', ')}\n`;
+    }
+    
+    section += '\n';
+  }
+  
+  return section;
+}
+
+/**
+ * Build tool usage rules section from enabled tools config
+ */
+function buildToolUsageRulesSection(enabledTools: any[]): string {
+  const toolsWithRules = enabledTools.filter(t => t.usage_rules);
+  
+  if (toolsWithRules.length === 0) return '';
+  
+  let section = '\n\n# TOOL USAGE RULES (FROM DATABASE CONFIG)\n\n';
+  
+  for (const tool of toolsWithRules) {
+    section += `## ${tool.tool_name}\n`;
+    section += `${tool.usage_rules}\n\n`;
+  }
+  
+  return section;
+}
+
+/**
+ * Build behavior config section
+ */
+function buildBehaviorConfigSection(behaviorConfig: any): string {
+  let section = '\n\n# BEHAVIOR CONFIGURATION (FROM DATABASE)\n\n';
+  
+  if (behaviorConfig.customer_profile) {
+    const cp = behaviorConfig.customer_profile;
+    section += '## Customer Profile Behavior\n';
+    section += `- Auto-load profile: ${cp.auto_load ? 'YES' : 'NO'}\n`;
+    section += `- Update name from conversation: ${cp.update_name_from_conversation ? 'YES' : 'NO'}\n`;
+    section += `- Update address on confirmation: ${cp.update_address_on_confirmation ? 'YES' : 'NO'}\n`;
+    section += `- Update payment on confirmation: ${cp.update_payment_on_confirmation ? 'YES' : 'NO'}\n\n`;
+  }
+  
+  if (behaviorConfig.pending_products) {
+    const pp = behaviorConfig.pending_products;
+    section += '## Pending Products Behavior\n';
+    section += `- Allow multiple pending items: ${pp.allow_multiple ? 'YES' : 'NO'}\n`;
+    section += `- Pending items expire after: ${pp.expiration_minutes || 15} minutes\n\n`;
+  }
+  
+  return section;
+}
