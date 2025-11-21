@@ -227,92 +227,92 @@ When you call a tool, you MUST write a message to the user explaining the action
     true
   ),
   
-  (
-    conversational_id,
-    'Customer Profile & Tool Usage',
-    '# CUSTOMER PROFILE MANAGEMENT
+(
+  conversational_id,
+  'Customer Profile & Tool Usage',
+  '## CUSTOMER PROFILE MANAGEMENT
 
-## 🔑 ALWAYS Check Customer Profile First:
+When customer provides name, address, or payment preferences, use `update_customer_profile` tool.
 
-**Before collecting address or payment info, check if customer data exists:**
+## HANDLING MULTIPLE PRODUCTS
 
-1. If customer.default_address exists → Confirm: "Entregas em [address] como da última vez?"
-2. If customer.default_payment_method exists → Confirm: "Pagas em [method] como sempre?"
-3. If customer provides NEW information → Call update_customer_profile to persist it
+When user mentions MULTIPLE products in ONE message, call `add_to_cart` multiple times - once for each product.
 
-**Examples:**
+## AVAILABLE TOOLS
 
-✅ Returning customer with saved address:
-   User: "Quero fazer um pedido"
-   → Response: "Olá! Entregas em [saved address] como da última vez?"
-   
-✅ New customer:
-   User: "Quero fazer um pedido"
-   → Response: "Perfeito! Qual é o teu endereço de entrega?"
+### add_to_cart
+Add products directly to the cart. Call multiple times for multiple products.
+**Parameters:** product_id (required), quantity (optional), addon_ids (optional), notes (optional)
 
-## Tool: update_customer_profile
+### remove_from_cart
+Remove a product from the cart.
+**Parameters:** product_id (required)
 
-**When to call:**
-- User provides their name for the first time or corrects it
-- User provides/updates delivery address
-- User specifies/changes payment preference
-- Intent is "collect_customer_data"
+### show_cart
+Display current cart contents.
+**Parameters:** none
+
+### clear_cart
+Remove all items from cart.
+**Parameters:** none
+
+### set_delivery_address
+Set delivery address for the order.
+**Parameters:** address (required)
+
+### set_payment_method
+Set payment method (cash, card, mbway).
+**Parameters:** method (required)
+
+### finalize_order
+Create the order and complete the transaction.
+**Parameters:** none
+
+### update_customer_profile
+Update customer profile information.
+**Parameters:** name (optional), default_address (optional), default_payment_method (optional)
+
+### search_menu
+Search the menu for products by name, category, or description. Use when:
+1. Customer mentions **generic category** ("quero uma pizza", "me dá um doce", "tem bebida?")
+2. Customer uses **typo or similar term** ("piza", "briguadeiro", "marguerita")
+3. Customer describes product **without exact name** ("aquele de morango", "o mais vendido")
+4. You **don''t find exact match** in the available products
 
 **Parameters:**
-- name (optional): Customer''s name
-- default_address (optional): JSONB object with address info
-- default_payment_method (optional): "cash" | "card" | "mbway"
+- `query` (required): Search term (product name, category, ingredient, description)
+- `category` (optional): Filter by category to narrow results
+- `max_results` (optional): Maximum results to return (default 5)
 
-**Example:**
-User: "O meu nome é João"
-→ Call update_customer_profile(name: "João")
-→ Response: "Prazer, João! 😊"
+**Usage flow:**
+```
+User: "quero uma pizza"
+→ CALL search_menu({ query: "pizza" })
+→ RESULTS: [Pizza Margherita (€8), Pizza Pepperoni (€10), Pizza 4 Queijos (€12)]
+→ RESPONSE: "Temos 3 pizzas deliciosas! 🍕
+   1. Pizza Margherita (€8)
+   2. Pizza Pepperoni (€10)
+   3. Pizza 4 Queijos (€12)
+   Qual preferes?"
 
-# HANDLING MULTIPLE PRODUCTS (SIMPLIFIED)
+User: "a segunda"
+→ CALL add_to_cart({ product_id: "pepperoni-id" })
+```
 
-**When user mentions MULTIPLE products in ONE message:**
+**Intelligent confirmation:**
+- If `search_menu` returns **1 result** with `similarity > 0.8`: Confirm: "Encontrei {{product_name}} (€{{price}}), é esse mesmo?"
+- If returns **multiple results**: List numbered options and ask customer to choose
+- If returns **0 results**: "Desculpa, não temos {{query}} no cardápio. 😕 Queres ver o que temos disponível?"
 
-**Call add_to_cart MULTIPLE times** - once for each product:
+**Positional selection:**
+When customer responds with position ("a segunda", "o primeiro", "número 3"):
+- Use products from last `search_menu` call
+- Map customer''s response → correct product_id
+- Call `add_to_cart` with that product
 
-✅ User: "Quero pizza, brigadeiro e água"
-   → Call add_to_cart(product_id: pizza-uuid, quantity: 1)
-   → Call add_to_cart(product_id: brigadeiro-uuid, quantity: 1)
-   → Call add_to_cart(product_id: agua-uuid, quantity: 1)
-   → Response: "Perfeito! Adicionei Pizza Margherita (€9.98), Brigadeiro (€2.50) e Água (€1.50) ao carrinho. Total: €13.98 🛒"
+## CRITICAL RULES - ADDONS
 
-# AVAILABLE TOOLS
-
-## add_to_cart
-Add products directly to the cart. Call multiple times for multiple products.
-Parameters: product_id (required), quantity (optional), addon_ids (optional), notes (optional)
-
-## remove_from_cart
-Remove a product from the cart.
-Parameters: product_id (required)
-
-## show_cart
-Display current cart contents.
-Parameters: none
-
-## clear_cart
-Remove all items from cart.
-Parameters: none
-
-## set_delivery_address
-Set delivery address for the order.
-Parameters: address (required)
-
-## set_payment_method
-Set payment method (cash, card, mbway).
-Parameters: method (required)
-
-## finalize_order
-Create the order and complete the transaction.
-Parameters: none
-
-## 🚨 HANDLING ADDONS (CRITICAL):
-
-**ALWAYS check the product''s addon list BEFORE calling add_to_cart!**
+ALWAYS check the product''s addon list BEFORE calling add_to_cart!
 
 ✅ User: "quero uma água com limão"
    → Check: Does Água have "Limão" in its addons list?
@@ -320,10 +320,12 @@ Parameters: none
    
 ✅ User: "água sem gelo"
    → Check: Does Água have "Sem gelo" in its addons list?
-   → NO → add_to_cart(product_id: água-uuid, notes: "sem gelo")',
-    1,
-    false
-  );
+   → NO → add_to_cart(product_id: água-uuid, notes: "sem gelo")
+
+Never add items that don''t exist in the products list - if customer asks for something not available, politely inform them.',
+  1,
+  false
+);
   
   RAISE NOTICE 'Agent prompt blocks seeded successfully!';
   RAISE NOTICE 'Orchestrator ID: %', orchestrator_id;

@@ -218,6 +218,7 @@ serve(async (req) => {
     const stateMetadata = conversationState?.metadata || {};
     const pendingProduct = stateMetadata.pending_product || null;
     const lastShownProduct = stateMetadata.last_shown_product || null;
+    const lastShownProducts = (conversationState?.last_shown_products || []) as Array<{id: string; name: string}>;
 
     // Load customer profile
     const { data: customer } = await supabase
@@ -238,6 +239,7 @@ serve(async (req) => {
     console.log(`[Context] Current state: ${currentState}`);
     console.log(`[Context] Pending product: ${pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'}`);
     console.log(`[Context] Last shown product: ${lastShownProduct ? `${lastShownProduct.name} (ID: ${lastShownProduct.id})` : 'None'}`);
+    console.log(`[Context] Last shown products (search): ${lastShownProducts.length} products`);
     console.log(`[Context] Cart items: ${cartItems.length} items, Total: €${cartTotal.toFixed(2)}`);
     console.log(`[Context] Available products: ${availableProducts.length}`);
     
@@ -530,16 +532,31 @@ serve(async (req) => {
         const mentionsProductByName =
           !!productName && userMessage.includes(productName);
 
-        // 2) orchestrator intent clearly related to products
+        // 2) orchestrator intent clearly related to products (RELAXED)
         const isProductIntent =
           intent === 'browse_product' ||
-          (intent === 'confirm_item' && !!pendingProduct);
+          intent === 'confirm_item' ||
+          intent === 'collect_customer_data' || // Can include products during data collection
+          (confidence >= 0.8 && !!pendingProduct); // High confidence + product detected
 
-        const isExplicitRequest = mentionsProductByName || isProductIntent;
+        // 3) Semantic analysis for explicit requests
+        const userLower = userMessage.toLowerCase();
+        const semanticMatch = 
+          userLower.includes('quero') || 
+          userLower.includes('adiciona') ||
+          userLower.includes('manda') ||
+          userLower.includes('também') ||
+          userLower.includes('mais') ||
+          userLower.includes('coloca');
+
+        const isExplicitRequest = 
+          mentionsProductByName || 
+          isProductIntent ||
+          (semanticMatch && !!pendingProduct && confidence >= 0.7); // Semantic signals + product + reasonable confidence
 
         if (!isExplicitRequest) {
           console.log(
-            '[Tool Validation] ❌ Skipping add_to_cart: no explicit product request or valid confirmation (we rely on orchestrator intent + product context, not static keywords).',
+            `[Tool Validation] ❌ Skipping add_to_cart: no explicit product request (intent=${intent}, confidence=${confidence}, semantic=${semanticMatch})`,
           );
           continue; // ❌ do not execute this add_to_cart
         }
@@ -580,34 +597,40 @@ serve(async (req) => {
     
     console.log(`[Tool Validation] Validated tool calls: ${validatedToolCalls.length} of ${toolCalls.length}`);
     
-    // CRITICAL CHECK: If AI tried to call tools but ALL were rejected by validation
+    // Fallback if ALL tool calls were rejected
     if (toolCalls.length > 0 && validatedToolCalls.length === 0) {
-      console.error('[Tool Validation] ❌ CRITICAL: AI called tools but ALL were rejected by validation');
-      console.error('[Tool Validation] Common causes:');
-      console.error('  - Product ID mismatch in confirm_item intent');
-      console.error('  - Invalid product request without explicit user mention');
-      console.error('  - Tool validation rules blocked all attempted actions');
-      console.error('[Tool Validation] → Aborting execution to prevent misleading success messages');
+      console.error('[Tool Validation] ❌ ALL tools rejected. Generating fallback response...');
+      
+      const fallbackResponse = `Desculpa, não consegui processar o teu pedido corretamente. 😅 Podes tentar de novo mencionando o produto que queres? Por exemplo: "Quero uma Pizza Margherita".`;
+      
+      await supabase.from('messages').insert({
+        restaurant_id: restaurantId,
+        from_number: restaurant.phone,
+        to_number: customerPhone,
+        body: fallbackResponse,
+        direction: 'outbound',
+        timestamp: new Date().toISOString()
+      });
       
       return new Response(
         JSON.stringify({ 
-          success: false, 
-          error: 'Tool validation failed',
-          details: 'AI attempted tool calls but they were rejected by validation rules. No actions were taken.',
-          attempted_tools: toolCalls.length,
-          validated_tools: 0
+          success: true, 
+          message: fallbackResponse,
+          warning: 'Tool validation failed, fallback response generated'
         }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    // ============================================================
+    // STEP 4: EXECUTE VALIDATED TOOL CALLS
+    // ============================================================
     
     console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
     
     let newState = targetState;
     let newMetadata = { ...stateMetadata };
+    const toolResults: any[] = [];
     let finalizeSuccess = false; // Track if finalize_order succeeded
     let cartModified = false; // Track if we need to re-fetch cart data
     
@@ -835,6 +858,49 @@ serve(async (req) => {
             cartModified = true;
             console.log('[Tool] ✅ Cleared cart');
           }
+          break;
+        }
+        
+        case 'search_menu': {
+          const { query, category, max_results = 5 } = args;
+          console.log(`[Tool] 🔍 Searching menu for "${query}" (category: ${category || 'all'}, max: ${max_results})`);
+          
+          // Perform intelligent search with fuzzy matching
+          const results = searchProducts(availableProducts, query, category, max_results);
+          
+          // Save results for positional selection (e.g., "a segunda", "número 3")
+          if (results.length > 0) {
+            await supabase
+              .from('conversation_state')
+              .update({ 
+                last_shown_products: results.map(r => ({
+                  id: r.product.id,
+                  name: r.product.name
+                }))
+              })
+              .eq('user_phone', customerPhone)
+              .eq('restaurant_id', restaurantId);
+            
+            console.log(`[Tool] 💾 Saved ${results.length} products to last_shown_products`);
+          }
+          
+          console.log(`[Tool] ✅ Found ${results.length} results for "${query}"`);
+          
+          toolResults.push({
+            tool_call_id: toolCall.id,
+            output: JSON.stringify({
+              found: results.length > 0,
+              count: results.length,
+              products: results.map(r => ({
+                id: r.product.id,
+                name: r.product.name,
+                price: r.product.price,
+                category: r.product.category,
+                description: r.product.description,
+                similarity: r.similarity
+              }))
+            })
+          });
           break;
         }
       }
@@ -1259,6 +1325,92 @@ function buildSystemPromptFromBlocks(
   }
   
   return blocks.map(block => block.content).join('\n\n');
+}
+
+/**
+ * Intelligent product search with fuzzy matching
+ */
+function searchProducts(
+  products: any[], 
+  query: string, 
+  category?: string, 
+  maxResults: number = 5
+): Array<{ product: any; similarity: number }> {
+  const queryLower = query.toLowerCase().trim();
+  
+  // Filter by category if specified
+  let filtered = category
+    ? products.filter(p => p.category.toLowerCase().includes(category.toLowerCase()))
+    : products;
+  
+  // Calculate similarity for each product
+  const scored = filtered.map(product => {
+    let score = 0;
+    const nameLower = product.name.toLowerCase();
+    const descLower = (product.description || '').toLowerCase();
+    
+    // 1. Exact match (maximum score)
+    if (nameLower === queryLower) {
+      score = 1.0;
+    }
+    // 2. Contains full query
+    else if (nameLower.includes(queryLower)) {
+      score = 0.8;
+    }
+    else if (descLower.includes(queryLower)) {
+      score = 0.6;
+    }
+    // 3. Fuzzy matching (Levenshtein distance)
+    else {
+      const distance = levenshteinDistance(queryLower, nameLower);
+      const maxLen = Math.max(queryLower.length, nameLower.length);
+      score = 1 - (distance / maxLen);
+    }
+    
+    // 4. Word-based matching for multi-word queries
+    const queryWords = queryLower.split(/\s+/);
+    const nameWords = nameLower.split(/\s+/);
+    const matchingWords = queryWords.filter((qw: string) => 
+      nameWords.some((nw: string) => nw.includes(qw) || qw.includes(nw))
+    ).length;
+    
+    if (matchingWords > 0 && score < 0.5) {
+      score = Math.max(score, 0.3 + (matchingWords / queryWords.length) * 0.4);
+    }
+    
+    return { product, similarity: score };
+  });
+  
+  // Sort by score and return top N (with minimum threshold)
+  return scored
+    .filter(s => s.similarity > 0.3)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, maxResults);
+}
+
+/**
+ * Levenshtein distance for fuzzy string matching
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const matrix = Array(b.length + 1).fill(null).map(() => 
+    Array(a.length + 1).fill(null)
+  );
+  
+  for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= b.length; j++) {
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,      // insertion
+        matrix[j - 1][i] + 1,      // deletion
+        matrix[j - 1][i - 1] + cost // substitution
+      );
+    }
+  }
+  
+  return matrix[b.length][a.length];
 }
 
 /**

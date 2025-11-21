@@ -160,6 +160,32 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
         properties: {}
       }
     }
+  },
+  
+  search_menu: {
+    type: "function",
+    function: {
+      name: "search_menu",
+      description: "Search the menu for products by name, category, or description. Use when customer mentions generic terms (e.g., 'uma pizza', 'um doce'), typos (e.g., 'piza', 'briguadeiro'), or you can't find exact match.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search term: product name, category (pizza, doce, bebida), ingredient, or description"
+          },
+          category: {
+            type: "string",
+            description: "Optional: filter by category name to narrow results"
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of results to return (default 5)"
+          }
+        },
+        required: ["query"]
+      }
+    }
   }
 };
 
