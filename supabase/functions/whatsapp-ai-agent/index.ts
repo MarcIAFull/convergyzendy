@@ -319,7 +319,10 @@ serve(async (req) => {
       // Apply orchestration config if present
       const orchestrationConfig = orchestratorAgent.orchestration_config as any;
       if (orchestrationConfig?.intents) {
+        console.log('[Orchestrator] Applying orchestration rules from database config');
         orchestratorSystemPrompt += buildOrchestrationRulesSection(orchestrationConfig.intents);
+      } else {
+        console.log('[Orchestrator] No orchestration config found - using base prompt only');
       }
       
       console.log('[Orchestrator] ✅ Using database-configured prompt with template variables');
@@ -452,13 +455,17 @@ serve(async (req) => {
       
       // Add tool usage rules section
       if (enabledToolsConfig.length > 0) {
+        console.log('[Main AI] Applying tool usage rules from database config');
         conversationalSystemPrompt += buildToolUsageRulesSection(enabledToolsConfig);
       }
       
       // Apply behavior config if present
       const behaviorConfig = conversationalAgent.behavior_config as any;
-      if (behaviorConfig) {
+      if (behaviorConfig && (behaviorConfig.customer_profile || behaviorConfig.pending_products)) {
+        console.log('[Main AI] Applying behavior config from database (customer profile & pending products)');
         conversationalSystemPrompt += buildBehaviorConfigSection(behaviorConfig);
+      } else {
+        console.log('[Main AI] No behavior config found - using base prompt only');
       }
       
       console.log('[Main AI] ✅ Using database-configured prompt with template variables');
@@ -1303,21 +1310,23 @@ function formatHistoryForPrompt(history: any[]): string {
  */
 function buildOrchestrationRulesSection(intents: Record<string, any>): string {
   let section = '\n\n# ORCHESTRATION RULES (FROM DATABASE CONFIG)\n\n';
+  section += 'These rules guide intent classification and state transitions:\n\n';
   
   for (const [intentName, intentConfig] of Object.entries(intents)) {
     section += `## Intent: ${intentName}\n`;
     
     if (intentConfig.decision_hint) {
-      section += `Decision Hint: ${intentConfig.decision_hint}\n`;
+      section += `**When to use**: ${intentConfig.decision_hint}\n`;
     }
     
     if (intentConfig.allowed_tools && intentConfig.allowed_tools.length > 0) {
-      section += `Allowed Tools: ${intentConfig.allowed_tools.join(', ')}\n`;
+      section += `**Allowed tools**: ${intentConfig.allowed_tools.join(', ')}\n`;
     }
     
     section += '\n';
   }
   
+  console.log(`[Orchestration Rules] Injected ${Object.keys(intents).length} intent rules into prompt`);
   return section;
 }
 
@@ -1330,12 +1339,14 @@ function buildToolUsageRulesSection(enabledTools: any[]): string {
   if (toolsWithRules.length === 0) return '';
   
   let section = '\n\n# TOOL USAGE RULES (FROM DATABASE CONFIG)\n\n';
+  section += 'Follow these specific rules when using tools:\n\n';
   
   for (const tool of toolsWithRules) {
-    section += `## ${tool.tool_name}\n`;
+    section += `## Tool: ${tool.tool_name}\n`;
     section += `${tool.usage_rules}\n\n`;
   }
   
+  console.log(`[Tool Usage Rules] Injected usage rules for ${toolsWithRules.length} tools into prompt`);
   return section;
 }
 
@@ -1344,21 +1355,38 @@ function buildToolUsageRulesSection(enabledTools: any[]): string {
  */
 function buildBehaviorConfigSection(behaviorConfig: any): string {
   let section = '\n\n# BEHAVIOR CONFIGURATION (FROM DATABASE)\n\n';
+  let configCount = 0;
   
   if (behaviorConfig.customer_profile) {
     const cp = behaviorConfig.customer_profile;
-    section += '## Customer Profile Behavior\n';
-    section += `- Auto-load profile: ${cp.auto_load ? 'YES' : 'NO'}\n`;
-    section += `- Update name from conversation: ${cp.update_name_from_conversation ? 'YES' : 'NO'}\n`;
-    section += `- Update address on confirmation: ${cp.update_address_on_confirmation ? 'YES' : 'NO'}\n`;
-    section += `- Update payment on confirmation: ${cp.update_payment_on_confirmation ? 'YES' : 'NO'}\n\n`;
+    section += '## Customer Profile Behavior\n\n';
+    section += 'Guidelines for managing customer profile data:\n\n';
+    section += `- **Auto-load profile**: ${cp.auto_load ? 'YES - Load customer data at conversation start' : 'NO - Only load when explicitly needed'}\n`;
+    section += `- **Update name from conversation**: ${cp.update_name_from_conversation ? 'YES - Extract and save customer name when mentioned' : 'NO - Do not update name automatically'}\n`;
+    section += `- **Update address on confirmation**: ${cp.update_address_on_confirmation ? 'YES - Save address when order is confirmed' : 'NO - Do not save address automatically'}\n`;
+    section += `- **Update payment on confirmation**: ${cp.update_payment_on_confirmation ? 'YES - Save payment method when order is confirmed' : 'NO - Do not save payment automatically'}\n\n`;
+    
+    if (cp.update_name_from_conversation || cp.update_address_on_confirmation || cp.update_payment_on_confirmation) {
+      section += `Use the \`update_customer_profile\` tool when these conditions are met.\n\n`;
+    }
+    configCount++;
   }
   
   if (behaviorConfig.pending_products) {
     const pp = behaviorConfig.pending_products;
-    section += '## Pending Products Behavior\n';
-    section += `- Allow multiple pending items: ${pp.allow_multiple ? 'YES' : 'NO'}\n`;
-    section += `- Pending items expire after: ${pp.expiration_minutes || 15} minutes\n\n`;
+    section += '## Pending Products Behavior\n\n';
+    section += 'Guidelines for handling product selection before adding to cart:\n\n';
+    section += `- **Multiple pending items**: ${pp.allow_multiple ? 'YES - Customer can have multiple products pending confirmation' : 'NO - Only one product can be pending at a time'}\n`;
+    section += `- **Expiration time**: Pending items expire after ${pp.expiration_minutes || 15} minutes\n\n`;
+    section += 'Expected flow:\n';
+    section += '1. Use `add_pending_item` when customer shows interest but hasn\'t confirmed\n';
+    section += '2. Use `confirm_pending_items` after explicit customer confirmation\n';
+    section += '3. Use `clear_pending_items` if customer wants to start over\n\n';
+    configCount++;
+  }
+  
+  if (configCount > 0) {
+    console.log(`[Behavior Config] Injected ${configCount} behavior sections into prompt`);
   }
   
   return section;
