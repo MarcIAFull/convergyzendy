@@ -32,19 +32,33 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
   }, []);
 
   const attemptFetch = useCallback(async () => {
-    console.log('[useRestaurantGuard] 🚀 Attempting fetch, retry:', retryCount);
+    console.log('[useRestaurantGuard] 🚀 attemptFetch called', {
+      retryCount,
+      currentAttempt: retryCount + 1,
+      maxRetries: MAX_RETRIES,
+      timestamp: new Date().toISOString()
+    });
+    
     try {
+      console.log('[useRestaurantGuard] 📞 Calling fetchRestaurant()...');
       await fetchRestaurant();
+      console.log('[useRestaurantGuard] ✅ fetchRestaurant() completed successfully');
     } catch (error) {
-      console.error('[useRestaurantGuard] ❌ Fetch failed:', error);
+      console.error('[useRestaurantGuard] ❌ fetchRestaurant() failed:', {
+        error: error instanceof Error ? error.message : error,
+        retryCount,
+        willRetry: retryCount < MAX_RETRIES - 1
+      });
       
       if (retryCount < MAX_RETRIES - 1) {
         const delay = RETRY_DELAYS[retryCount];
-        console.log(`[useRestaurantGuard] 🔄 Retrying in ${delay}ms...`);
+        console.log(`[useRestaurantGuard] 🔄 Scheduling retry ${retryCount + 2} in ${delay}ms...`);
         setTimeout(() => {
+          console.log('[useRestaurantGuard] ⏰ Executing retry, incrementing retry count');
           setRetryCount(prev => prev + 1);
         }, delay);
       } else {
+        console.error('[useRestaurantGuard] 🚫 Max retries reached, setting error');
         setLocalError('Falha ao carregar dados do restaurante após múltiplas tentativas');
       }
     }
@@ -52,42 +66,69 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
 
   // Main effect: handle authentication and restaurant fetch
   useEffect(() => {
+    console.log('[useRestaurantGuard] 🔄 useEffect triggered with state:', {
+      authLoading,
+      hasUser: !!user,
+      hasSession: !!session?.access_token,
+      hasRestaurant: !!restaurant,
+      restaurantLoading,
+      restaurantError,
+      localError,
+      hasTimedOut,
+      retryCount,
+      isReady,
+      timestamp: new Date().toISOString()
+    });
+
     // Reset ready state when dependencies change
     setIsReady(false);
 
     // Wait for auth to complete
     if (authLoading) {
-      console.log('[useRestaurantGuard] ⏳ Waiting for auth...');
+      console.log('[useRestaurantGuard] ⏳ BRANCH: Waiting for auth...');
       return;
     }
 
     // No user or session - redirect to login
     if (!user || !session?.access_token) {
-      console.log('[useRestaurantGuard] 🚪 No auth, redirecting to login');
+      console.log('[useRestaurantGuard] 🚪 BRANCH: No auth, redirecting to login');
       navigate('/login', { replace: true });
       return;
     }
 
     // User authenticated but no restaurant loaded yet
     if (!restaurant && !restaurantLoading && !restaurantError && !localError && !hasTimedOut) {
-      console.log('[useRestaurantGuard] 🔍 Authenticated, fetching restaurant...');
+      console.log('[useRestaurantGuard] 🔍 BRANCH: Authenticated, fetching restaurant...', {
+        willCallAttemptFetch: true,
+        retryCount
+      });
       attemptFetch();
       return;
     }
 
     // Restaurant loaded successfully
     if (restaurant && !restaurantLoading) {
-      console.log('[useRestaurantGuard] ✅ Restaurant loaded, ready!');
+      console.log('[useRestaurantGuard] ✅ BRANCH: Restaurant loaded, marking ready!', {
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name
+      });
       setIsReady(true);
       return;
     }
 
     // No restaurant after successful fetch - needs onboarding
     if (!restaurant && !restaurantLoading && retryCount >= MAX_RETRIES - 1) {
-      console.log('[useRestaurantGuard] 🚪 No restaurant after retries, redirecting to onboarding');
+      console.log('[useRestaurantGuard] 🚪 BRANCH: No restaurant after retries, redirecting to onboarding');
       navigate('/onboarding', { replace: true });
       return;
     }
+
+    console.log('[useRestaurantGuard] ⚠️ BRANCH: No condition matched, doing nothing', {
+      restaurant: !!restaurant,
+      restaurantLoading,
+      retryCount,
+      maxRetries: MAX_RETRIES
+    });
   }, [
     user, 
     session, 
