@@ -11,7 +11,6 @@ import { Check, Loader2 } from 'lucide-react';
 import RestaurantInfoStep from '@/components/onboarding/RestaurantInfoStep';
 import MenuSetupStep from '@/components/onboarding/MenuSetupStep';
 import WhatsAppSetupStep from '@/components/onboarding/WhatsAppSetupStep';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 type Step = 'restaurant' | 'menu' | 'whatsapp';
 
@@ -23,83 +22,35 @@ const Onboarding = () => {
   const [currentStep, setCurrentStep] = useState<Step>('restaurant');
   const [completedSteps, setCompletedSteps] = useState<Step[]>([]);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
-  const [checkingOrphanRestaurants, setCheckingOrphanRestaurants] = useState(true);
-  const [orphanRestaurant, setOrphanRestaurant] = useState<any>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
 
-  // Check for orphan restaurants on mount
+  // Check if user already has a restaurant on mount
   useEffect(() => {
-    checkForOrphanRestaurants();
+    checkExistingRestaurant();
   }, []);
 
-  const checkForOrphanRestaurants = async () => {
-    if (!user) return;
+  const checkExistingRestaurant = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
 
     try {
-      // Check if user already has a restaurant
-      const { data: existingOwnership } = await supabase
+      const { data: ownership } = await supabase
         .from('restaurant_owners')
         .select('restaurant_id')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (existingOwnership) {
+      if (ownership) {
         // User already has a restaurant, redirect to dashboard
         await fetchRestaurant();
         navigate('/');
-        return;
-      }
-
-      // Check for orphan restaurants (restaurants without owners)
-      const { data: allRestaurants } = await supabase
-        .from('restaurants')
-        .select('id, name, phone, address')
-        .limit(10);
-
-      if (allRestaurants && allRestaurants.length > 0) {
-        // Check which ones don't have owners
-        const { data: allOwnerships } = await supabase
-          .from('restaurant_owners')
-          .select('restaurant_id');
-
-        const ownedRestaurantIds = new Set(allOwnerships?.map(o => o.restaurant_id) || []);
-        const orphans = allRestaurants.filter(r => !ownedRestaurantIds.has(r.id));
-
-        if (orphans.length > 0) {
-          // Found orphan restaurant, offer to associate
-          setOrphanRestaurant(orphans[0]);
-        }
       }
     } catch (error) {
-      console.error('Error checking for orphan restaurants:', error);
+      console.error('Error checking existing restaurant:', error);
     } finally {
-      setCheckingOrphanRestaurants(false);
-    }
-  };
-
-  const handleClaimOrphanRestaurant = async () => {
-    if (!user || !orphanRestaurant) return;
-
-    try {
-      setCheckingOrphanRestaurants(true);
-
-      // Create owner association
-      const { error } = await supabase
-        .from('restaurant_owners')
-        .insert({
-          user_id: user.id,
-          restaurant_id: orphanRestaurant.id,
-          role: 'owner',
-        });
-
-      if (error) throw error;
-
-      toast.success(`Restaurante "${orphanRestaurant.name}" associado com sucesso!`);
-      await fetchRestaurant();
-      navigate('/');
-    } catch (error: any) {
-      console.error('Error claiming orphan restaurant:', error);
-      toast.error(error.message || 'Erro ao associar restaurante');
-      setCheckingOrphanRestaurants(false);
+      setCheckingExisting(false);
     }
   };
 
@@ -282,8 +233,8 @@ const Onboarding = () => {
     }
   };
 
-  // Show loading while checking for orphan restaurants
-  if (checkingOrphanRestaurants) {
+  // Show loading while checking for existing restaurant
+  if (checkingExisting) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
@@ -293,57 +244,9 @@ const Onboarding = () => {
               <div>
                 <h3 className="text-lg font-semibold">Verificando configuração...</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Aguarde enquanto verificamos seu perfil
+                  Aguarde um momento
                 </p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show orphan restaurant claim option
-  if (orphanRestaurant) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-2xl">
-          <CardHeader>
-            <CardTitle>Restaurante Encontrado!</CardTitle>
-            <CardDescription>
-              Encontramos um restaurante já cadastrado no sistema. Gostaria de gerenciá-lo?
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Alert>
-              <AlertDescription>
-                <div className="space-y-2">
-                  <p className="font-semibold text-base">{orphanRestaurant.name}</p>
-                  <div className="text-sm space-y-1">
-                    <p><span className="text-muted-foreground">Telefone:</span> {orphanRestaurant.phone}</p>
-                    <p><span className="text-muted-foreground">Endereço:</span> {orphanRestaurant.address}</p>
-                  </div>
-                </div>
-              </AlertDescription>
-            </Alert>
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setOrphanRestaurant(null);
-                  setCheckingOrphanRestaurants(false);
-                }}
-                className="flex-1"
-              >
-                Criar Novo Restaurante
-              </Button>
-              <Button
-                onClick={handleClaimOrphanRestaurant}
-                className="flex-1"
-              >
-                Usar Este Restaurante
-              </Button>
             </div>
           </CardContent>
         </Card>

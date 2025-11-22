@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
@@ -22,14 +22,44 @@ import {
 const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
-  const { fetchRestaurant } = useRestaurantStore();
+  const { restaurant, loading, fetchRestaurant } = useRestaurantStore();
   const { signOut } = useAuth();
+  const navigate = useNavigate();
 
-  // Load restaurant on mount
+  // Load restaurant on mount and redirect to onboarding if not found
   useEffect(() => {
-    console.log('[DashboardLayout] Initializing - fetching restaurant');
-    fetchRestaurant();
+    const loadRestaurant = async () => {
+      console.log('[DashboardLayout] Fetching restaurant...');
+      await fetchRestaurant();
+    };
+    
+    loadRestaurant();
   }, [fetchRestaurant]);
+
+  // Redirect to onboarding if no restaurant after loading completes
+  useEffect(() => {
+    if (!loading && restaurant === null) {
+      console.log('[DashboardLayout] No restaurant found after loading, redirecting to onboarding');
+      navigate('/onboarding', { replace: true });
+    }
+  }, [loading, restaurant, navigate]);
+
+  // Show loading state while checking for restaurant
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando restaurante...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no restaurant (will redirect)
+  if (!restaurant) {
+    return null;
+  }
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
