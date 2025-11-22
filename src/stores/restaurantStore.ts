@@ -20,52 +20,99 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   error: null,
 
   fetchRestaurant: async () => {
-    console.log('[RestaurantStore] Fetching restaurant...');
+    console.log('[RestaurantStore] 🔄 Starting fetchRestaurant...');
     set({ loading: true, error: null });
     try {
-      // Get current user
+      // Step 1: Get authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
+      console.log('[RestaurantStore] 👤 User fetch result:', { 
+        userId: user?.id, 
+        userEmail: user?.email,
+        error: userError?.message 
+      });
       
-      if (userError || !user) {
-        console.log('[RestaurantStore] No authenticated user');
+      if (userError) {
+        console.error('[RestaurantStore] ❌ User error:', userError);
         set({ restaurant: null, loading: false });
         return;
       }
 
-      // Get restaurant(s) for this user via restaurant_owners
+      if (!user) {
+        console.log('[RestaurantStore] ⚠️ No user found - user not authenticated');
+        set({ loading: false, restaurant: null });
+        return;
+      }
+
+      console.log('[RestaurantStore] 🔍 Querying restaurant_owners for user:', user.id);
+
+      // Step 2: Get restaurant via restaurant_owners
       const { data: ownership, error: ownershipError } = await supabase
         .from('restaurant_owners')
         .select('restaurant_id')
         .eq('user_id', user.id)
         .maybeSingle();
+      
+      console.log('[RestaurantStore] 📊 Ownership query result:', { 
+        hasData: !!ownership, 
+        restaurantId: ownership?.restaurant_id,
+        error: ownershipError?.message,
+        errorCode: ownershipError?.code,
+        errorDetails: ownershipError?.details
+      });
 
       if (ownershipError) {
-        console.error('[RestaurantStore] Error fetching ownership:', ownershipError);
+        console.error('[RestaurantStore] ❌ Error fetching ownership:', {
+          message: ownershipError.message,
+          code: ownershipError.code,
+          details: ownershipError.details,
+          hint: ownershipError.hint
+        });
         throw ownershipError;
       }
 
       if (!ownership) {
-        console.log('[RestaurantStore] User has no restaurant');
+        console.log('[RestaurantStore] ⚠️ No restaurant ownership found for user - needs onboarding');
         set({ restaurant: null, loading: false });
         return;
       }
 
-      // Fetch restaurant data
+      console.log('[RestaurantStore] 🔍 Fetching restaurant data for ID:', ownership.restaurant_id);
+
+      // Step 3: Fetch restaurant data
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .select('*')
         .eq('id', ownership.restaurant_id)
         .single();
+      
+      console.log('[RestaurantStore] 📊 Restaurant query result:', {
+        hasData: !!restaurant,
+        restaurantName: restaurant?.name,
+        error: restaurantError?.message,
+        errorCode: restaurantError?.code
+      });
 
       if (restaurantError) {
-        console.error('[RestaurantStore] Error fetching restaurant:', restaurantError);
+        console.error('[RestaurantStore] ❌ Error fetching restaurant:', {
+          message: restaurantError.message,
+          code: restaurantError.code,
+          details: restaurantError.details,
+          hint: restaurantError.hint
+        });
         throw restaurantError;
       }
 
-      console.log('[RestaurantStore] Restaurant loaded:', restaurant);
+      console.log('[RestaurantStore] ✅ Restaurant fetched successfully:', {
+        id: restaurant.id,
+        name: restaurant.name
+      });
       set({ restaurant: restaurant as unknown as Restaurant, loading: false });
     } catch (error) {
-      console.error('[RestaurantStore] Failed to fetch restaurant:', error);
+      console.error('[RestaurantStore] ❌ Fetch restaurant error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        name: error instanceof Error ? error.name : undefined,
+        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined
+      });
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch restaurant',
         loading: false 
