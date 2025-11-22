@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useRestaurantStore } from "@/stores/restaurantStore";
+import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import {
   LayoutDashboard,
@@ -22,6 +23,7 @@ const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { fetchRestaurant } = useRestaurantStore();
+  const { signOut } = useAuth();
 
   // Load restaurant on mount
   useEffect(() => {
@@ -67,7 +69,12 @@ const DashboardLayout = () => {
                 <Moon className="h-5 w-5" />
               )}
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={signOut}
+              title="Sair"
+            >
               <LogOut className="h-5 w-5" />
             </Button>
           </div>

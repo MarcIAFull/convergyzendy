@@ -23,26 +23,47 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     console.log('[RestaurantStore] Fetching restaurant...');
     set({ loading: true, error: null });
     try {
-      // For single-tenant MVP, just get the first restaurant
-      const { data, error } = await supabase
-        .from('restaurants')
-        .select('*')
-        .limit(1)
-        .maybeSingle(); // Use maybeSingle to avoid error when no rows exist
-
-      if (error) {
-        console.error('[RestaurantStore] Error fetching restaurant:', error);
-        throw error;
-      }
-
-      if (!data) {
-        console.log('[RestaurantStore] No restaurant found');
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.log('[RestaurantStore] No authenticated user');
         set({ restaurant: null, loading: false });
         return;
       }
 
-      console.log('[RestaurantStore] Restaurant loaded:', data);
-      set({ restaurant: data as unknown as Restaurant, loading: false });
+      // Get restaurant(s) for this user via restaurant_owners
+      const { data: ownership, error: ownershipError } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (ownershipError) {
+        console.error('[RestaurantStore] Error fetching ownership:', ownershipError);
+        throw ownershipError;
+      }
+
+      if (!ownership) {
+        console.log('[RestaurantStore] User has no restaurant');
+        set({ restaurant: null, loading: false });
+        return;
+      }
+
+      // Fetch restaurant data
+      const { data: restaurant, error: restaurantError } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', ownership.restaurant_id)
+        .single();
+
+      if (restaurantError) {
+        console.error('[RestaurantStore] Error fetching restaurant:', restaurantError);
+        throw restaurantError;
+      }
+
+      console.log('[RestaurantStore] Restaurant loaded:', restaurant);
+      set({ restaurant: restaurant as unknown as Restaurant, loading: false });
     } catch (error) {
       console.error('[RestaurantStore] Failed to fetch restaurant:', error);
       set({ 

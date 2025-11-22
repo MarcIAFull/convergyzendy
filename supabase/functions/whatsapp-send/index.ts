@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { sendWhatsAppMessage } from "../_shared/evolutionClient.ts";
+import { validateRestaurantAccess, unauthorizedResponse } from "../_shared/authMiddleware.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +36,22 @@ serve(async (req) => {
         }
       );
     }
+
+    // Validate authentication and restaurant access
+    const authHeader = req.headers.get('Authorization');
+    const authResult = await validateRestaurantAccess(
+      supabaseUrl,
+      supabaseKey,
+      authHeader,
+      restaurantId
+    );
+
+    if (!authResult.authorized) {
+      console.error('[WhatsAppSend] Authorization failed:', authResult.error);
+      return unauthorizedResponse(authResult.error || 'Unauthorized', corsHeaders);
+    }
+
+    console.log(`[WhatsAppSend] User ${authResult.userId} authorized for restaurant ${restaurantId}`);
 
     // Get restaurant details
     const { data: restaurant, error: restaurantError } = await supabase

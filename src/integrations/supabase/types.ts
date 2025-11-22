@@ -717,6 +717,38 @@ export type Database = {
           },
         ]
       }
+      restaurant_owners: {
+        Row: {
+          created_at: string | null
+          id: string
+          restaurant_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          restaurant_id: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          restaurant_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_owners_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           address: string
@@ -791,6 +823,10 @@ export type Database = {
           minutes_since_activity: number
           user_phone: string
         }[]
+      }
+      user_has_restaurant_access: {
+        Args: { _restaurant_id: string }
+        Returns: boolean
       }
     }
     Enums: {
