@@ -23,45 +23,78 @@ const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { restaurant, loading, fetchRestaurant } = useRestaurantStore();
-  const { signOut } = useAuth();
+  const { user, session, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Load restaurant once on mount
+  // Wait for auth to initialize, then fetch restaurant
   useEffect(() => {
-    if (!hasInitialized) {
-      console.log('[DashboardLayout] Initializing - fetching restaurant...');
-      fetchRestaurant().finally(() => {
-        setHasInitialized(true);
-      });
+    console.log('[DashboardLayout] 🔄 Auth state changed:', { 
+      user: user?.id, 
+      authLoading, 
+      session: !!session 
+    });
+
+    // Don't do anything while auth is loading
+    if (authLoading) {
+      console.log('[DashboardLayout] ⏳ Waiting for auth initialization...');
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasInitialized]);
 
-  // Redirect to onboarding if no restaurant after initialization
+    // If no user after auth loads, redirect to login
+    if (!user || !session) {
+      console.log('[DashboardLayout] ⚠️ No user/session - redirecting to login');
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    // User is authenticated, fetch restaurant
+    console.log('[DashboardLayout] ✅ Auth ready - fetching restaurant data');
+    fetchRestaurant();
+  }, [user, session, authLoading, fetchRestaurant, navigate]);
+
+  // Redirect to onboarding if no restaurant after loading
   useEffect(() => {
-    if (hasInitialized && !loading && restaurant === null) {
-      console.log('[DashboardLayout] No restaurant found, redirecting to onboarding');
+    console.log('[DashboardLayout] 🔍 Restaurant status check:', { 
+      loading, 
+      hasRestaurant: !!restaurant,
+      authLoading 
+    });
+
+    // Don't redirect while still loading
+    if (loading || authLoading) {
+      console.log('[DashboardLayout] ⏳ Still loading...');
+      return;
+    }
+
+    // If authenticated but no restaurant, go to onboarding
+    if (!restaurant && user && !loading) {
+      console.log('[DashboardLayout] ➡️ No restaurant found - redirecting to onboarding');
       navigate('/onboarding', { replace: true });
     }
-  }, [hasInitialized, loading, restaurant, navigate]);
+  }, [loading, restaurant, authLoading, user, navigate]);
 
-  // Show loading state while initializing
-  if (!hasInitialized || loading) {
+  // Show loading state
+  if (authLoading || loading) {
+    console.log('[DashboardLayout] 🔄 Rendering loading state');
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando restaurante...</p>
+          <p className="text-muted-foreground">
+            {authLoading ? 'Verificando autenticação...' : 'Carregando restaurante...'}
+          </p>
         </div>
       </div>
     );
   }
 
-  // Don't render if no restaurant (will redirect)
+  // Don't render dashboard if no restaurant (will redirect)
   if (!restaurant) {
+    console.log('[DashboardLayout] ⚠️ No restaurant - returning null (will redirect)');
     return null;
   }
+
+  console.log('[DashboardLayout] ✅ Rendering dashboard for restaurant:', restaurant.name);
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
