@@ -25,13 +25,15 @@ const DashboardLayout = () => {
   const { restaurant, loading, fetchRestaurant } = useRestaurantStore();
   const { user, session, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [hasFetched, setHasFetched] = useState(false);
 
-  // Wait for auth to initialize, then fetch restaurant
+  // Wait for auth to initialize, then fetch restaurant once
   useEffect(() => {
     console.log('[DashboardLayout] 🔄 Auth state changed:', { 
       user: user?.id, 
       authLoading, 
-      session: !!session 
+      session: !!session,
+      hasFetched 
     });
 
     // Don't do anything while auth is loading
@@ -47,15 +49,18 @@ const DashboardLayout = () => {
       return;
     }
 
-    // User is authenticated with valid token, add small delay to ensure JWT is applied
-    console.log('[DashboardLayout] ✅ Auth ready with token - scheduling restaurant fetch');
-    const timer = setTimeout(() => {
-      console.log('[DashboardLayout] 🚀 Fetching restaurant data after auth stabilization');
-      fetchRestaurant();
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, [user, session, authLoading, fetchRestaurant, navigate]);
+    // Only fetch once when auth is ready
+    if (!hasFetched && !loading && !restaurant) {
+      console.log('[DashboardLayout] ✅ Auth ready with token - scheduling restaurant fetch');
+      setHasFetched(true);
+      const timer = setTimeout(() => {
+        console.log('[DashboardLayout] 🚀 Fetching restaurant data after auth stabilization');
+        fetchRestaurant();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [user, session, authLoading, navigate, hasFetched, loading, restaurant, fetchRestaurant]);
 
   // Redirect to onboarding if no restaurant after loading
   useEffect(() => {
