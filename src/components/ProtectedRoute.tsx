@@ -10,10 +10,10 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const [hasCheckedRestaurant, setHasCheckedRestaurant] = useState(false);
 
   useEffect(() => {
-    if (user && !hasCheckedRestaurant && !restaurantLoading) {
+    if (user && !hasCheckedRestaurant) {
       fetchRestaurant().finally(() => setHasCheckedRestaurant(true));
     }
-  }, [user, hasCheckedRestaurant, restaurantLoading, fetchRestaurant]);
+  }, [user, hasCheckedRestaurant, fetchRestaurant]);
 
   // Show loading spinner while checking auth
   if (authLoading || (user && !hasCheckedRestaurant)) {
