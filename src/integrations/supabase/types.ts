@@ -147,6 +147,7 @@ export type Database = {
           name: string
           orchestration_config: Json | null
           presence_penalty: number | null
+          recovery_config: Json | null
           temperature: number
           top_p: number | null
           type: string
@@ -164,6 +165,7 @@ export type Database = {
           name: string
           orchestration_config?: Json | null
           presence_penalty?: number | null
+          recovery_config?: Json | null
           temperature?: number
           top_p?: number | null
           type: string
@@ -181,6 +183,7 @@ export type Database = {
           name?: string
           orchestration_config?: Json | null
           presence_penalty?: number | null
+          recovery_config?: Json | null
           temperature?: number
           top_p?: number | null
           type?: string
@@ -335,6 +338,97 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "categories_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_recovery_attempts: {
+        Row: {
+          attempt_number: number | null
+          cart_id: string | null
+          cart_value: number | null
+          conversation_state_id: string | null
+          created_at: string | null
+          customer_name: string | null
+          id: string
+          items_count: number | null
+          last_state: string | null
+          max_attempts: number | null
+          message_sent: string | null
+          metadata: Json | null
+          recovered_at: string | null
+          recovery_type: string
+          restaurant_id: string
+          scheduled_for: string
+          sent_at: string | null
+          status: string | null
+          updated_at: string | null
+          user_phone: string
+        }
+        Insert: {
+          attempt_number?: number | null
+          cart_id?: string | null
+          cart_value?: number | null
+          conversation_state_id?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          id?: string
+          items_count?: number | null
+          last_state?: string | null
+          max_attempts?: number | null
+          message_sent?: string | null
+          metadata?: Json | null
+          recovered_at?: string | null
+          recovery_type: string
+          restaurant_id: string
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_phone: string
+        }
+        Update: {
+          attempt_number?: number | null
+          cart_id?: string | null
+          cart_value?: number | null
+          conversation_state_id?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          id?: string
+          items_count?: number | null
+          last_state?: string | null
+          max_attempts?: number | null
+          message_sent?: string | null
+          metadata?: Json | null
+          recovered_at?: string | null
+          recovery_type?: string
+          restaurant_id?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_recovery_attempts_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_recovery_attempts_conversation_state_id_fkey"
+            columns: ["conversation_state_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_state"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_recovery_attempts_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -664,7 +758,37 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      detect_abandoned_carts: {
+        Args: { p_delay_minutes?: number; p_restaurant_id: string }
+        Returns: {
+          cart_id: string
+          cart_value: number
+          customer_name: string
+          items_count: number
+          minutes_since_activity: number
+          user_phone: string
+        }[]
+      }
+      detect_inactive_customers: {
+        Args: { p_delay_days?: number; p_restaurant_id: string }
+        Returns: {
+          customer_name: string
+          days_since_last_order: number
+          order_count: number
+          preferred_items: Json
+          user_phone: string
+        }[]
+      }
+      detect_paused_conversations: {
+        Args: { p_delay_minutes?: number; p_restaurant_id: string }
+        Returns: {
+          conversation_state_id: string
+          customer_name: string
+          last_state: string
+          minutes_since_activity: number
+          user_phone: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

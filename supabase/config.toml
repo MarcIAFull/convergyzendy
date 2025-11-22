@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.evolution-connect]
 verify_jwt = false
+
+[functions.conversation-recovery]
+verify_jwt = false
