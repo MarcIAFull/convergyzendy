@@ -35,7 +35,8 @@ const DashboardLayout = () => {
         setHasInitialized(true);
       });
     }
-  }, [hasInitialized, fetchRestaurant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasInitialized]);
 
   // Redirect to onboarding if no restaurant after initialization
   useEffect(() => {
