@@ -1,10 +1,9 @@
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
-import { useRestaurantStore } from "@/stores/restaurantStore";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect, useState } from "react";
+import { useRestaurantGuard } from "@/hooks/useRestaurantGuard";
 import {
   LayoutDashboard,
   Menu,
@@ -22,89 +21,60 @@ import {
 const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
-  const { restaurant, loading, fetchRestaurant } = useRestaurantStore();
-  const { user, session, loading: authLoading, signOut } = useAuth();
-  const navigate = useNavigate();
-  const [hasFetched, setHasFetched] = useState(false);
+  const { signOut } = useAuth();
+  const { loading, error, ready, retry } = useRestaurantGuard();
 
-  // Wait for auth to initialize, then fetch restaurant once
-  useEffect(() => {
-    console.log('[DashboardLayout] 🔄 Auth state changed:', { 
-      user: user?.id, 
-      authLoading, 
-      session: !!session,
-      hasFetched 
-    });
-
-    // Don't do anything while auth is loading
-    if (authLoading) {
-      console.log('[DashboardLayout] ⏳ Waiting for auth initialization...');
-      return;
-    }
-
-    // If no user or no valid session token after auth loads, redirect to login
-    if (!user || !session?.access_token) {
-      console.log('[DashboardLayout] ⚠️ No user/session or missing access_token - redirecting to login');
-      navigate('/login', { replace: true });
-      return;
-    }
-
-    // Only fetch once when auth is ready
-    if (!hasFetched && !loading && !restaurant) {
-      console.log('[DashboardLayout] ✅ Auth ready with token - scheduling restaurant fetch');
-      setHasFetched(true);
-      const timer = setTimeout(() => {
-        console.log('[DashboardLayout] 🚀 Fetching restaurant data after auth stabilization');
-        fetchRestaurant();
-      }, 100);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [user, session, authLoading, navigate, hasFetched, loading, restaurant, fetchRestaurant]);
-
-  // Redirect to onboarding if no restaurant after loading
-  useEffect(() => {
-    console.log('[DashboardLayout] 🔍 Restaurant status check:', { 
-      loading, 
-      hasRestaurant: !!restaurant,
-      authLoading 
-    });
-
-    // Don't redirect while still loading
-    if (loading || authLoading) {
-      console.log('[DashboardLayout] ⏳ Still loading...');
-      return;
-    }
-
-    // If authenticated but no restaurant, go to onboarding
-    if (!restaurant && user && !loading) {
-      console.log('[DashboardLayout] ➡️ No restaurant found - redirecting to onboarding');
-      navigate('/onboarding', { replace: true });
-    }
-  }, [loading, restaurant, authLoading, user, navigate]);
-
-  // Show loading state
-  if (authLoading || loading) {
-    console.log('[DashboardLayout] 🔄 Rendering loading state');
+  // Loading state
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">
-            {authLoading ? 'Verificando autenticação...' : 'Carregando restaurante...'}
-          </p>
+          <p className="text-muted-foreground">Carregando dados do restaurante...</p>
         </div>
       </div>
     );
   }
 
-  // Don't render dashboard if no restaurant (will redirect)
-  if (!restaurant) {
-    console.log('[DashboardLayout] ⚠️ No restaurant - returning null (will redirect)');
-    return null;
+  // Error state with retry
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="mb-4 text-destructive">
+            <svg
+              className="h-16 w-16 mx-auto mb-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold mb-2 text-foreground">Erro ao carregar dados</h2>
+          <p className="text-muted-foreground mb-6">{error}</p>
+          <div className="space-y-3">
+            <Button onClick={retry} className="w-full">
+              Tentar novamente
+            </Button>
+            <Button onClick={signOut} variant="outline" className="w-full">
+              Fazer logout
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  console.log('[DashboardLayout] ✅ Rendering dashboard for restaurant:', restaurant.name);
+  // Not ready (will redirect automatically)
+  if (!ready) {
+    return null;
+  }
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },

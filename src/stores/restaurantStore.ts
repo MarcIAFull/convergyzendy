@@ -1,32 +1,6 @@
 import { create } from 'zustand';
-import { supabase, waitForAuth } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import type { Restaurant } from '@/types/database';
-
-// Retry logic with exponential backoff for RLS race conditions
-const retryWithBackoff = async <T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  delay = 500
-): Promise<T> => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      const isRLSError = error.code === 'PGRST301' || 
-                         error.message?.toLowerCase().includes('policy') ||
-                         error.message?.toLowerCase().includes('permission');
-      
-      if (isRLSError && i < maxRetries - 1) {
-        const waitTime = delay * (i + 1);
-        console.log(`[RetryLogic] 🔄 Attempt ${i + 1} failed with RLS error, retrying in ${waitTime}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error('Retry logic failed - should not reach here');
-};
 
 interface RestaurantState {
   restaurant: Restaurant | null;
@@ -49,116 +23,56 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     console.log('[RestaurantStore] 🔄 Starting fetchRestaurant...');
     set({ loading: true, error: null });
     try {
-      // Step 0: Wait for auth to be ready (JWT token available)
-      const authReady = await waitForAuth();
-      if (!authReady) {
-        console.error('[RestaurantStore] ❌ Auth not ready after timeout');
-        set({ loading: false, restaurant: null });
-        return;
-      }
-
-      // Step 1: Get authenticated user with retry
-      const { data: { user }, error: userError } = await retryWithBackoff(() => 
-        supabase.auth.getUser()
-      );
-      console.log('[RestaurantStore] 👤 User fetch result:', { 
-        userId: user?.id, 
-        userEmail: user?.email,
-        error: userError?.message 
-      });
+      // Get authenticated user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (userError) {
-        console.error('[RestaurantStore] ❌ User error:', userError);
+      if (userError || !user) {
+        console.error('[RestaurantStore] ❌ No authenticated user');
         set({ restaurant: null, loading: false });
         return;
       }
 
-      if (!user) {
-        console.log('[RestaurantStore] ⚠️ No user found - user not authenticated');
-        set({ loading: false, restaurant: null });
-        return;
-      }
+      console.log('[RestaurantStore] 🔍 Fetching restaurant for user:', user.id);
 
-      console.log('[RestaurantStore] 🔍 Querying restaurant_owners for user:', user.id);
-
-      // Step 2: Get restaurant via restaurant_owners with retry
-      const { data: ownership, error: ownershipError } = await retryWithBackoff(async () => {
-        const result = await supabase
-          .from('restaurant_owners')
-          .select('restaurant_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        return result;
-      });
-      
-      console.log('[RestaurantStore] 📊 Ownership query result:', { 
-        hasData: !!ownership, 
-        restaurantId: ownership?.restaurant_id,
-        error: ownershipError?.message,
-        errorCode: ownershipError?.code,
-        errorDetails: ownershipError?.details
-      });
+      // Get restaurant via restaurant_owners
+      const { data: ownership, error: ownershipError } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
       if (ownershipError) {
-        console.error('[RestaurantStore] ❌ Error fetching ownership:', {
-          message: ownershipError.message,
-          code: ownershipError.code,
-          details: ownershipError.details,
-          hint: ownershipError.hint
-        });
+        console.error('[RestaurantStore] ❌ Ownership query error:', ownershipError);
         throw ownershipError;
       }
 
       if (!ownership) {
-        console.log('[RestaurantStore] ⚠️ No restaurant ownership found for user - needs onboarding');
+        console.log('[RestaurantStore] ⚠️ No restaurant ownership found');
         set({ restaurant: null, loading: false });
         return;
       }
 
-      console.log('[RestaurantStore] 🔍 Fetching restaurant data for ID:', ownership.restaurant_id);
-
-      // Step 3: Fetch restaurant data with retry
-      const { data: restaurant, error: restaurantError } = await retryWithBackoff(async () => {
-        const result = await supabase
-          .from('restaurants')
-          .select('*')
-          .eq('id', ownership.restaurant_id)
-          .single();
-        return result;
-      });
-      
-      console.log('[RestaurantStore] 📊 Restaurant query result:', {
-        hasData: !!restaurant,
-        restaurantName: restaurant?.name,
-        error: restaurantError?.message,
-        errorCode: restaurantError?.code
-      });
+      // Fetch restaurant data
+      const { data: restaurant, error: restaurantError } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', ownership.restaurant_id)
+        .single();
 
       if (restaurantError) {
-        console.error('[RestaurantStore] ❌ Error fetching restaurant:', {
-          message: restaurantError.message,
-          code: restaurantError.code,
-          details: restaurantError.details,
-          hint: restaurantError.hint
-        });
+        console.error('[RestaurantStore] ❌ Restaurant query error:', restaurantError);
         throw restaurantError;
       }
 
-      console.log('[RestaurantStore] ✅ Restaurant fetched successfully:', {
-        id: restaurant.id,
-        name: restaurant.name
-      });
+      console.log('[RestaurantStore] ✅ Restaurant loaded:', restaurant.name);
       set({ restaurant: restaurant as unknown as Restaurant, loading: false });
     } catch (error) {
-      console.error('[RestaurantStore] ❌ Fetch restaurant error:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        name: error instanceof Error ? error.name : undefined,
-        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined
-      });
+      console.error('[RestaurantStore] ❌ Fetch failed:', error);
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch restaurant',
         loading: false 
       });
+      throw error;
     }
   },
 
