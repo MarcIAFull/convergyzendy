@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useRestaurantStore } from "@/stores/restaurantStore";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Menu,
@@ -25,27 +25,28 @@ const DashboardLayout = () => {
   const { restaurant, loading, fetchRestaurant } = useRestaurantStore();
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Load restaurant on mount and redirect to onboarding if not found
+  // Load restaurant once on mount
   useEffect(() => {
-    const loadRestaurant = async () => {
-      console.log('[DashboardLayout] Fetching restaurant...');
-      await fetchRestaurant();
-    };
-    
-    loadRestaurant();
-  }, [fetchRestaurant]);
+    if (!hasInitialized) {
+      console.log('[DashboardLayout] Initializing - fetching restaurant...');
+      fetchRestaurant().finally(() => {
+        setHasInitialized(true);
+      });
+    }
+  }, [hasInitialized, fetchRestaurant]);
 
-  // Redirect to onboarding if no restaurant after loading completes
+  // Redirect to onboarding if no restaurant after initialization
   useEffect(() => {
-    if (!loading && restaurant === null) {
-      console.log('[DashboardLayout] No restaurant found after loading, redirecting to onboarding');
+    if (hasInitialized && !loading && restaurant === null) {
+      console.log('[DashboardLayout] No restaurant found, redirecting to onboarding');
       navigate('/onboarding', { replace: true });
     }
-  }, [loading, restaurant, navigate]);
+  }, [hasInitialized, loading, restaurant, navigate]);
 
-  // Show loading state while checking for restaurant
-  if (loading) {
+  // Show loading state while initializing
+  if (!hasInitialized || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
