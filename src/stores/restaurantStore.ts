@@ -77,12 +77,19 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     console.log('[RestaurantStore] Creating restaurant:', restaurantData);
     set({ loading: true, error: null });
     try {
-      // For single-tenant MVP, create without user_id
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error('User must be authenticated to create a restaurant');
+      }
+
+      // Create restaurant with user_id
       const { data, error } = await supabase
         .from('restaurants')
         .insert({
           ...restaurantData,
-          user_id: null, // No authentication required
+          user_id: user.id,
         } as any)
         .select()
         .single();
@@ -90,6 +97,20 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       if (error) {
         console.error('[RestaurantStore] Error creating restaurant:', error);
         throw error;
+      }
+
+      // Create restaurant_owners entry
+      const { error: ownershipError } = await supabase
+        .from('restaurant_owners')
+        .insert({
+          restaurant_id: data.id,
+          user_id: user.id,
+          role: 'owner'
+        });
+
+      if (ownershipError) {
+        console.error('[RestaurantStore] Error creating ownership:', ownershipError);
+        throw ownershipError;
       }
 
       console.log('[RestaurantStore] Restaurant created successfully:', data);
