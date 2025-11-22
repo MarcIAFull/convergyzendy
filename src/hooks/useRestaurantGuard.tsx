@@ -38,16 +38,26 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
     timestamp: new Date().toISOString()
   });
 
-  // Effect 1: Handle initial restaurant fetch (runs once when conditions are met)
+  // Effect 1: Initialize hasFetched if restaurant already exists
+  useEffect(() => {
+    if (restaurant && !hasFetchedRef.current) {
+      console.log('[useRestaurantGuard] ✅ INIT: Restaurant already exists, marking as fetched');
+      hasFetchedRef.current = true;
+    }
+  }, [restaurant]);
+
+  // Effect 2: Handle initial restaurant fetch (runs once when conditions are met)
   useEffect(() => {
     if (!authLoading && user && session?.access_token && !restaurant && !restaurantLoading && !hasFetchedRef.current) {
       console.log('[useRestaurantGuard] 🚀 FETCH: Initiating restaurant fetch (first time)');
       hasFetchedRef.current = true;
       fetchRestaurant();
     }
-  }, [authLoading, user, session?.access_token, restaurant, restaurantLoading, fetchRestaurant]);
+    // fetchRestaurant is intentionally NOT in dependencies to avoid infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, session?.access_token, restaurant, restaurantLoading]);
 
-  // Effect 2: Handle navigation and ready state
+  // Effect 3: Handle navigation and ready state
   useEffect(() => {
     console.log('[useRestaurantGuard] 🧭 NAVIGATION: Evaluating state...');
 
@@ -84,7 +94,7 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
     console.log('[useRestaurantGuard] ⚙️ NAVIGATION: No action taken');
   }, [authLoading, user, session, restaurant, restaurantLoading, restaurantError, navigate]);
 
-  // Effect 3: Safety timeout
+  // Effect 4: Safety timeout
   useEffect(() => {
     if (authLoading || !user) return;
 
