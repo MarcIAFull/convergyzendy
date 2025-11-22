@@ -9,6 +9,7 @@ import { UnifiedPromptEditor } from '@/components/ai-config/UnifiedPromptEditor'
 import { CompactToolsList } from '@/components/ai-config/CompactToolsList';
 import { ModelParametersCard } from '@/components/ai-config/ModelParametersCard';
 import { BehaviorConfigCard } from '@/components/ai-config/BehaviorConfigCard';
+import { RecoveryMessagesCard } from '@/components/ai-config/RecoveryMessagesCard';
 
 export default function AIConfiguration() {
   const { toast } = useToast();
@@ -47,7 +48,8 @@ export default function AIConfiguration() {
         ...d,
         type: d.type as 'orchestrator' | 'assistant',
         behavior_config: d.behavior_config as any,
-        orchestration_config: d.orchestration_config as any
+        orchestration_config: d.orchestration_config as any,
+        recovery_config: d.recovery_config as any
       })) as Agent[];
       
       setAgents(agents);
@@ -132,7 +134,8 @@ export default function AIConfiguration() {
           frequency_penalty: selectedAgent.frequency_penalty,
           presence_penalty: selectedAgent.presence_penalty,
           behavior_config: selectedAgent.behavior_config as any,
-          orchestration_config: selectedAgent.orchestration_config as any
+          orchestration_config: selectedAgent.orchestration_config as any,
+          recovery_config: selectedAgent.recovery_config as any
         })
         .eq('id', selectedAgent.id);
 
@@ -315,6 +318,12 @@ export default function AIConfiguration() {
 
             {/* Behavior Config */}
             <BehaviorConfigCard 
+              agent={selectedAgent}
+              onUpdate={handleAgentUpdate}
+            />
+
+            {/* Recovery Messages */}
+            <RecoveryMessagesCard 
               agent={selectedAgent}
               onUpdate={handleAgentUpdate}
             />

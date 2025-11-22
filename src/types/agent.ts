@@ -12,6 +12,7 @@ export interface Agent {
   is_active: boolean;
   behavior_config: BehaviorConfig;
   orchestration_config: OrchestrationConfig;
+  recovery_config?: RecoveryConfig;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,30 @@ export interface OrchestrationConfig {
     [intentName: string]: {
       allowed_tools: string[];
       decision_hint: string;
+    };
+  };
+}
+
+export interface RecoveryConfig {
+  enabled: boolean;
+  types: {
+    cart_abandoned: {
+      enabled: boolean;
+      delay_minutes: number;
+      max_attempts: number;
+      message_template: string;
+    };
+    conversation_paused: {
+      enabled: boolean;
+      delay_minutes: number;
+      max_attempts: number;
+      message_template: string;
+    };
+    customer_inactive: {
+      enabled: boolean;
+      delay_days: number;
+      max_attempts: number;
+      message_template: string;
     };
   };
 }
