@@ -157,6 +157,9 @@ serve(async (req) => {
 
       console.log('[EvolutionWebhook] Message saved to database');
 
+      // Check for opt-out keywords (spam prevention)
+      await checkOptOut(supabase, restaurant.id, from, messageBody);
+
       // Call AI ordering agent (handles state machine, tools, and sends reply)
       console.log('[EvolutionWebhook] Calling whatsapp-ai-agent function');
       try {
@@ -206,3 +209,55 @@ serve(async (req) => {
     });
   }
 });
+
+// Opt-out detection function
+async function checkOptOut(supabase: any, restaurantId: string, customerPhone: string, messageBody: string) {
+  const optOutKeywords = [
+    'não quero',
+    'nao quero',
+    'deixa quieto',
+    'para de enviar',
+    'para',
+    'stop',
+    'cancelar',
+    'não me mande',
+    'nao me mande',
+    'não envie',
+    'nao envie',
+    'desinscrever',
+    'remover',
+    'sair',
+    'chega',
+    'basta'
+  ];
+
+  const lowerMessage = messageBody.toLowerCase();
+  const hasOptOutKeyword = optOutKeywords.some(keyword => lowerMessage.includes(keyword));
+
+  if (!hasOptOutKeyword) {
+    return;
+  }
+
+  console.log(`[OptOut] Customer ${customerPhone} requested opt-out with message: "${messageBody}"`);
+
+  // Mark all pending and sent recovery attempts as expired
+  const { error: updateError } = await supabase
+    .from('conversation_recovery_attempts')
+    .update({ 
+      status: 'expired',
+      metadata: supabase.rpc('jsonb_set', {
+        target: 'metadata',
+        path: '{opt_out_message}',
+        new_value: JSON.stringify(messageBody)
+      })
+    })
+    .eq('restaurant_id', restaurantId)
+    .eq('user_phone', customerPhone)
+    .in('status', ['pending', 'sent']);
+
+  if (updateError) {
+    console.error('[OptOut] Error updating recovery attempts:', updateError);
+  } else {
+    console.log(`[OptOut] Marked all recovery attempts as expired for ${customerPhone}`);
+  }
+}

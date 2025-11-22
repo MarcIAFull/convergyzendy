@@ -359,6 +359,7 @@ export type Database = {
           max_attempts: number | null
           message_sent: string | null
           metadata: Json | null
+          next_attempt_at: string | null
           recovered_at: string | null
           recovery_type: string
           restaurant_id: string
@@ -381,6 +382,7 @@ export type Database = {
           max_attempts?: number | null
           message_sent?: string | null
           metadata?: Json | null
+          next_attempt_at?: string | null
           recovered_at?: string | null
           recovery_type: string
           restaurant_id: string
@@ -403,6 +405,7 @@ export type Database = {
           max_attempts?: number | null
           message_sent?: string | null
           metadata?: Json | null
+          next_attempt_at?: string | null
           recovered_at?: string | null
           recovery_type?: string
           restaurant_id?: string
