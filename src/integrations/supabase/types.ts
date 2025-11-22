@@ -544,6 +544,7 @@ export type Database = {
           metadata: Json | null
           name: string | null
           phone: string
+          restaurant_id: string
           updated_at: string
         }
         Insert: {
@@ -554,6 +555,7 @@ export type Database = {
           metadata?: Json | null
           name?: string | null
           phone: string
+          restaurant_id: string
           updated_at?: string
         }
         Update: {
@@ -564,9 +566,18 @@ export type Database = {
           metadata?: Json | null
           name?: string | null
           phone?: string
+          restaurant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messages: {
         Row: {
