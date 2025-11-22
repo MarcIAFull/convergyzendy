@@ -15,3 +15,21 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     autoRefreshToken: true,
   }
 });
+
+// Health check to ensure auth is ready before critical operations
+export const waitForAuth = async (maxWait = 3000): Promise<boolean> => {
+  const startTime = Date.now();
+  console.log('[SupabaseClient] ⏳ Waiting for auth to be ready...');
+  
+  while (Date.now() - startTime < maxWait) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      console.log('[SupabaseClient] ✅ Auth ready with valid token');
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  console.warn('[SupabaseClient] ⚠️ Auth timeout - no valid token after', maxWait, 'ms');
+  return false;
+};

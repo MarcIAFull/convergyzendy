@@ -40,16 +40,21 @@ const DashboardLayout = () => {
       return;
     }
 
-    // If no user after auth loads, redirect to login
-    if (!user || !session) {
-      console.log('[DashboardLayout] ⚠️ No user/session - redirecting to login');
+    // If no user or no valid session token after auth loads, redirect to login
+    if (!user || !session?.access_token) {
+      console.log('[DashboardLayout] ⚠️ No user/session or missing access_token - redirecting to login');
       navigate('/login', { replace: true });
       return;
     }
 
-    // User is authenticated, fetch restaurant
-    console.log('[DashboardLayout] ✅ Auth ready - fetching restaurant data');
-    fetchRestaurant();
+    // User is authenticated with valid token, add small delay to ensure JWT is applied
+    console.log('[DashboardLayout] ✅ Auth ready with token - scheduling restaurant fetch');
+    const timer = setTimeout(() => {
+      console.log('[DashboardLayout] 🚀 Fetching restaurant data after auth stabilization');
+      fetchRestaurant();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [user, session, authLoading, fetchRestaurant, navigate]);
 
   // Redirect to onboarding if no restaurant after loading

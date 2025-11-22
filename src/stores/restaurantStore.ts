@@ -1,6 +1,32 @@
 import { create } from 'zustand';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, waitForAuth } from '@/integrations/supabase/client';
 import type { Restaurant } from '@/types/database';
+
+// Retry logic with exponential backoff for RLS race conditions
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  delay = 500
+): Promise<T> => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const isRLSError = error.code === 'PGRST301' || 
+                         error.message?.toLowerCase().includes('policy') ||
+                         error.message?.toLowerCase().includes('permission');
+      
+      if (isRLSError && i < maxRetries - 1) {
+        const waitTime = delay * (i + 1);
+        console.log(`[RetryLogic] 🔄 Attempt ${i + 1} failed with RLS error, retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Retry logic failed - should not reach here');
+};
 
 interface RestaurantState {
   restaurant: Restaurant | null;
@@ -23,8 +49,18 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     console.log('[RestaurantStore] 🔄 Starting fetchRestaurant...');
     set({ loading: true, error: null });
     try {
-      // Step 1: Get authenticated user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Step 0: Wait for auth to be ready (JWT token available)
+      const authReady = await waitForAuth();
+      if (!authReady) {
+        console.error('[RestaurantStore] ❌ Auth not ready after timeout');
+        set({ loading: false, restaurant: null });
+        return;
+      }
+
+      // Step 1: Get authenticated user with retry
+      const { data: { user }, error: userError } = await retryWithBackoff(() => 
+        supabase.auth.getUser()
+      );
       console.log('[RestaurantStore] 👤 User fetch result:', { 
         userId: user?.id, 
         userEmail: user?.email,
@@ -45,12 +81,15 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
 
       console.log('[RestaurantStore] 🔍 Querying restaurant_owners for user:', user.id);
 
-      // Step 2: Get restaurant via restaurant_owners
-      const { data: ownership, error: ownershipError } = await supabase
-        .from('restaurant_owners')
-        .select('restaurant_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      // Step 2: Get restaurant via restaurant_owners with retry
+      const { data: ownership, error: ownershipError } = await retryWithBackoff(async () => {
+        const result = await supabase
+          .from('restaurant_owners')
+          .select('restaurant_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        return result;
+      });
       
       console.log('[RestaurantStore] 📊 Ownership query result:', { 
         hasData: !!ownership, 
@@ -78,12 +117,15 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
 
       console.log('[RestaurantStore] 🔍 Fetching restaurant data for ID:', ownership.restaurant_id);
 
-      // Step 3: Fetch restaurant data
-      const { data: restaurant, error: restaurantError } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('id', ownership.restaurant_id)
-        .single();
+      // Step 3: Fetch restaurant data with retry
+      const { data: restaurant, error: restaurantError } = await retryWithBackoff(async () => {
+        const result = await supabase
+          .from('restaurants')
+          .select('*')
+          .eq('id', ownership.restaurant_id)
+          .single();
+        return result;
+      });
       
       console.log('[RestaurantStore] 📊 Restaurant query result:', {
         hasData: !!restaurant,
