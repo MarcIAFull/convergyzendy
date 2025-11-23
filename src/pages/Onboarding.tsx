@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, ensureValidSession } from '@/integrations/supabase/client';
 import { Check, Loader2 } from 'lucide-react';
 import RestaurantInfoStep from '@/components/onboarding/RestaurantInfoStep';
 import MenuSetupStep from '@/components/onboarding/MenuSetupStep';
@@ -31,24 +31,48 @@ const Onboarding = () => {
 
   const checkExistingRestaurant = async () => {
     if (!user) {
+      console.log('[Onboarding] Sem usuário autenticado, redirecionando...');
       navigate('/login');
       return;
     }
 
     try {
-      const { data: ownership } = await supabase
+      console.log('[Onboarding] Verificando restaurantes para user:', user.id);
+
+      const { data: ownership, error } = await supabase
         .from('restaurant_owners')
-        .select('restaurant_id')
+        .select(`
+          restaurant_id,
+          role,
+          restaurants (
+            id,
+            name,
+            phone
+          )
+        `)
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (ownership) {
-        // User already has a restaurant, redirect to dashboard
-        await fetchRestaurant();
-        navigate('/');
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('[Onboarding] Erro ao verificar restaurante:', error);
+        setCheckingExisting(false);
+        return;
       }
+
+      if (ownership?.restaurants) {
+        console.log('[Onboarding] ✅ Restaurante existente:', ownership.restaurants);
+        toast.info(`Bem-vindo de volta! Redirecionando para ${ownership.restaurants.name}...`);
+        
+        // Load restaurant data into store
+        await fetchRestaurant();
+        
+        navigate('/');
+        return;
+      }
+
+      console.log('[Onboarding] ✅ Nenhum restaurante encontrado. Iniciando setup...');
     } catch (error) {
-      console.error('Error checking existing restaurant:', error);
+      console.error('[Onboarding] Erro inesperado:', error);
     } finally {
       setCheckingExisting(false);
     }
@@ -77,7 +101,21 @@ const Onboarding = () => {
     }
 
     try {
-      // Create restaurant
+      // Validate session before INSERT
+      console.log('[Onboarding] Validando autenticação para user:', user.id);
+      const isAuthenticated = await ensureValidSession();
+      
+      if (!isAuthenticated) {
+        console.error('[Onboarding] Sessão inválida');
+        toast.error('Sua sessão expirou. Por favor, faça login novamente.');
+        await supabase.auth.signOut();
+        navigate('/login');
+        return;
+      }
+
+      console.log('[Onboarding] Sessão válida, criando restaurante...');
+
+      // Create restaurant with user_id
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .insert({
@@ -87,11 +125,25 @@ const Onboarding = () => {
           delivery_fee: data.deliveryFee,
           opening_hours: data.openingHours,
           is_open: true,
+          user_id: user.id, // CRITICAL: Include user_id for RLS
         })
         .select()
         .single();
 
-      if (restaurantError) throw restaurantError;
+      if (restaurantError) {
+        console.error('[Onboarding] Erro ao criar restaurante:', restaurantError);
+        
+        // Specific message for RLS errors
+        if (restaurantError.message?.includes('row-level security')) {
+          toast.error('Erro de autenticação. Sua sessão pode ter expirado. Por favor, faça login novamente.');
+          navigate('/login');
+        } else {
+          toast.error(`Erro ao criar restaurante: ${restaurantError.message}`);
+        }
+        throw restaurantError;
+      }
+
+      console.log('[Onboarding] Restaurante criado com sucesso:', restaurant.id);
 
       // Create restaurant owner mapping
       const { error: ownerError } = await supabase
