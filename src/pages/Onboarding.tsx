@@ -113,9 +113,31 @@ const Onboarding = () => {
         return;
       }
 
-      console.log('[Onboarding] Sessão válida, criando restaurante...');
+      // Get fresh session to ensure token is available
+      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !freshSession) {
+        console.error('[Onboarding] Erro ao obter sessão:', sessionError);
+        toast.error('Erro de autenticação. Por favor, faça login novamente.');
+        await supabase.auth.signOut();
+        navigate('/login');
+        return;
+      }
 
-      // Create restaurant with user_id
+      console.log('[Onboarding] Sessão válida confirmada, criando restaurante...');
+      console.log('[Onboarding] User ID na sessão:', freshSession.user.id);
+      console.log('[Onboarding] User ID do context:', user.id);
+
+      // Ensure both IDs match
+      if (freshSession.user.id !== user.id) {
+        console.error('[Onboarding] IDs não correspondem!');
+        toast.error('Erro de autenticação. Por favor, faça login novamente.');
+        await supabase.auth.signOut();
+        navigate('/login');
+        return;
+      }
+
+      // Create restaurant with user_id from fresh session
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .insert({
@@ -125,7 +147,7 @@ const Onboarding = () => {
           delivery_fee: data.deliveryFee,
           opening_hours: data.openingHours,
           is_open: true,
-          user_id: user.id, // CRITICAL: Include user_id for RLS
+          user_id: freshSession.user.id, // Use ID from fresh session
         })
         .select()
         .single();
