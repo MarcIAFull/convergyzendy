@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useRestaurantStore } from '@/stores/restaurantStore';
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -19,6 +20,10 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Redirect to login if not authenticated
   if (!user) {
+    // Clear restaurant store if not authenticated
+    console.log('[ProtectedRoute] No user, clearing restaurant store');
+    useRestaurantStore.getState().clearRestaurant();
+    
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
