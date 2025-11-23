@@ -33,3 +33,45 @@ export const waitForAuth = async (maxWait = 3000): Promise<boolean> => {
   console.warn('[SupabaseClient] ⚠️ Auth timeout - no valid token after', maxWait, 'ms');
   return false;
 };
+
+/**
+ * Ensures there's a valid session, refreshing if necessary
+ */
+export const ensureValidSession = async (): Promise<boolean> => {
+  console.log('[SupabaseClient] Verificando validade da sessão...');
+  
+  const { data: { session }, error } = await supabase.auth.getSession();
+  
+  if (error) {
+    console.error('[SupabaseClient] ❌ Erro ao obter sessão:', error);
+    return false;
+  }
+  
+  if (!session) {
+    console.warn('[SupabaseClient] ⚠️ Sem sessão ativa');
+    return false;
+  }
+  
+  // Check if token is close to expiring (less than 5 minutes)
+  const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000;
+  
+  if (expiresAt - now < fiveMinutes) {
+    console.log('[SupabaseClient] 🔄 Token próximo de expirar, renovando...');
+    
+    const { data: { session: newSession }, error: refreshError } = 
+      await supabase.auth.refreshSession();
+    
+    if (refreshError || !newSession) {
+      console.error('[SupabaseClient] ❌ Falha ao renovar sessão');
+      return false;
+    }
+    
+    console.log('[SupabaseClient] ✅ Sessão renovada com sucesso');
+    return true;
+  }
+  
+  console.log('[SupabaseClient] ✅ Sessão válida');
+  return true;
+};
