@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useRestaurantStore } from '@/stores/restaurantStore';
 
 interface AuthContextType {
   user: User | null;
@@ -34,6 +35,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[Auth] State change:', _event);
+      
+      // Clear store when user signs out
+      if (_event === 'SIGNED_OUT') {
+        console.log('[Auth] 🧹 Clearing restaurant store on logout');
+        useRestaurantStore.getState().clearRestaurant();
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -88,6 +97,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     try {
+      // Clear restaurant store before logout
+      console.log('[Auth] 🧹 Clearing restaurant store before logout');
+      useRestaurantStore.getState().clearRestaurant();
+      
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       

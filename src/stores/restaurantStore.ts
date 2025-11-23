@@ -12,6 +12,7 @@ interface RestaurantState {
   createRestaurant: (restaurant: Omit<Restaurant, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<void>;
   updateRestaurant: (updates: Partial<Restaurant>) => Promise<void>;
   setRestaurant: (restaurant: Restaurant | null) => void;
+  clearRestaurant: () => void;
 }
 
 export const useRestaurantStore = create<RestaurantState>((set, get) => ({
@@ -163,4 +164,13 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   },
 
   setRestaurant: (restaurant) => set({ restaurant }),
+
+  clearRestaurant: () => {
+    console.log('[RestaurantStore] 🧹 Clearing restaurant state');
+    set({ 
+      restaurant: null, 
+      loading: false, 
+      error: null 
+    });
+  },
 }));
