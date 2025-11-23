@@ -728,6 +728,53 @@ export type Database = {
           },
         ]
       }
+      restaurant_ai_settings: {
+        Row: {
+          closing_message: string | null
+          created_at: string
+          greeting_message: string | null
+          id: string
+          language: string
+          max_additional_questions_before_checkout: number
+          restaurant_id: string
+          tone: string
+          updated_at: string
+          upsell_aggressiveness: string
+        }
+        Insert: {
+          closing_message?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          language?: string
+          max_additional_questions_before_checkout?: number
+          restaurant_id: string
+          tone?: string
+          updated_at?: string
+          upsell_aggressiveness?: string
+        }
+        Update: {
+          closing_message?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          language?: string
+          max_additional_questions_before_checkout?: number
+          restaurant_id?: string
+          tone?: string
+          updated_at?: string
+          upsell_aggressiveness?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_ai_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_owners: {
         Row: {
           created_at: string | null
@@ -753,6 +800,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "restaurant_owners_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_prompt_overrides: {
+        Row: {
+          block_key: string
+          content: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          block_key: string
+          content: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          block_key?: string
+          content?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_prompt_overrides_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
