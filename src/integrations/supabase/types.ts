@@ -917,6 +917,7 @@ export type Database = {
           user_phone: string
         }[]
       }
+      get_current_user_id: { Args: never; Returns: string }
       user_has_restaurant_access: {
         Args: { _restaurant_id: string }
         Returns: boolean

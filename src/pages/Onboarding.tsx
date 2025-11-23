@@ -137,6 +137,11 @@ const Onboarding = () => {
         return;
       }
 
+      // Small delay to ensure JWT token is fully propagated in Supabase client
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      console.log('[Onboarding] Criando restaurante com user_id:', freshSession.user.id);
+
       // Create restaurant with user_id from fresh session
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
