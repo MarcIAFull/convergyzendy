@@ -48,7 +48,7 @@ import type { CategoryWithProducts, Product, Addon } from '@/types/database';
 import { uploadImage, deleteImage, validateImageFile, extractPathFromUrl } from '@/lib/imageUpload';
 
 const MenuManagement = () => {
-  const { restaurant, fetchRestaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantStore();
   const { categories, loading, fetchMenu, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct, addAddon, updateAddon, deleteAddon } = useMenuStore();
   const { toast } = useToast();
 
@@ -69,9 +69,6 @@ const MenuManagement = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [addonForm, setAddonForm] = useState({ name: '', price: '' });
 
-  useEffect(() => {
-    fetchRestaurant();
-  }, [fetchRestaurant]);
 
   useEffect(() => {
     if (restaurant?.id) {

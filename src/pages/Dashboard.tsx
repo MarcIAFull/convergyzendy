@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 
 const Dashboard = () => {
-  const { restaurant, fetchRestaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantStore();
   const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
   const [activeTab, setActiveTab] = useState('all');
   const [isConnected, setIsConnected] = useState(false);
@@ -21,9 +21,6 @@ const Dashboard = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchRestaurant();
-  }, [fetchRestaurant]);
 
   useEffect(() => {
     if (restaurant?.id) {

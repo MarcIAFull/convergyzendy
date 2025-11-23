@@ -83,9 +83,6 @@ const Settings = () => {
     },
   });
 
-  useEffect(() => {
-    fetchRestaurant();
-  }, [fetchRestaurant]);
 
   useEffect(() => {
     if (restaurant) {
