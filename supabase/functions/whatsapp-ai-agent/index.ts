@@ -122,6 +122,51 @@ serve(async (req) => {
 
     if (!restaurant) throw new Error('Restaurant not found');
 
+    // ============================================================
+    // LOAD RESTAURANT-SPECIFIC AI SETTINGS
+    // ============================================================
+    
+    console.log('[AI Settings] ========== LOADING RESTAURANT AI SETTINGS ==========');
+    
+    const { data: restaurantAISettings } = await supabase
+      .from('restaurant_ai_settings')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .maybeSingle();
+    
+    if (restaurantAISettings) {
+      console.log('[AI Settings] ✅ Restaurant AI settings loaded:');
+      console.log(`[AI Settings]   - Tone: ${restaurantAISettings.tone}`);
+      console.log(`[AI Settings]   - Upsell Level: ${restaurantAISettings.upsell_aggressiveness}`);
+      console.log(`[AI Settings]   - Max Questions: ${restaurantAISettings.max_additional_questions_before_checkout}`);
+      console.log(`[AI Settings]   - Language: ${restaurantAISettings.language}`);
+      if (restaurantAISettings.greeting_message) {
+        console.log(`[AI Settings]   - Custom Greeting: "${restaurantAISettings.greeting_message.substring(0, 50)}..."`);
+      }
+      if (restaurantAISettings.closing_message) {
+        console.log(`[AI Settings]   - Custom Closing: "${restaurantAISettings.closing_message.substring(0, 50)}..."`);
+      }
+    } else {
+      console.log('[AI Settings] ⚠️ No custom AI settings found - using defaults');
+    }
+    
+    // Load prompt overrides (if any)
+    const { data: promptOverrides } = await supabase
+      .from('restaurant_prompt_overrides')
+      .select('*')
+      .eq('restaurant_id', restaurantId);
+    
+    if (promptOverrides && promptOverrides.length > 0) {
+      console.log(`[AI Settings] ✅ ${promptOverrides.length} prompt override(s) loaded`);
+      promptOverrides.forEach(override => {
+        console.log(`[AI Settings]   - Override block: ${override.block_key}`);
+      });
+    } else {
+      console.log('[AI Settings] No prompt overrides configured');
+    }
+    
+    console.log('[AI Settings] ========================================\n');
+
     // Load menu with products
     const { data: categories } = await supabase
       .from('categories')
@@ -431,6 +476,55 @@ serve(async (req) => {
         user_intent: intent,
         target_state: targetState
       });
+      
+      // ============================================================
+      // INJECT RESTAURANT-SPECIFIC AI SETTINGS
+      // ============================================================
+      
+      if (restaurantAISettings) {
+        console.log('[Main AI] Injecting restaurant-specific AI settings into prompt');
+        
+        const settingsSection = `
+
+# RESTAURANT-SPECIFIC AI SETTINGS
+
+You MUST adapt your behavior to these restaurant-specific settings:
+
+**Tone**: ${restaurantAISettings.tone}
+${restaurantAISettings.tone === 'friendly' ? '- Be warm, conversational, and use emojis occasionally' : ''}
+${restaurantAISettings.tone === 'formal' ? '- Be polite, professional, and avoid slang or emojis' : ''}
+${restaurantAISettings.tone === 'playful' ? '- Be fun, energetic, and use more emojis and casual language' : ''}
+${restaurantAISettings.tone === 'professional' ? '- Be courteous, clear, and business-like without being cold' : ''}
+
+**Greeting Message**: ${restaurantAISettings.greeting_message || 'Use default greeting based on tone'}
+
+**Closing Message**: ${restaurantAISettings.closing_message || 'Use default closing based on tone'}
+
+**Upsell Strategy**: ${restaurantAISettings.upsell_aggressiveness}
+${restaurantAISettings.upsell_aggressiveness === 'low' ? '- Only suggest items if directly relevant to the customer\'s request' : ''}
+${restaurantAISettings.upsell_aggressiveness === 'medium' ? '- Suggest complementary items when appropriate, but don\'t be pushy' : ''}
+${restaurantAISettings.upsell_aggressiveness === 'high' ? '- Actively suggest add-ons, sides, drinks, and upgrades to increase order value' : ''}
+
+**Max Additional Questions Before Checkout**: ${restaurantAISettings.max_additional_questions_before_checkout}
+- After customer has items in cart and seems ready, ask at most ${restaurantAISettings.max_additional_questions_before_checkout} additional questions before offering to finalize the order.
+
+**Language**: ${restaurantAISettings.language}
+
+CRITICAL: These settings override your default behavior. Adapt your responses accordingly.
+`;
+        
+        conversationalSystemPrompt += settingsSection;
+      }
+      
+      // Apply prompt overrides if any
+      if (promptOverrides && promptOverrides.length > 0) {
+        console.log('[Main AI] Applying restaurant-specific prompt overrides');
+        promptOverrides.forEach((override: any) => {
+          console.log(`[Main AI]   - Overriding block: ${override.block_key}`);
+          // Add override section to prompt
+          conversationalSystemPrompt += `\n\n# RESTAURANT OVERRIDE: ${override.block_key}\n\n${override.content}\n`;
+        });
+      }
       
       // Add tool usage rules section
       if (enabledToolsConfig.length > 0) {

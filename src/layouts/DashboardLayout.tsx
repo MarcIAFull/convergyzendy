@@ -82,6 +82,7 @@ const DashboardLayout = () => {
     { name: "Orders", href: "/orders", icon: Menu },
     { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "AI Configuration", href: "/ai-configuration", icon: Brain },
+    { name: "Restaurant AI Settings", href: "/restaurant-ai-settings", icon: Brain },
     { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "WhatsApp Connection", href: "/whatsapp-connection", icon: Smartphone },
     { name: "Settings", href: "/settings", icon: Settings },
