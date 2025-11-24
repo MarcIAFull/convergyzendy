@@ -77,23 +77,44 @@ function ConversationCard({ conversation, isSelected, onClick }: ConversationCar
     ? conversation.customerName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : conversation.userPhone.slice(-2);
 
+  // Detectar se precisa de atenção urgente
+  const needsAttention = conversation.mode === 'manual';
+  const criticalStates = ['collecting_payment', 'collecting_address', 'confirming_order'];
+  const isCritical = criticalStates.includes(conversation.conversationState);
+
   return (
     <Card
       className={cn(
-        'mb-2 cursor-pointer transition-all hover:bg-accent/50',
-        isSelected && 'bg-accent border-l-4 border-l-primary'
+        'mb-2 cursor-pointer transition-all hover:bg-accent/50 relative',
+        isSelected && 'bg-accent border-l-4 border-l-primary',
+        needsAttention && 'border-2 border-orange-500 bg-orange-500/5',
+        needsAttention && isSelected && 'border-l-4 border-l-orange-500'
       )}
       onClick={onClick}
     >
       <div className="p-3">
+        {needsAttention && (
+          <div className="absolute top-0 right-0 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
+        )}
+        
         <div className="flex items-start gap-3">
-          <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-primary/10 text-primary">
+          <Avatar className={cn(
+            "h-10 w-10",
+            needsAttention && "ring-2 ring-orange-500"
+          )}>
+            <AvatarFallback className={cn(
+              needsAttention ? "bg-orange-500/20 text-orange-500" : "bg-primary/10 text-primary"
+            )}>
               {initials}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
+            {needsAttention && (
+              <Badge variant="outline" className="mb-1 text-xs border-orange-500 text-orange-500 bg-orange-500/10">
+                ⚠️ Atenção Necessária
+              </Badge>
+            )}
             <div className="flex items-center justify-between gap-2 mb-1">
               <p className="font-semibold text-sm truncate">{displayName}</p>
               <div className="flex items-center gap-1">
