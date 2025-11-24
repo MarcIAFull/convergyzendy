@@ -13,14 +13,10 @@ import MenuManagement from "@/pages/MenuManagement";
 import OrderDetail from "@/pages/OrderDetail";
 import Analytics from "@/pages/Analytics";
 import Customers from "@/pages/Customers";
-import Settings from "@/pages/Settings";
+import SettingsUnified from "@/pages/SettingsUnified";
 import Messages from "@/pages/Messages";
-import TestWhatsApp from "@/pages/TestWhatsApp";
-import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import AIConfiguration from "@/pages/AIConfiguration";
-import RestaurantAISettings from "@/pages/RestaurantAISettings";
 import Admin from "@/pages/Admin";
-import Subscription from "@/pages/Subscription";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
 import Login from "@/pages/Login";
@@ -30,6 +26,7 @@ import PublicMenu from "@/pages/public/PublicMenu";
 import PublicCart from "@/pages/public/PublicCart";
 import PublicCheckout from "@/pages/public/PublicCheckout";
 import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
+import { AdminRoute } from "@/components/AdminRoute";
 import { HelmetProvider } from 'react-helmet-async';
 
 const queryClient = new QueryClient();
@@ -67,21 +64,26 @@ const App = () => (
                     </ProtectedRoute>
                   }
                 >
+                  {/* Operations */}
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/menu" element={<MenuManagement />} />
-                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />
                   <Route path="/orders/:id" element={<OrderDetail />} />
+                  
+                  {/* Communication */}
                   <Route path="/messages" element={<Messages />} />
-                  <Route path="/test-whatsapp" element={<TestWhatsApp />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
-                  <Route path="/ai-configuration" element={<AIConfiguration />} />
-                  <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
-                  <Route path="/admin" element={<Admin />} />
-                  <Route path="/subscription" element={<Subscription />} />
-                  <Route path="/system-check" element={<SystemCheck />} />
-                  <Route path="/delivery-zones" element={<DeliveryZones />} />
+                  
+                  {/* Insights */}
+                  <Route path="/analytics" element={<Analytics />} />
+                  
+                  {/* Settings (UNIFIED) */}
+                  <Route path="/settings" element={<SettingsUnified />} />
+                  
+                  {/* Admin Routes (Protected by AdminRoute) */}
+                  <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+                  <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
+                  <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
                 </Route>
                 
                 {/* 404 Catch-All */}
