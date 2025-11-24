@@ -20,6 +20,7 @@ import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import AIConfiguration from "@/pages/AIConfiguration";
 import RestaurantAISettings from "@/pages/RestaurantAISettings";
 import Admin from "@/pages/Admin";
+import Subscription from "@/pages/Subscription";
 import SystemCheck from "@/pages/SystemCheck";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
@@ -62,6 +63,7 @@ const App = () => (
                 <Route path="/ai-configuration" element={<AIConfiguration />} />
                 <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/subscription" element={<Subscription />} />
                 <Route path="/system-check" element={<SystemCheck />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

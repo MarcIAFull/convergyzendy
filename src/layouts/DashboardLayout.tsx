@@ -22,6 +22,7 @@ import {
   Bell,
   BellOff,
   ClipboardCheck,
+  CreditCard,
 } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +97,7 @@ const DashboardLayout = () => {
     { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "WhatsApp Connection", href: "/whatsapp-connection", icon: Smartphone },
     { name: "Admin", href: "/admin", icon: Shield },
+    { name: "Subscription", href: "/subscription", icon: CreditCard },
     { name: "System Check", href: "/system-check", icon: ClipboardCheck },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
