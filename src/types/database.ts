@@ -168,6 +168,7 @@ export interface CartWithItems extends Cart {
 
 export interface OrderWithDetails extends Order {
   items: CartItemWithDetails[];
+  customer?: { phone: string; name: string | null } | null;
 }
 
 export interface ConversationPendingItemWithDetails extends ConversationPendingItem {

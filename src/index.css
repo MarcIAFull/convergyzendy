@@ -153,3 +153,24 @@
     transition: all 300ms ease-in-out;
   }
 }
+
+/* Print Styles for Thermal Printers */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-order,
+  #printable-order * {
+    visibility: visible;
+  }
+  #printable-order {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  @page {
+    size: 80mm auto; /* Thermal printer width */
+    margin: 0;
+  }
+}
