@@ -33,25 +33,42 @@ function getConfig(): EvolutionConfig {
   return { apiUrl: normalizedApiUrl, apiKey };
 }
 
+function getAuthHeaders(apiKey: string): Record<string, string> {
+  return {
+    'apikey': apiKey,
+    'api-key': apiKey,
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  };
+}
+
 async function validateApiConnection(): Promise<void> {
   const { apiUrl, apiKey } = getConfig();
+  
+  console.log(`[evolutionClient] Validating connection to: ${apiUrl}`);
+  console.log(`[evolutionClient] API key format: ${apiKey.substring(0, 10)}...`);
   
   try {
     const response = await fetch(`${apiUrl}/instance/fetchInstances`, {
       method: 'GET',
-      headers: {
-        'apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(apiKey),
     });
 
-    if (response.status === 401) {
-      throw new Error('INVALID_API_KEY: Evolution API key is invalid');
+    console.log(`[evolutionClient] Validation response status: ${response.status}`);
+
+    if (response.status === 401 || response.status === 403) {
+      const errorBody = await response.text();
+      console.error(`[evolutionClient] Auth failed:`, errorBody);
+      throw new Error('INVALID_API_KEY: Evolution API key is invalid or unauthorized');
     }
     
     if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[evolutionClient] API error:`, errorBody);
       throw new Error(`API_UNREACHABLE: Evolution API returned status ${response.status}`);
     }
+    
+    console.log(`[evolutionClient] API connection validated successfully`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (errorMessage.includes('INVALID_API_KEY') || errorMessage.includes('API_UNREACHABLE')) {
@@ -80,14 +97,13 @@ export async function getInstanceStatus(instanceName: string): Promise<InstanceS
     `${apiUrl}/instance/connectionState/${instanceName}`,
     {
       method: 'GET',
-      headers: {
-        'apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(apiKey),
     }
   );
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[evolutionClient] Status check failed for ${instanceName}:`, errorBody);
     throw new Error(`Evolution API status check failed: ${response.status}`);
   }
 
@@ -101,14 +117,13 @@ export async function getInstanceQrCode(instanceName: string): Promise<{ code: s
     `${apiUrl}/instance/connect/${instanceName}`,
     {
       method: 'GET',
-      headers: {
-        'apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(apiKey),
     }
   );
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[evolutionClient] QR fetch failed for ${instanceName}:`, errorBody);
     throw new Error(`Evolution API QR code fetch failed: ${response.status}`);
   }
 
@@ -158,10 +173,7 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
     `${apiUrl}/instance/create`,
     {
       method: 'POST',
-      headers: {
-        'apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(apiKey),
       body: JSON.stringify(payload),
     }
   );
@@ -215,10 +227,7 @@ export async function sendWhatsAppMessage(
     `${apiUrl}/message/sendText/${instanceName}`,
     {
       method: 'POST',
-      headers: {
-        'apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(apiKey),
       body: JSON.stringify(payload),
     }
   );
