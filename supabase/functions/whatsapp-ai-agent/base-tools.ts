@@ -186,6 +186,88 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
         required: ["query"]
       }
     }
+  },
+  
+  add_pending_item: {
+    type: "function",
+    function: {
+      name: "add_pending_item",
+      description: "Add a product to the pending items list (for multi-item orders or when confirmation is needed). Use when customer mentions 2+ products at once, or when intent is ambiguous.",
+      parameters: {
+        type: "object",
+        properties: {
+          product_id: {
+            type: "string",
+            description: "UUID of the product to add to pending items"
+          },
+          quantity: {
+            type: "number",
+            description: "Quantity to add, default 1"
+          },
+          addon_ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array of addon UUIDs to include with this product"
+          },
+          notes: {
+            type: "string",
+            description: "Optional special instructions or customizations that are NOT available as addons"
+          }
+        },
+        required: ["product_id"]
+      }
+    }
+  },
+  
+  remove_pending_item: {
+    type: "function",
+    function: {
+      name: "remove_pending_item",
+      description: "Remove or modify a pending item before confirmation. Use when customer wants to remove/change items from pending list.",
+      parameters: {
+        type: "object",
+        properties: {
+          product_id: {
+            type: "string",
+            description: "UUID of the pending product to remove or modify"
+          },
+          action: {
+            type: "string",
+            enum: ["remove_all", "decrease_quantity"],
+            description: "Action to perform: 'remove_all' deletes the item completely, 'decrease_quantity' reduces quantity by 1"
+          },
+          quantity_change: {
+            type: "number",
+            description: "Optional: specific quantity to remove (default 1 for decrease_quantity)"
+          }
+        },
+        required: ["product_id", "action"]
+      }
+    }
+  },
+  
+  confirm_pending_items: {
+    type: "function",
+    function: {
+      name: "confirm_pending_items",
+      description: "Confirm and move all pending items to the cart. Use when customer explicitly confirms their multi-item selection.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  
+  clear_pending_items: {
+    type: "function",
+    function: {
+      name: "clear_pending_items",
+      description: "Discard all pending items without adding them to cart. Use when customer wants to start over or cancel pending selection.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
   }
 };
 
