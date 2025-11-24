@@ -27,7 +27,10 @@ function getConfig(): EvolutionConfig {
     throw new Error('Evolution API configuration missing');
   }
 
-  return { apiUrl, apiKey };
+  // Remove trailing slashes from apiUrl to prevent double-slash in URLs
+  const normalizedApiUrl = apiUrl.replace(/\/+$/, '');
+
+  return { apiUrl: normalizedApiUrl, apiKey };
 }
 
 export function formatPhoneNumber(phone: string): string {
