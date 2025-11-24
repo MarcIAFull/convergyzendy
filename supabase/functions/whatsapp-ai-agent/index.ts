@@ -3,7 +3,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.83.0';
 import { buildOrchestratorPrompt } from './orchestrator-prompt.ts';
 import { buildConversationalAIPrompt } from './conversational-ai-prompt.ts';
-import { detectOfferedProduct } from './product-detection.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 import { updateCustomerInsightsAfterOrder } from '../_shared/customerInsights.ts';
@@ -137,8 +136,6 @@ serve(async (req) => {
       cartTotal,
       currentState,
       stateMetadata,
-      pendingProduct,
-      lastShownProduct,
       formatted
     } = context;
 
@@ -150,7 +147,7 @@ serve(async (req) => {
     console.log('[Orchestrator] Context being passed:');
     console.log(`[Orchestrator]   - History: ${conversationHistory.length} messages (FULL)`);
     console.log(`[Orchestrator]   - State: ${currentState}`);
-    console.log(`[Orchestrator]   - Pending: ${pendingProduct?.name || 'None'}`);
+    console.log(`[Orchestrator]   - Pending Items: ${pendingItems.length} items`);
     console.log(`[Orchestrator]   - Cart: ${cartItems.length} items`);
     
     // Build orchestrator system prompt
@@ -178,7 +175,6 @@ serve(async (req) => {
         customer_info: formatted.customer,
         conversation_history: formatted.history,
         current_state: currentState,
-        pending_product: pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None',
         pending_items: formatted.pendingItems
       });
       
@@ -248,7 +244,7 @@ serve(async (req) => {
     console.log(`[Main AI]   - State: ${currentState}`);
     console.log(`[Main AI]   - Target State: ${targetState}`);
     console.log(`[Main AI]   - Intent: ${intent}`);
-    console.log(`[Main AI]   - Pending: ${pendingProduct?.name || 'None'}`);
+    console.log(`[Main AI]   - Pending Items: ${pendingItems.length} items`);
     console.log(`[Main AI]   - Cart: ${cartItems.length} items`);
     
     // Build tools array dynamically from database or use fallback
@@ -452,28 +448,17 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
         const product = availableProducts.find((p) => p.id === args.product_id);
         const productName = product?.name?.toLowerCase() || '';
 
-        // CRITICAL VALIDATION: If intent is "confirm_item" with pending product, 
-        // the product_id MUST match the pending product
-        if (intent === 'confirm_item' && pendingProduct) {
-          if (args.product_id !== pendingProduct.id) {
-            console.log(
-              `[Tool Validation] ❌ Skipping add_to_cart: User is confirming "${pendingProduct.name}" but AI tried to add "${product?.name || 'unknown'}" (product_id mismatch)`
-            );
-            console.log(`[Tool Validation] Expected product_id: ${pendingProduct.id}, Got: ${args.product_id}`);
-            continue; // ❌ Reject this tool call
-          }
-        }
-
+        // PHASE 5: Simplified validation - focus on explicit product requests
         // 1) explicit request for a product, by name, in the current user message
         const mentionsProductByName =
           !!productName && userMessage.includes(productName);
 
-        // 2) orchestrator intent clearly related to products (RELAXED)
+        // 2) orchestrator intent clearly related to products
         const isProductIntent =
           intent === 'browse_product' ||
           intent === 'confirm_item' ||
           intent === 'collect_customer_data' || // Can include products during data collection
-          (confidence >= 0.8 && !!pendingProduct); // High confidence + product detected
+          (confidence >= 0.8); // High confidence intent
 
         // 3) Semantic analysis for explicit requests
         const userLower = userMessage.toLowerCase();
@@ -488,7 +473,7 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
         const isExplicitRequest = 
           mentionsProductByName || 
           isProductIntent ||
-          (semanticMatch && !!pendingProduct && confidence >= 0.7); // Semantic signals + product + reasonable confidence
+          (semanticMatch && confidence >= 0.7); // Semantic signals + reasonable confidence
 
         if (!isExplicitRequest) {
           console.log(
@@ -642,8 +627,6 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
             
             newState = 'confirming_item';
             cartModified = true; // Mark that cart needs re-fetch
-            newMetadata.pending_product = null;
-            newMetadata.last_shown_product = product;
           }
           break;
         }
@@ -748,6 +731,16 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
               console.error('[Tool] ⚠️ Customer insights update failed:', insightError);
             }
             
+            // PHASE 5: Cleanup pending items after order finalization
+            console.log('[Tool] 🧹 Cleaning up pending items after order finalization...');
+            await supabase
+              .from('conversation_pending_items')
+              .update({ status: 'discarded' })
+              .eq('user_phone', customerPhone)
+              .eq('restaurant_id', restaurantId)
+              .eq('status', 'pending');
+            console.log('[Tool] ✅ Pending items cleaned up');
+            
             // Clear metadata and nullify cart for clean slate
             newMetadata = {};
             newState = 'idle';
@@ -845,8 +838,21 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
           
           const product = availableProducts.find(p => p.id === product_id);
           if (!product) {
-            console.error(`[Tool] Product not found: ${product_id}`);
+            console.error(`[Tool] ❌ Product not found: ${product_id}`);
             continue;
+          }
+          
+          // PHASE 5: Validate addon_ids belong to this product
+          if (addon_ids && addon_ids.length > 0) {
+            const validAddonIds = (product.addons || []).map((a: any) => a.id);
+            const invalidAddons = addon_ids.filter((id: string) => !validAddonIds.includes(id));
+            
+            if (invalidAddons.length > 0) {
+              console.error(`[Tool] ❌ Invalid addon_ids for product ${product.name}: ${invalidAddons.join(', ')}`);
+              console.error(`[Tool] Valid addons: ${validAddonIds.join(', ')}`);
+              continue;
+            }
+            console.log(`[Tool] ✅ Validated ${addon_ids.length} addon(s) for product ${product.name}`);
           }
           
           const { data: pendingItem, error: pendingError } = await supabase
@@ -864,7 +870,7 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
             .single();
           
           if (pendingError) {
-            console.error('[Tool] Add pending item error:', pendingError);
+            console.error('[Tool] ❌ Add pending item error:', pendingError);
           } else {
             console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to pending items`);
           }
@@ -901,26 +907,41 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
             activeCart = newCart;
           }
           
-          // Move each pending item to cart
+          // PHASE 5: Improved merge logic - only merge if product_id + addons + notes match
           for (const pendingItem of itemsToConfirm) {
-            // Check if product already in cart
-            const existingCartItem = cartItems.find(
-              (ci: any) => ci.product_id === pendingItem.product_id
+            const product = availableProducts.find(p => p.id === pendingItem.product_id);
+            const productName = product?.name || 'Unknown';
+            
+            // Helper to compare arrays (order-independent)
+            const arraysEqual = (a: string[] | null, b: any[] | null) => {
+              if (!a && !b) return true;
+              if (!a || !b) return false;
+              const sortedA = [...a].sort();
+              const sortedB = [...(b || [])].map((addon: any) => addon.id).sort();
+              return sortedA.length === sortedB.length && sortedA.every((val, idx) => val === sortedB[idx]);
+            };
+            
+            // Find matching cart item (same product + addons + notes)
+            const matchingCartItem = cartItems.find((ci: any) => 
+              ci.product_id === pendingItem.product_id &&
+              arraysEqual(pendingItem.addon_ids, ci.addons) &&
+              (ci.notes || '') === (pendingItem.notes || '')
             );
             
-            if (existingCartItem) {
-              // Update quantity
+            if (matchingCartItem) {
+              // Merge quantities only if customization matches
               await supabase
                 .from('cart_items')
                 .update({ 
-                  quantity: existingCartItem.quantity + pendingItem.quantity 
+                  quantity: matchingCartItem.quantity + pendingItem.quantity 
                 })
                 .eq('cart_id', activeCart!.id)
-                .eq('product_id', pendingItem.product_id);
+                .eq('product_id', pendingItem.product_id)
+                .eq('notes', matchingCartItem.notes || '');
               
-              console.log(`[Tool] ✅ Updated quantity for existing item`);
+              console.log(`[Tool] ✅ Merged ${pendingItem.quantity}x ${productName} (identical customization)`);
             } else {
-              // Add new item
+              // Create separate cart item for different customization
               const { data: cartItem } = await supabase
                 .from('cart_items')
                 .insert({
@@ -944,7 +965,7 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
                   .insert(addonInserts);
               }
               
-              console.log(`[Tool] ✅ Added pending item to cart`);
+              console.log(`[Tool] ✅ Added ${pendingItem.quantity}x ${productName} as separate cart item (different customization)`);
             }
           }
           
@@ -958,6 +979,62 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
           
           cartModified = true;
           console.log(`[Tool] ✅ Confirmed ${itemsToConfirm.length} pending items to cart`);
+          break;
+        }
+        
+        case 'remove_pending_item': {
+          const { product_id, action, quantity_change = 1 } = args;
+          
+          const product = availableProducts.find(p => p.id === product_id);
+          const productName = product?.name || 'Unknown';
+          
+          // PHASE 5: Handle removal/modification of pending items
+          if (action === 'remove_all') {
+            // Delete all pending items for this product
+            await supabase
+              .from('conversation_pending_items')
+              .update({ status: 'discarded' })
+              .eq('user_phone', customerPhone)
+              .eq('restaurant_id', restaurantId)
+              .eq('product_id', product_id)
+              .eq('status', 'pending');
+            
+            console.log(`[Tool] ✅ Removed all pending items for ${productName}`);
+          } else if (action === 'decrease_quantity') {
+            // Get current pending item
+            const { data: pendingItem } = await supabase
+              .from('conversation_pending_items')
+              .select('*')
+              .eq('user_phone', customerPhone)
+              .eq('restaurant_id', restaurantId)
+              .eq('product_id', product_id)
+              .eq('status', 'pending')
+              .single();
+            
+            if (pendingItem) {
+              const newQuantity = pendingItem.quantity - quantity_change;
+              
+              if (newQuantity <= 0) {
+                // Remove item completely
+                await supabase
+                  .from('conversation_pending_items')
+                  .update({ status: 'discarded' })
+                  .eq('id', pendingItem.id);
+                
+                console.log(`[Tool] ✅ Removed pending item ${productName} (quantity reached 0)`);
+              } else {
+                // Decrease quantity
+                await supabase
+                  .from('conversation_pending_items')
+                  .update({ quantity: newQuantity })
+                  .eq('id', pendingItem.id);
+                
+                console.log(`[Tool] ✅ Decreased quantity for ${productName}: ${pendingItem.quantity} → ${newQuantity}`);
+              }
+            } else {
+              console.log(`[Tool] ⚠️ No pending item found for ${productName}`);
+            }
+          }
           break;
         }
         
@@ -1239,18 +1316,7 @@ ${validatedToolCalls.map((tc: any) => {
       }
     }
     
-    // Detect if AI offered a product (for pending_product tracking)
-    if (toolCalls.length === 0 && finalResponse) {
-      const offeredProduct = detectOfferedProduct(finalResponse, availableProducts);
-      
-      if (offeredProduct) {
-        console.log(`[Product Detection] Product offered: ${offeredProduct.name}`);
-        newMetadata.pending_product = offeredProduct;
-        newMetadata.last_shown_product = offeredProduct;
-      } else {
-        console.log('[Product Detection] No product offer detected in response');
-      }
-    }
+    // PHASE 5: Legacy product detection removed - now using Pending Items Engine only
 
     // ============================================================
     // STEP 5: UPDATE STATE & SEND RESPONSE
@@ -1258,8 +1324,7 @@ ${validatedToolCalls.map((tc: any) => {
     
     console.log('\n[State Update] ========== UPDATING STATE ==========');
     console.log(`[State Update] State transition: ${currentState} → ${newState}`);
-    console.log(`[State Update] Pending product: ${newMetadata.pending_product?.name || 'None'}`);
-    console.log(`[State Update] Last shown product: ${newMetadata.last_shown_product?.name || 'None'}`);
+    console.log(`[State Update] Pending items: ${pendingItems.length} items`);
     console.log(`[State Update] Delivery address: ${newMetadata.delivery_address || 'Not set'}`);
     console.log(`[State Update] Payment method: ${newMetadata.payment_method || 'Not set'}`);
     
@@ -1363,7 +1428,7 @@ ${validatedToolCalls.map((tc: any) => {
     console.log(`[Summary] Tools called (raw): ${toolCalls.length}`);
     console.log(`[Summary] Tools executed (validated): ${validatedToolCalls.length}`);
     console.log(`[Summary] State transition: ${currentState} → ${newState}`);
-    console.log(`[Summary] Pending product: ${newMetadata.pending_product ? 'Set' : 'None'}`);
+    console.log(`[Summary] Pending items: ${pendingItems.length} items`);
     console.log(`[Summary] Processing time: ${Date.now() - startTime} ms`);
     console.log('[Summary] ===============================================\n');
 

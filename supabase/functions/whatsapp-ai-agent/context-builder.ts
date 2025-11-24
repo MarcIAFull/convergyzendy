@@ -25,8 +25,6 @@ export interface ConversationContext {
   cartTotal: number;
   currentState: string;
   stateMetadata: any;
-  pendingProduct: any | null;
-  lastShownProduct: any | null;
   
   // Formatted strings (for template variables)
   formatted: {
@@ -260,12 +258,10 @@ export async function buildConversationContext(
 
   const currentState = conversationState?.state || 'idle';
   const stateMetadata = conversationState?.metadata || {};
-  const pendingProduct = stateMetadata.pending_product || null;
-  const lastShownProduct = stateMetadata.last_shown_product || null;
   const lastShownProducts = (conversationState?.last_shown_products || []) as Array<{id: string; name: string}>;
 
   console.log(`[Context Builder] State: ${currentState}`);
-  console.log(`[Context Builder] Pending product: ${pendingProduct ? pendingProduct.name : 'None'}`);
+  console.log(`[Context Builder] Pending items: ${pendingItems.length}`);
   console.log(`[Context Builder] Last shown products: ${lastShownProducts.length}`);
 
   // ============================================================
@@ -301,8 +297,6 @@ export async function buildConversationContext(
     cartTotal,
     currentState,
     stateMetadata,
-    pendingProduct,
-    lastShownProduct,
     
     // Formatted strings
     formatted
