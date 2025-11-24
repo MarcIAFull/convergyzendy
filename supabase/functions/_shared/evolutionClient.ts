@@ -104,7 +104,12 @@ export async function getInstanceStatus(instanceName: string): Promise<InstanceS
   if (!response.ok) {
     const errorBody = await response.text();
     console.error(`[evolutionClient] Status check failed for ${instanceName}:`, errorBody);
-    throw new Error(`Evolution API status check failed: ${response.status}`);
+    
+    // Create error with status code property for better error handling
+    const error: any = new Error(`Evolution API status check failed: ${response.status}`);
+    error.statusCode = response.status;
+    error.responseBody = errorBody;
+    throw error;
   }
 
   return await response.json();

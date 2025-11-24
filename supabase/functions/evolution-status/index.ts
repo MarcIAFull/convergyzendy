@@ -67,24 +67,33 @@ serve(async (req) => {
     let status;
     try {
       status = await getInstanceStatus(instance.instance_name);
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const statusCode = error.statusCode || 0;
+      
+      console.log(`[evolution-status] Caught error:`, {
+        message: errorMessage,
+        statusCode: statusCode,
+        hasStatusCodeProp: 'statusCode' in error
+      });
       
       // If instance doesn't exist in Evolution API (404), return disconnected status
-      if (errorMessage.includes('404')) {
-        console.log(`[evolution-status] Instance ${instance.instance_name} not found in Evolution API (404)`);
+      if (statusCode === 404 || errorMessage.includes('404')) {
+        console.log(`[evolution-status] Instance ${instance.instance_name} not found (404) - returning disconnected`);
         return new Response(
           JSON.stringify({
             status: 'disconnected',
             instanceName: instance.instance_name,
             message: 'Instance not found in Evolution API. Please reconnect.',
-            needsConnection: true
+            needsConnection: true,
+            lastChecked: new Date().toISOString()
           }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
       }
       
       // For other errors, throw to be handled by outer catch
+      console.log(`[evolution-status] Re-throwing non-404 error`);
       throw error;
     }
     
