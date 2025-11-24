@@ -55,7 +55,12 @@ serve(async (req) => {
         JSON.stringify({
           status: 'disconnected',
           message: 'WhatsApp not configured. Please connect first.',
-          needsConnection: true
+          needsConnection: true,
+          qr: {
+            qrImageUrl: null,
+            qrBase64: null,
+          },
+          lastCheckedAt: new Date().toISOString()
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -86,7 +91,11 @@ serve(async (req) => {
             instanceName: instance.instance_name,
             message: 'Instance not found in Evolution API. Please reconnect.',
             needsConnection: true,
-            lastChecked: new Date().toISOString()
+            qr: {
+              qrImageUrl: null,
+              qrBase64: null,
+            },
+            lastCheckedAt: new Date().toISOString()
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
@@ -140,9 +149,12 @@ serve(async (req) => {
         status: mappedStatus,
         instanceName: instance.instance_name,
         phoneNumber: status.instance?.owner,
-        qrCode: qrData,
+        qr: {
+          qrImageUrl: qrData?.code || null,
+          qrBase64: qrData?.base64 || null,
+        },
         rawStatus: status,
-        lastChecked: new Date().toISOString()
+        lastCheckedAt: new Date().toISOString()
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
