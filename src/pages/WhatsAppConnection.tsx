@@ -59,27 +59,56 @@ export default function WhatsAppConnection() {
     try {
       const { data, error } = await supabase.functions.invoke('evolution-connect');
       
-      if (error) throw error;
+      if (error) {
+        // Extract error details from response
+        const errorData = error.context?.body;
+        
+        if (errorData?.errorCode === 'INVALID_CREDENTIALS') {
+          toast({
+            title: "Credenciais Inválidas",
+            description: "A chave da Evolution API está inválida. Contacte o suporte.",
+            variant: "destructive",
+          });
+        } else if (errorData?.errorCode === 'API_UNREACHABLE') {
+          toast({
+            title: "API Indisponível",
+            description: "Não foi possível alcançar o servidor Evolution API. Tente novamente mais tarde.",
+            variant: "destructive",
+          });
+        } else if (errorData?.errorCode === 'NO_RESTAURANT') {
+          toast({
+            title: "Sem Restaurante",
+            description: "Por favor, complete a configuração do restaurante primeiro.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Falha na Conexão",
+            description: errorData?.error || error.message,
+            variant: "destructive",
+          });
+        }
+        return;
+      }
 
-      setStatus(data);
-
-      if (data.error) {
+      if (data?.alreadyExists) {
         toast({
-          title: "Erro",
-          description: data.error,
-          variant: "destructive",
+          title: "✅ Instância Reconectada!",
+          description: "A sua instância WhatsApp foi reconectada com sucesso.",
         });
       } else {
         toast({
-          title: "✅ Sucesso",
-          description: data.message || "Instância criada/conectada com sucesso!",
+          title: "✅ Instância Criada!",
+          description: "Por favor, digitalize o código QR abaixo para conectar o WhatsApp.",
         });
       }
+      
+      await fetchStatus();
     } catch (error) {
       console.error('Failed to connect instance:', error);
       toast({
-        title: "Erro ao conectar",
-        description: error instanceof Error ? error.message : "Não foi possível conectar à instância.",
+        title: "Erro Inesperado",
+        description: "Por favor, tente novamente em alguns instantes.",
         variant: "destructive",
       });
     } finally {
