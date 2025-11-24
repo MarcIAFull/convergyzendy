@@ -123,7 +123,7 @@ export const DeliveryZoneMap = ({
   return (
     <div 
       ref={containerRef} 
-      style={{ height, width: '100%' }} 
+      style={{ height, width: '100%', zIndex: 1 }} 
       className="rounded-lg border border-border"
     />
   );
