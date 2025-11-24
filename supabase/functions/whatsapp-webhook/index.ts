@@ -19,10 +19,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // GET request for webhook verification (if Evolution uses this)
     if (req.method === 'GET') {
@@ -61,13 +62,33 @@ serve(async (req) => {
         });
       }
 
-      // Parse Evolution API webhook payload
-      // Evolution can send different event types and formats
+      // Extract data from the webhook
       const event = body.event;
+      const instanceName = body.instance;
       const data = body.data;
 
-      console.log('[EvolutionWebhook] Event type:', event);
-      console.log('[EvolutionWebhook] Data:', JSON.stringify(data, null, 2));
+      // Get restaurant ID from instance name
+      const { data: instance, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('restaurant_id')
+        .eq('instance_name', instanceName)
+        .single();
+
+      if (instanceError || !instance) {
+        console.error('[whatsapp-webhook] Instance not found:', instanceName);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Instance not found' 
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const restaurantId = instance.restaurant_id;
+      console.log('[whatsapp-webhook] Routing to restaurant:', restaurantId);
+      console.log('[whatsapp-webhook] Event type:', event);
+      console.log('[whatsapp-webhook] Data:', JSON.stringify(data, null, 2));
 
       // Only process incoming messages
       if (event !== 'messages.upsert' || !data) {
@@ -117,25 +138,19 @@ serve(async (req) => {
         });
       }
 
-      console.log(`[EvolutionWebhook] Test message received`, { phone: from, text: messageBody });
+      console.log(`[whatsapp-webhook] Processing message from ${from} for restaurant ${restaurantId}`);
 
-      // Find restaurant by instance name (single-tenant setup)
-      // In a multi-tenant setup, you'd match by phone number from Evolution instance config
-      const { data: restaurant, error: restaurantError } = await supabase
+      // Get restaurant info
+      const { data: restaurant } = await supabase
         .from('restaurants')
-        .select('id, name, phone')
-        .limit(1)
-        .maybeSingle();
-
-      if (restaurantError) {
-        console.error('[EvolutionWebhook] Error finding restaurant:', restaurantError);
-        throw restaurantError;
-      }
+        .select('id, phone')
+        .eq('id', restaurantId)
+        .single();
 
       if (!restaurant) {
-        console.log('[EvolutionWebhook] No restaurant found');
-        return new Response(JSON.stringify({ success: true, note: 'Restaurant not found' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        console.error('[whatsapp-webhook] Restaurant not found:', restaurantId);
+        return new Response(JSON.stringify({ success: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
