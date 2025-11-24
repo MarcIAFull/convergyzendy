@@ -57,8 +57,13 @@ serve(async (req) => {
     
     console.log(`[evolution-connect] Creating/connecting instance for restaurant ${restaurant.id}: ${instanceName}`);
 
-    // Create or connect instance via Evolution API
+    // Create or connect instance via Evolution API (includes validation)
     const result = await createOrConnectInstance(instanceName, restaurant.phone);
+
+    // Determine status based on result
+    const instanceStatus = result.alreadyExists ? 
+      (result.existingStatus?.instance?.state === 'open' ? 'connected' : 'waiting_qr') : 
+      'waiting_qr';
 
     // Update or insert whatsapp_instances record
     const { data: existingInstance } = await supabase
@@ -72,18 +77,18 @@ serve(async (req) => {
         .from('whatsapp_instances')
         .update({
           instance_name: instanceName,
-          status: 'waiting_qr',
+          status: instanceStatus,
           last_checked_at: new Date().toISOString(),
           metadata: result
         })
-        .eq('restaurant_id', restaurant.id);
+        .eq('id', existingInstance.id);
     } else {
       await supabase
         .from('whatsapp_instances')
         .insert({
           restaurant_id: restaurant.id,
           instance_name: instanceName,
-          status: 'waiting_qr',
+          status: instanceStatus,
           metadata: result
         });
     }
@@ -95,28 +100,60 @@ serve(async (req) => {
         restaurant_id: restaurant.id,
         log_type: 'whatsapp_connect',
         severity: 'info',
-        message: `WhatsApp instance ${instanceName} connection initiated`,
-        metadata: { instance_name: instanceName }
+        message: `WhatsApp instance ${instanceName} ${result.alreadyExists ? 'reconnected' : 'created'}`,
+        metadata: { instance_name: instanceName, already_exists: result.alreadyExists }
       });
 
     return new Response(
       JSON.stringify({
         success: true,
         instanceName,
-        message: 'Instance created/connected. Please scan QR code.',
+        alreadyExists: result.alreadyExists || false,
+        message: result.alreadyExists ? 
+          'Instance already exists. Reconnecting...' : 
+          'Instance created. Please scan QR code.',
         ...result
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('[evolution-connect] Error:', error);
+    
+    // Extract error type and provide user-friendly messages
+    let errorMessage = 'Unknown error occurred';
+    let errorCode = 'UNKNOWN';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      if (error.message.includes('INVALID_API_KEY')) {
+        errorMessage = 'Evolution API key is invalid. Please contact support to configure credentials.';
+        errorCode = 'INVALID_CREDENTIALS';
+        statusCode = 500;
+      } else if (error.message.includes('API_UNREACHABLE') || error.message.includes('API_CONNECTION_FAILED')) {
+        errorMessage = 'Cannot reach Evolution API server. Please try again later.';
+        errorCode = 'API_UNREACHABLE';
+        statusCode = 503;
+      } else if (error.message.includes('Missing authorization') || error.message.includes('Unauthorized')) {
+        errorMessage = error.message;
+        errorCode = 'UNAUTHORIZED';
+        statusCode = 401;
+      } else if (error.message.includes('No restaurant found')) {
+        errorMessage = 'No restaurant associated with your account';
+        errorCode = 'NO_RESTAURANT';
+        statusCode = 404;
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        errorCode,
         success: false
       }),
       { 
-        status: 500,
+        status: statusCode,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );

@@ -24,13 +24,41 @@ function getConfig(): EvolutionConfig {
   const apiKey = Deno.env.get('EVOLUTION_API_KEY');
 
   if (!apiUrl || !apiKey) {
-    throw new Error('Evolution API configuration missing');
+    throw new Error('Evolution API configuration missing. Please configure EVOLUTION_API_URL and EVOLUTION_API_KEY secrets.');
   }
 
   // Remove trailing slashes from apiUrl to prevent double-slash in URLs
   const normalizedApiUrl = apiUrl.replace(/\/+$/, '');
 
   return { apiUrl: normalizedApiUrl, apiKey };
+}
+
+async function validateApiConnection(): Promise<void> {
+  const { apiUrl, apiKey } = getConfig();
+  
+  try {
+    const response = await fetch(`${apiUrl}/instance/fetchInstances`, {
+      method: 'GET',
+      headers: {
+        'apikey': apiKey,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 401) {
+      throw new Error('INVALID_API_KEY: Evolution API key is invalid');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`API_UNREACHABLE: Evolution API returned status ${response.status}`);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('INVALID_API_KEY') || errorMessage.includes('API_UNREACHABLE')) {
+      throw error;
+    }
+    throw new Error(`API_CONNECTION_FAILED: Cannot reach Evolution API - ${errorMessage}`);
+  }
 }
 
 export function formatPhoneNumber(phone: string): string {
@@ -88,6 +116,10 @@ export async function getInstanceQrCode(instanceName: string): Promise<{ code: s
 }
 
 export async function createOrConnectInstance(instanceName: string, webhookUrl?: string): Promise<any> {
+  // Validate API connection first
+  console.log(`[evolutionClient] Validating Evolution API connection...`);
+  await validateApiConnection();
+  
   const { apiUrl, apiKey } = getConfig();
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   
@@ -138,10 +170,22 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
     const errorText = await response.text();
     console.error(`[evolutionClient] Instance creation failed:`, errorText);
     
-    // If instance already exists, try to connect it
+    // If instance already exists, try to get its status
     if (response.status === 409 || errorText.includes('already exists')) {
-      console.log(`[evolutionClient] Instance exists, attempting to connect: ${instanceName}`);
-      return await getInstanceQrCode(instanceName);
+      console.log(`[evolutionClient] Instance ${instanceName} already exists, fetching status`);
+      try {
+        const status = await getInstanceStatus(instanceName);
+        const qrCode = await getInstanceQrCode(instanceName);
+        return {
+          ...qrCode,
+          alreadyExists: true,
+          existingStatus: status
+        };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[evolutionClient] Failed to get existing instance info:`, errorMsg);
+        throw new Error(`Instance exists but cannot fetch status: ${errorMsg}`);
+      }
     }
     
     throw new Error(`Evolution API instance creation failed: ${response.status} - ${errorText}`);
