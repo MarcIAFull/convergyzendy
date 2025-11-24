@@ -8,6 +8,7 @@ interface UseRestaurantGuardResult {
   error: string | null;
   ready: boolean;
   retry: () => void;
+  restaurant: any | null;
 }
 
 const TIMEOUT_MS = 10000; // 10 second safety timeout
@@ -125,6 +126,7 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
     loading,
     error,
     ready: isReady,
-    retry
+    retry,
+    restaurant
   };
 };
