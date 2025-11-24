@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, Loader2 } from 'lucide-react';
+import { Send, Bot, Loader2, User } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ interface Message {
   from_number: string;
   to_number: string;
   timestamp: string;
+  sent_by?: string | null;
 }
 
 interface ChatAreaProps {
@@ -160,15 +161,32 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg) => {
-          const isOutgoing = msg.direction === 'outgoing';
+          const isOutgoing = msg.direction === 'outbound';
           return (
             <div
               key={msg.id}
               className={cn(
-                'flex',
-                isOutgoing ? 'justify-end' : 'justify-start'
+                'flex flex-col',
+                isOutgoing ? 'items-end' : 'items-start'
               )}
             >
+              {/* Badge indicating origin (only for outbound messages) */}
+              {isOutgoing && msg.sent_by && (
+                <div className="flex items-center gap-1 mb-1 px-2">
+                  {msg.sent_by === 'ai' ? (
+                    <>
+                      <Bot className="h-3 w-3 text-primary" />
+                      <span className="text-xs text-muted-foreground font-medium">IA</span>
+                    </>
+                  ) : msg.sent_by === 'human' ? (
+                    <>
+                      <User className="h-3 w-3 text-blue-600" />
+                      <span className="text-xs text-muted-foreground font-medium">Você</span>
+                    </>
+                  ) : null}
+                </div>
+              )}
+              
               <Card
                 className={cn(
                   'max-w-[70%] p-3',
