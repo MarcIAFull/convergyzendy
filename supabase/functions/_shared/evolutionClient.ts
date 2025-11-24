@@ -116,6 +116,8 @@ export async function getInstanceStatus(instanceName: string): Promise<InstanceS
 export async function getInstanceQrCode(instanceName: string): Promise<{ code: string; base64: string }> {
   const { apiUrl, apiKey } = getConfig();
   
+  console.log(`[evolutionClient] Fetching QR code for ${instanceName}`);
+  
   const response = await fetch(
     `${apiUrl}/instance/connect/${instanceName}`,
     {
@@ -130,7 +132,10 @@ export async function getInstanceQrCode(instanceName: string): Promise<{ code: s
     throw new Error(`Evolution API QR code fetch failed: ${response.status}`);
   }
 
-  return await response.json();
+  const qrData = await response.json();
+  console.log(`[evolutionClient] QR code received:`, { hasCode: !!qrData.code, hasBase64: !!qrData.base64 });
+  
+  return qrData;
 }
 
 export async function createOrConnectInstance(instanceName: string, webhookUrl?: string): Promise<any> {
