@@ -32,7 +32,7 @@ export default function WhatsAppConnection() {
   const [testPhone, setTestPhone] = useState("+351912345678");
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste. 😊");
   const [sending, setSending] = useState(false);
-  const instanceName = "convergy"; // This would come from env in production
+  const [instanceName, setInstanceName] = useState<string | null>(null);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async () => {
@@ -42,6 +42,11 @@ export default function WhatsAppConnection() {
       if (error) throw error;
       
       setStatus(data);
+      
+      // Atualizar instanceName com o valor do backend
+      if (data.instanceName) {
+        setInstanceName(data.instanceName);
+      }
     } catch (error) {
       console.error('Failed to fetch Evolution status:', error);
       toast({
@@ -254,13 +259,13 @@ export default function WhatsAppConnection() {
           {/* Instance Name */}
           <div className="space-y-2">
             <Label htmlFor="instance-name">Nome da Instância (Evolution)</Label>
-            <Input
-              id="instance-name"
-              type="text"
-              value={instanceName}
-              disabled
-              className="bg-muted"
-            />
+              <Input
+                id="instance-name"
+                type="text"
+                value={instanceName || "Nenhuma instância configurada"}
+                disabled
+                className="bg-muted"
+              />
             <p className="text-xs text-muted-foreground">
               Nome da instância configurada nas variáveis de ambiente
             </p>
