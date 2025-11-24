@@ -72,7 +72,6 @@ const App = () => (
                   <Route path="/menu" element={<MenuManagement />} />
                   <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />
-                  <Route path="/team" element={<TeamManagement />} />
                   <Route path="/orders/:id" element={<OrderDetail />} />
                   
                   {/* Communication */}
@@ -86,6 +85,7 @@ const App = () => (
                   
                   {/* Admin Routes (Protected by AdminRoute) */}
                   <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+                  <Route path="/admin/team" element={<AdminRoute><TeamManagement /></AdminRoute>} />
                   <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
                 </Route>
