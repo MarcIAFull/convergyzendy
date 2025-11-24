@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { AuthProvider } from "@/hooks/useAuth";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
@@ -19,6 +20,7 @@ import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import AIConfiguration from "@/pages/AIConfiguration";
 import RestaurantAISettings from "@/pages/RestaurantAISettings";
 import Admin from "@/pages/Admin";
+import SystemCheck from "@/pages/SystemCheck";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import NotFound from "@/pages/NotFound";
@@ -33,7 +35,8 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <Routes>
+            <NotificationProvider>
+              <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/onboarding" element={
                 <ProtectedRoute>
@@ -59,10 +62,12 @@ const App = () => (
                 <Route path="/ai-configuration" element={<AIConfiguration />} />
                 <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/system-check" element={<SystemCheck />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
-            </Routes>
+              </Routes>
+            </NotificationProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
