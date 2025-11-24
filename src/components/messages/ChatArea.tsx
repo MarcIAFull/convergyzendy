@@ -91,13 +91,13 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
 
     setIsSending(true);
     try {
-      const { error } = await supabase.functions.invoke('whatsapp-send', {
-        body: {
-          restaurantId,
-          phoneNumber: selectedPhone,
-          message: newMessage.trim(),
-        },
-      });
+    const { error } = await supabase.functions.invoke('whatsapp-send', {
+      body: {
+        restaurantId,
+        customerPhone: selectedPhone,
+        messageText: newMessage.trim(),
+      },
+    });
 
       if (error) throw error;
 
