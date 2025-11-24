@@ -22,6 +22,7 @@ import RestaurantAISettings from "@/pages/RestaurantAISettings";
 import Admin from "@/pages/Admin";
 import Subscription from "@/pages/Subscription";
 import SystemCheck from "@/pages/SystemCheck";
+import DeliveryZones from "@/pages/DeliveryZones";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import NotFound from "@/pages/NotFound";
@@ -80,6 +81,7 @@ const App = () => (
                   <Route path="/admin" element={<Admin />} />
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/system-check" element={<SystemCheck />} />
+                  <Route path="/delivery-zones" element={<DeliveryZones />} />
                 </Route>
                 
                 {/* 404 Catch-All */}

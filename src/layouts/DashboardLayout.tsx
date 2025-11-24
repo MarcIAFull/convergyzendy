@@ -23,6 +23,7 @@ import {
   BellOff,
   ClipboardCheck,
   CreditCard,
+  MapPin,
 } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,7 @@ const DashboardLayout = () => {
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard, badge: unreadOrders },
     { name: "Menu", href: "/menu", icon: Package },
+    { name: "Delivery Zones", href: "/delivery-zones", icon: MapPin },
     { name: "Analytics", href: "/analytics", icon: BarChart3 },
     { name: "Customers", href: "/customers", icon: UsersIcon },
     { name: "Messages", href: "/messages", icon: MessageSquare, badge: unreadMessages },

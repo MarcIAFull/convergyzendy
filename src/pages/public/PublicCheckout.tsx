@@ -8,9 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Clock, MapPin as MapPinIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { AddressInput } from '@/components/delivery/AddressInput';
+import { useGeocoding } from '@/hooks/useGeocoding';
+import { DeliveryZoneMap } from '@/components/delivery/DeliveryZoneMap';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function PublicCheckout() {
   const { slug } = useParams<{ slug: string }>();
@@ -28,6 +32,10 @@ export default function PublicCheckout() {
     delivery_instructions: '',
     payment_method: 'cash' as 'cash' | 'card' | 'pix' | 'mbway' | 'multibanco',
   });
+  const [addressCoords, setAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [deliveryValidation, setDeliveryValidation] = useState<any>(null);
+  const [validatingDelivery, setValidatingDelivery] = useState(false);
+  const { validateDeliveryAddress } = useGeocoding();
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-PT', {
@@ -36,9 +44,38 @@ export default function PublicCheckout() {
     }).format(price);
   };
 
+  const handleAddressGeocoded = async (result: { lat: number; lng: number; formatted_address: string }) => {
+    setAddressCoords({ lat: result.lat, lng: result.lng });
+    setFormData(prev => ({ ...prev, delivery_address: result.formatted_address }));
+
+    if (menuData?.restaurant) {
+      setValidatingDelivery(true);
+      const subtotal = getSubtotal();
+      const validation = await validateDeliveryAddress(
+        menuData.restaurant.id,
+        result.lat,
+        result.lng,
+        subtotal
+      );
+      setValidatingDelivery(false);
+
+      if (validation) {
+        setDeliveryValidation(validation);
+        if (!validation.valid) {
+          toast({
+            title: 'Endereço inválido',
+            description: validation.error || 'Endereço fora da área de entrega',
+            variant: 'destructive'
+          });
+        }
+      }
+    }
+  };
+
   const subtotal = getSubtotal();
   const deliveryFee = menuData?.restaurant.delivery_fee || 0;
-  const total = subtotal + deliveryFee;
+  const calculatedDeliveryFee = deliveryValidation?.delivery_fee ?? deliveryFee;
+  const total = subtotal + calculatedDeliveryFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +85,6 @@ export default function PublicCheckout() {
     setLoading(true);
 
     try {
-      // 1. Criar cart
       const { data: cart, error: cartError } = await supabase
         .from('carts')
         .insert({
@@ -61,7 +97,6 @@ export default function PublicCheckout() {
 
       if (cartError || !cart) throw new Error('Erro ao criar carrinho');
 
-      // 2. Criar cart_items
       const cartItems = items.map((item) => ({
         cart_id: cart.id,
         product_id: item.product.id,
@@ -75,7 +110,6 @@ export default function PublicCheckout() {
 
       if (itemsError) throw new Error('Erro ao adicionar items ao carrinho');
 
-      // 3. Criar web_order
       const { data: webOrder, error: orderError } = await supabase
         .from('web_orders')
         .insert({
@@ -86,6 +120,8 @@ export default function PublicCheckout() {
           customer_email: formData.customer_email || null,
           delivery_address: formData.delivery_address,
           delivery_instructions: formData.delivery_instructions || null,
+          delivery_lat: addressCoords?.lat || null,
+          delivery_lng: addressCoords?.lng || null,
           items: items.map((item) => ({
             product_id: item.product.id,
             product_name: item.product.name,
@@ -100,7 +136,7 @@ export default function PublicCheckout() {
             total: item.totalPrice,
           })),
           subtotal,
-          delivery_fee: deliveryFee,
+          delivery_fee: calculatedDeliveryFee,
           total_amount: total,
           payment_method: formData.payment_method,
           source: 'web',
@@ -110,7 +146,6 @@ export default function PublicCheckout() {
 
       if (orderError || !webOrder) throw new Error('Erro ao criar pedido');
 
-      // Limpar carrinho
       clearCart();
 
       toast({
@@ -200,16 +235,12 @@ export default function PublicCheckout() {
             <h2 className="text-lg font-semibold mb-4">Endereço de Entrega</h2>
             
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="address">Endereço *</Label>
-                <Input
-                  id="address"
-                  required
-                  value={formData.delivery_address}
-                  onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
-                  placeholder="Rua, número, complemento"
-                />
-              </div>
+              <AddressInput
+                value={formData.delivery_address}
+                onChange={(value) => setFormData({ ...formData, delivery_address: value })}
+                onGeocoded={handleAddressGeocoded}
+                required
+              />
 
               <div>
                 <Label htmlFor="instructions">Instruções de entrega</Label>
@@ -224,6 +255,59 @@ export default function PublicCheckout() {
                 />
               </div>
             </div>
+
+            {validatingDelivery && (
+              <Alert className="mt-4">
+                <AlertDescription className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+                  Validando endereço de entrega...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {deliveryValidation && !deliveryValidation.valid && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {deliveryValidation.error}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {deliveryValidation && deliveryValidation.valid && (
+              <Alert className="mt-4 border-green-500 bg-green-50">
+                <AlertDescription className="space-y-2">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <MapPinIcon className="h-4 w-4" />
+                    <span className="font-medium">Endereço dentro da área de entrega</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-green-600">
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <span>Entrega em ~{deliveryValidation.estimated_time_minutes} min</span>
+                    </div>
+                    <span>•</span>
+                    <span>Distância: {deliveryValidation.distance_km.toFixed(1)} km</span>
+                    {deliveryValidation.zone && (
+                      <>
+                        <span>•</span>
+                        <span>Zona: {deliveryValidation.zone.name}</span>
+                      </>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {addressCoords && menuData?.restaurant.latitude && menuData?.restaurant.longitude && (
+              <div className="mt-4">
+                <DeliveryZoneMap
+                  center={[menuData.restaurant.latitude, menuData.restaurant.longitude]}
+                  deliveryAddress={addressCoords}
+                  height="300px"
+                />
+              </div>
+            )}
           </Card>
 
           <Card className="p-6">
@@ -261,7 +345,7 @@ export default function PublicCheckout() {
               
               <div className="flex justify-between text-foreground">
                 <span>Taxa de Entrega</span>
-                <span>{formatPrice(deliveryFee)}</span>
+                <span>{formatPrice(calculatedDeliveryFee)}</span>
               </div>
 
               <div className="flex justify-between text-xl font-bold text-foreground pt-3 border-t">
@@ -275,13 +359,15 @@ export default function PublicCheckout() {
             type="submit"
             className="w-full bg-orange hover:bg-orange/90"
             size="lg"
-            disabled={loading}
+            disabled={loading || (deliveryValidation && !deliveryValidation.valid) || validatingDelivery}
           >
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Processando...
               </>
+            ) : validatingDelivery ? (
+              'Validando endereço...'
             ) : (
               `Confirmar Pedido · ${formatPrice(total)}`
             )}

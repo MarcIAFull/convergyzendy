@@ -1,0 +1,79 @@
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+interface GeocodingResult {
+  lat: number;
+  lng: number;
+  formatted_address: string;
+  place_id?: string;
+  address_components?: any;
+  source?: 'cache' | 'nominatim';
+}
+
+interface ValidationResult {
+  valid: boolean;
+  zone?: any;
+  delivery_fee: number;
+  estimated_time_minutes: number;
+  distance_km: number;
+  error?: string;
+}
+
+export const useGeocoding = () => {
+  const [loading, setLoading] = useState(false);
+
+  const geocodeAddress = async (address: string): Promise<GeocodingResult | null> => {
+    if (!address || address.trim().length < 3) {
+      toast.error('Endereço muito curto');
+      return null;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('geocode-address-free', {
+        body: { address }
+      });
+
+      if (error) throw error;
+
+      return data as GeocodingResult;
+    } catch (error: any) {
+      console.error('Geocoding error:', error);
+      toast.error(error.message || 'Erro ao buscar endereço');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateDeliveryAddress = async (
+    restaurant_id: string,
+    lat: number,
+    lng: number,
+    order_amount?: number
+  ): Promise<ValidationResult | null> => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('validate-delivery-address', {
+        body: { restaurant_id, lat, lng, order_amount }
+      });
+
+      if (error) throw error;
+
+      return data as ValidationResult;
+    } catch (error: any) {
+      console.error('Validation error:', error);
+      toast.error(error.message || 'Erro ao validar endereço');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    loading,
+    geocodeAddress,
+    validateDeliveryAddress
+  };
+};
