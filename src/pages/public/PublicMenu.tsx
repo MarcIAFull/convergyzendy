@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { usePublicMenuStore } from '@/stores/publicMenuStore';
 import { usePublicCartStore } from '@/stores/publicCartStore';
+import { useMenuColors } from '@/hooks/useMenuColors';
 import { MenuHeader } from '@/components/public/MenuHeader';
 import { ProductCard } from '@/components/public/ProductCard';
 import { ProductModal } from '@/components/public/ProductModal';
@@ -19,6 +20,12 @@ export default function PublicMenu() {
   const { addItem } = usePublicCartStore();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Aplicar cores customizadas usando hook dedicado
+  useMenuColors({
+    primaryColor: menuData?.settings.primary_color,
+    accentColor: menuData?.settings.accent_color,
+  });
 
   useEffect(() => {
     if (slug) {
@@ -76,21 +83,6 @@ export default function PublicMenu() {
     category,
     products: products.filter((p) => p.category_id === category.id),
   }));
-
-  // Aplicar cores customizadas
-  useEffect(() => {
-    if (settings.primary_color) {
-      document.documentElement.style.setProperty('--public-primary', settings.primary_color);
-    }
-    if (settings.accent_color) {
-      document.documentElement.style.setProperty('--public-accent', settings.accent_color);
-    }
-    
-    return () => {
-      document.documentElement.style.removeProperty('--public-primary');
-      document.documentElement.style.removeProperty('--public-accent');
-    };
-  }, [settings.primary_color, settings.accent_color]);
 
   return (
     <>

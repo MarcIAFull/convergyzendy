@@ -10,12 +10,18 @@ interface PublicMenuState {
   fetchMenuBySlug: (slug: string) => Promise<void>;
 }
 
-export const usePublicMenuStore = create<PublicMenuState>((set) => ({
+export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
   menuData: null,
   loading: false,
   error: null,
 
   fetchMenuBySlug: async (slug: string) => {
+    // Evitar múltiplas chamadas simultâneas
+    const currentState = get();
+    if (currentState.loading) {
+      return;
+    }
+
     set({ loading: true, error: null });
 
     try {
