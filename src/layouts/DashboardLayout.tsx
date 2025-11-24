@@ -11,7 +11,7 @@ import {
   BellOff,
 } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 
 const DashboardLayout = () => {
@@ -80,19 +80,7 @@ const DashboardLayout = () => {
         <div className="flex-1 flex flex-col">
           {/* Top Navigation Bar */}
           <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center justify-between px-4">
-              <div className="flex items-center gap-4">
-                <SidebarTrigger />
-                <div className="flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <span className="text-xl font-bold">Z</span>
-                  </div>
-                  <div className="hidden sm:block">
-                    <h1 className="text-lg font-bold text-foreground">Zendy</h1>
-                    <p className="text-xs text-muted-foreground">Delivery AI</p>
-                  </div>
-                </div>
-              </div>
+            <div className="flex h-16 items-center justify-end px-4">
 
               <div className="flex items-center gap-2">
                 <Button
