@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Store, Clock, DollarSign, Bot, Loader2 } from 'lucide-react';
+import { Store, Clock, DollarSign, Bot, Loader2, Volume2 } from 'lucide-react';
 import type { OpeningHours } from '@/types/database';
 
 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -62,6 +63,7 @@ const daysOfWeek = [
 
 const Settings = () => {
   const { restaurant, loading, fetchRestaurant, createRestaurant, updateRestaurant } = useRestaurantStore();
+  const { soundEnabled, toggleSound } = useNotifications();
   const { toast } = useToast();
 
   const form = useForm<RestaurantSettingsFormValues>({
@@ -377,6 +379,37 @@ const Settings = () => {
                   </FormItem>
                 )}
               />
+            </CardContent>
+          </Card>
+
+          {/* Notification Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Volume2 className="h-5 w-5" />
+                Notification Settings
+              </CardTitle>
+              <CardDescription>
+                Configure how you receive notifications for new orders and messages
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Sound Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Play a sound when new orders or messages arrive
+                  </p>
+                </div>
+                <Switch checked={soundEnabled} onCheckedChange={toggleSound} />
+              </div>
+              
+              <div className="rounded-lg border p-4 bg-muted/50">
+                <p className="text-sm text-muted-foreground">
+                  💡 <strong>Tip:</strong> Enable browser notifications in your browser settings 
+                  for desktop alerts even when this tab is not active.
+                </p>
+              </div>
             </CardContent>
           </Card>
 

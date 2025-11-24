@@ -1,5 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { 
+  createErrorHttpResponse, 
+  createSuccessHttpResponse, 
+  extractErrorMessage, 
+  logError,
+  ErrorCodes 
+} from '../_shared/errorHandler.ts';
+import { 
+  checkRateLimit, 
+  RateLimits, 
+  createRateLimitIdentifier, 
+  logRateLimitHit 
+} from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,14 +88,13 @@ serve(async (req) => {
         .single();
 
       if (instanceError || !instance) {
-        console.error('[whatsapp-webhook] Instance not found:', instanceName);
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'Instance not found' 
-        }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        logError('whatsapp-webhook', `Instance not found: ${instanceName}`, { instanceError });
+        return createErrorHttpResponse(
+          'WhatsApp instance not found',
+          404,
+          ErrorCodes.NOT_FOUND,
+          corsHeaders
+        );
       }
 
       const restaurantId = instance.restaurant_id;
@@ -139,6 +151,23 @@ serve(async (req) => {
       }
 
       console.log(`[whatsapp-webhook] Processing message from ${from} for restaurant ${restaurantId}`);
+
+      // Rate limiting check
+      const rateLimitKey = createRateLimitIdentifier('webhook', restaurantId, from);
+      const rateLimit = checkRateLimit({
+        ...RateLimits.WEBHOOK_PER_CUSTOMER,
+        identifier: rateLimitKey,
+      });
+
+      if (!rateLimit.allowed) {
+        logRateLimitHit(rateLimitKey, rateLimit.remaining, rateLimit.resetTime);
+        return createErrorHttpResponse(
+          'Você está enviando mensagens muito rápido. Aguarde alguns momentos.',
+          429,
+          ErrorCodes.RATE_LIMIT_EXCEEDED,
+          corsHeaders
+        );
+      }
 
       // Get restaurant info
       const { data: restaurant } = await supabase

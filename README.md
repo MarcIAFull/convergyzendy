@@ -1,73 +1,180 @@
-# Welcome to your Lovable project
+# 🤖 Zendy AI - Intelligent Restaurant Ordering System
 
-## Project info
+> **Sistema completo de pedidos via WhatsApp com IA conversacional**
 
-**URL**: https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031
+Zendy AI é uma plataforma all-in-one que permite restaurantes receberem e gerenciarem pedidos através do WhatsApp, com um assistente de IA que conversa naturalmente com clientes, processa pedidos, e recupera conversas abandonadas.
 
-## How can I edit this code?
+![Status](https://img.shields.io/badge/status-production_ready-green)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## ✨ Características Principais
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031) and start prompting.
+### 🤖 AI Conversacional
+- Orquestrador Inteligente com detecção de intenção
+- Agent Multi-Tool com 20+ ferramentas
+- Personalizável por restaurante (tom, saudação, upselling)
+- Context-Aware com histórico do cliente
 
-Changes made via Lovable will be committed automatically to this repo.
+### 📱 WhatsApp Integration
+- Evolution API nativa
+- QR Code setup simples
+- Reconexão automática
+- Rate limiting e proteção contra spam
 
-**Use your preferred IDE**
+### 🔄 Recovery System
+- Abandoned Cart Recovery (30min)
+- Paused Conversation Recovery (15min)
+- Inactive Customer Reengagement (30 dias)
+- Smart Cooldown de 24h
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 📊 Dashboard Completo
+- Real-time orders e mensagens
+- Customer insights
+- Analytics detalhado
+- Menu management
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## 🚀 Quick Start
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+### Pré-requisitos
+- Node.js 18+
+- Conta Supabase
+- Conta OpenAI
+- Evolution API rodando
+
+### Setup
+
+```bash
+# Clone
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Install
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Configure .env.local
+VITE_SUPABASE_URL=your-url
+VITE_SUPABASE_ANON_KEY=your-key
+
+# Start
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Configure Secrets no Supabase
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Edge Functions > Secrets:
+```
+OPENAI_API_KEY=sk-...
+EVOLUTION_API_URL=https://...
+EVOLUTION_API_KEY=...
+```
 
-**Use GitHub Codespaces**
+### Conecte WhatsApp
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. Login no sistema
+2. Complete onboarding
+3. WhatsApp Connection > Connect
+4. Escaneie QR Code
 
-## What technologies are used for this project?
+✅ Pronto!
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 📚 Documentação
 
-## How can I deploy this project?
+- **[SETUP.md](./SETUP.md)** - Setup completo
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Como testar
+- **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)** - Checklist de produção
+- **[DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md)** - Roadmap
 
-Simply open [Lovable](https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## 🏗️ Tecnologias
 
-Yes, you can!
+**Frontend:** React 18, TypeScript, Vite, TailwindCSS, Shadcn/ui  
+**Backend:** Supabase (PostgreSQL, Edge Functions, Realtime)  
+**AI:** OpenAI GPT-4  
+**WhatsApp:** Evolution API
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## 📋 Arquitetura
+
+```
+WhatsApp User
+    ↓
+Evolution API (Webhook)
+    ↓
+whatsapp-webhook (Rate Limiting)
+    ↓
+whatsapp-ai-agent (Orchestrator + AI + Tools)
+    ↓
+Supabase (Orders, Messages, State)
+    ↓
+React Dashboard (Real-time)
+```
+
+---
+
+## 🧪 Testes
+
+Execute todos os testes do [TESTING_GUIDE.md](./TESTING_GUIDE.md):
+
+- WhatsApp Integration End-to-End
+- Sistema de Recovery
+- Error Handling
+- Rate Limiting
+- Notificações
+
+---
+
+## 🚀 Deploy
+
+### Backend (Supabase)
+```bash
+supabase functions deploy
+```
+
+### Frontend (Vercel/Netlify)
+```bash
+npm run build
+vercel --prod
+```
+
+Configure webhook no Evolution API:
+```
+https://your-project.supabase.co/functions/v1/whatsapp-webhook
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+**WhatsApp não conecta:** Verifique EVOLUTION_API_URL (sem `/` no final)  
+**AI não responde:** Verifique OPENAI_API_KEY e créditos  
+**Recovery não funciona:** Verifique `agents.recovery_config.enabled = true`
+
+Mais ajuda: [TESTING_GUIDE.md](./TESTING_GUIDE.md)
+
+---
+
+## 📄 Licença
+
+MIT License - veja [LICENSE](./LICENSE)
+
+---
+
+## 💬 Suporte
+
+- **Email**: support@zendy.ai
+- **Issues**: [GitHub Issues](https://github.com/your-org/zendy-ai/issues)
+- **Docs**: [./docs](./docs)
+
+---
+
+**Feito com ❤️ pela equipe Zendy**
+
+**URL do Projeto**: https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031
