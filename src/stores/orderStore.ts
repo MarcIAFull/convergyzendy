@@ -35,6 +35,16 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         return;
       }
 
+      // Fetch customers for all orders
+      const userPhones = [...new Set(orders.map(o => o.user_phone))];
+      const { data: customers, error: customersError } = await supabase
+        .from('customers')
+        .select('phone, name')
+        .in('phone', userPhones)
+        .eq('restaurant_id', restaurantId);
+
+      if (customersError) throw customersError;
+
       // Fetch cart items for all orders
       const cartIds = orders.map(o => o.cart_id);
       const { data: cartItems, error: cartItemsError } = await supabase
@@ -65,6 +75,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       // Build nested structure
       const ordersWithDetails = orders.map(order => {
         const orderCartItems = (cartItems || []).filter(ci => ci.cart_id === order.cart_id);
+        const customer = customers?.find(c => c.phone === order.user_phone) || null;
         
         const items: CartItemWithDetails[] = orderCartItems.map(cartItem => {
           const product = products?.find(p => p.id === cartItem.product_id);
@@ -82,6 +93,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         return {
           ...order,
           items,
+          customer,
         };
       }) as unknown as OrderWithDetails[];
 

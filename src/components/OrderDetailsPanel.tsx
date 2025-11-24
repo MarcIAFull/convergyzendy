@@ -1,30 +1,74 @@
-import { OrderWithDetails } from '@/types/database';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { PrintableOrder } from '@/components/PrintableOrder';
+import { toast } from '@/hooks/use-toast';
+import type { OrderWithDetails } from '@/types/database';
 import { 
   Phone, 
   MapPin, 
   CreditCard,
+  Package,
   Printer,
-  Bike
+  MessageSquare,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface OrderDetailsPanelProps {
   order: OrderWithDetails | null;
-  onStatusChange: (orderId: string, newStatus: 'new' | 'preparing' | 'out_for_delivery' | 'completed' | 'cancelled') => void;
+  onStatusChange: (id: string, status: OrderWithDetails['status']) => Promise<void>;
   onContactCustomer: (phone: string) => void;
 }
 
-export function OrderDetailsPanel({
-  order,
-  onStatusChange,
-  onContactCustomer,
-}: OrderDetailsPanelProps) {
+export function OrderDetailsPanel({ order, onStatusChange, onContactCustomer }: OrderDetailsPanelProps) {
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleStatusChange = async (newStatus: typeof order.status) => {
+    if (!order) return;
+    
+    setIsUpdatingStatus(true);
+    try {
+      await onStatusChange(order.id, newStatus);
+      toast({
+        title: "✅ Pedido atualizado",
+        description: `Status alterado para ${getStatusLabel(newStatus)}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "❌ Erro ao atualizar",
+        description: "Tente novamente",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    await handleStatusChange('cancelled');
+    setShowCancelDialog(false);
+  };
+
   if (!order) {
     return (
       <Card className="h-full flex items-center justify-center">
@@ -39,87 +83,241 @@ export function OrderDetailsPanel({
   }
 
   const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'new':
-        return 'NOVO';
-      case 'preparing':
-        return 'PREPARANDO';
-      case 'out_for_delivery':
-        return 'EM ENTREGA';
-      case 'completed':
-        return 'CONCLUÍDO';
-      case 'cancelled':
-        return 'CANCELADO';
-      default:
-        return status;
-    }
+    const labels: Record<string, string> = {
+      new: 'Novo',
+      preparing: 'Preparando',
+      out_for_delivery: 'Saiu p/ Entrega',
+      completed: 'Concluído',
+      cancelled: 'Cancelado',
+    };
+    return labels[status] || status;
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'new':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
-      case 'preparing':
-        return 'bg-warning/10 text-warning';
-      case 'out_for_delivery':
-        return 'bg-info/10 text-info';
-      case 'completed':
-        return 'bg-success/10 text-success';
-      case 'cancelled':
-        return 'bg-destructive/10 text-destructive';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
+    const colors: Record<string, string> = {
+      new: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+      preparing: 'bg-warning/10 text-warning',
+      out_for_delivery: 'bg-info/10 text-info',
+      completed: 'bg-success/10 text-success',
+      cancelled: 'bg-destructive/10 text-destructive',
+    };
+    return colors[status] || 'bg-muted text-muted-foreground';
   };
 
   const calculateItemTotal = (item: typeof order.items[0]) => {
-    const productTotal = Number(item.product.price) * item.quantity;
-    const addonsTotal = item.addons.reduce((sum, addon) => sum + Number(addon.price), 0) * item.quantity;
-    return productTotal + addonsTotal;
+    const basePrice = item.product.price * item.quantity;
+    const addonsPrice = item.addons.reduce((sum, addon) => sum + addon.price, 0) * item.quantity;
+    return basePrice + addonsPrice;
   };
 
   const subtotal = order.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+  const deliveryFee = order.total_amount - subtotal;
+  const customerName = order.customer?.name || 'Cliente sem cadastro';
 
   return (
     <Card className="h-full flex flex-col">
-      {/* Header */}
-      <CardHeader className="border-b pb-4">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <CardTitle className="text-3xl font-bold">
-              #{order.id.slice(0, 2).toUpperCase()}
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1 flex-1">
+            <CardTitle className="text-2xl font-bold">
+              Pedido #{order.id.slice(0, 8).toUpperCase()}
             </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Recebido em {format(new Date(order.created_at), 'dd/MM/yyyy, HH:mm:ss')}
+            <p className="text-sm text-muted-foreground">
+              {format(new Date(order.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
             </p>
           </div>
-          <Badge className={getStatusColor(order.status) + " text-xs font-bold px-3 py-1"}>
+          <Badge className={getStatusColor(order.status)}>
             {getStatusLabel(order.status)}
           </Badge>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1">
+        {/* Botões de ação principais */}
+        <div className="flex gap-2 mt-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="flex-1"
+            onClick={handlePrint}
+          >
             <Printer className="h-4 w-4 mr-2" />
+            Imprimir
           </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="flex-1"
+            onClick={() => onContactCustomer(order.user_phone)}
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            WhatsApp
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 overflow-auto space-y-6">
+        {/* Informações do Cliente */}
+        <div className="flex items-start gap-3">
+          <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-muted-foreground">Cliente</p>
+            <p className="font-semibold text-lg">{customerName}</p>
+            <p className="text-sm text-muted-foreground">{order.user_phone}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Observações do Pedido */}
+        {order.order_notes && (
+          <>
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-warning mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold text-sm mb-1">Observações do Pedido</p>
+                  <p className="text-sm">{order.order_notes}</p>
+                </div>
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
+
+        {/* Endereço de Entrega */}
+        <div className="flex items-start gap-3">
+          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-muted-foreground">Endereço de Entrega</p>
+            <p className="font-medium text-sm mt-1">{order.delivery_address}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Pagamento */}
+        <div className="flex items-start gap-3">
+          <CreditCard className="h-4 w-4 text-muted-foreground mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-muted-foreground">Método de Pagamento</p>
+            <p className="font-semibold capitalize">{order.payment_method}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Lista de Itens */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold">Itens do Pedido</h3>
+          </div>
+          
+          <div className="space-y-3">
+            {order.items.map((item, idx) => {
+              const itemTotal = calculateItemTotal(item);
+              
+              return (
+                <div key={idx} className="flex gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <p className="font-semibold text-base">{item.product.name}</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {item.quantity}x €{item.product.price.toFixed(2)}
+                        </p>
+                      </div>
+                      <p className="font-bold text-lg">€{itemTotal.toFixed(2)}</p>
+                    </div>
+                    
+                    {item.addons.length > 0 && (
+                      <div className="mt-3 pl-4 border-l-2 border-primary/30 space-y-1">
+                        {item.addons.map((addon) => (
+                          <p key={addon.id} className="text-sm text-muted-foreground">
+                            + {addon.name} <span className="font-medium">(€{addon.price.toFixed(2)})</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {item.notes && (
+                      <div className="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-md">
+                        <p className="text-sm">
+                          <span className="font-semibold">Obs:</span> {item.notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Totais */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="font-medium">€{subtotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Taxa de Entrega</span>
+            <span className="font-medium">€{deliveryFee.toFixed(2)}</span>
+          </div>
+          <Separator />
+          <div className="flex justify-between text-xl font-bold">
+            <span>Total</span>
+            <span>€{order.total_amount.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Botões de Ação */}
+        <div className="space-y-2">
+          {order.status === 'new' && (
+            <Button 
+              size="sm" 
+              className="w-full bg-success hover:bg-success/90 text-white"
+              onClick={() => handleStatusChange('preparing')}
+              disabled={isUpdatingStatus}
+            >
+              {isUpdatingStatus ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Atualizando...</>
+              ) : (
+                'Iniciar Preparo'
+              )}
+            </Button>
+          )}
           
           {order.status === 'preparing' && (
             <Button 
               size="sm" 
-              className="flex-1 bg-success hover:bg-success/90 text-white"
-              onClick={() => onStatusChange(order.id, 'out_for_delivery')}
+              className="w-full bg-info hover:bg-info/90 text-white"
+              onClick={() => handleStatusChange('out_for_delivery')}
+              disabled={isUpdatingStatus}
             >
-              Pronto p/ Entrega
+              {isUpdatingStatus ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Atualizando...</>
+              ) : (
+                'Pronto p/ Entrega'
+              )}
             </Button>
           )}
           
-          {order.status === 'new' && (
+          {order.status === 'out_for_delivery' && (
             <Button 
               size="sm" 
-              className="flex-1 bg-success hover:bg-success/90 text-white"
-              onClick={() => onStatusChange(order.id, 'preparing')}
+              className="w-full bg-success hover:bg-success/90 text-white"
+              onClick={() => handleStatusChange('completed')}
+              disabled={isUpdatingStatus}
             >
-              Iniciar Preparo
+              {isUpdatingStatus ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Atualizando...</>
+              ) : (
+                'Concluir Entrega'
+              )}
             </Button>
           )}
 
@@ -127,148 +325,40 @@ export function OrderDetailsPanel({
             <Button 
               variant="destructive" 
               size="sm"
-              onClick={() => onStatusChange(order.id, 'cancelled')}
+              className="w-full"
+              onClick={() => setShowCancelDialog(true)}
+              disabled={isUpdatingStatus}
             >
-              Cancelar
-            </Button>
-          )}
-
-          {order.status === 'out_for_delivery' && (
-            <Button 
-              size="sm" 
-              className="flex-1 bg-success hover:bg-success/90 text-white"
-              onClick={() => onStatusChange(order.id, 'completed')}
-            >
-              Concluir
+              Cancelar Pedido
             </Button>
           )}
         </div>
-      </CardHeader>
+      </CardContent>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
-        <CardContent className="p-6 space-y-6">
-          {/* Customer Info */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg">
-                <Phone className="h-4 w-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Cliente</p>
-                <p className="font-semibold">João Silva</p>
-                <p className="text-sm text-muted-foreground">{order.user_phone}</p>
-              </div>
-            </div>
+      {/* PrintableOrder component */}
+      <PrintableOrder order={order} />
 
-            <Separator />
-
-            <div className="flex items-start gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg">
-                <MapPin className="h-4 w-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Endereço de Entrega</p>
-                <p className="font-medium text-sm mt-1">{order.delivery_address}</p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="flex items-start gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg">
-                <CreditCard className="h-4 w-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Pagamento</p>
-                <p className="font-semibold capitalize">{order.payment_method}</p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="flex items-start gap-3">
-              <div className="bg-primary/10 p-2 rounded-lg">
-                <Bike className="h-4 w-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground mb-2">Motoboy Responsável</p>
-                <Select defaultValue="none">
-                  <SelectTrigger>
-                    <SelectValue placeholder="-- Nenhum --" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Nenhum --</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Order Items */}
-          <div>
-            <table className="w-full">
-              <thead>
-                <tr className="text-sm text-muted-foreground border-b">
-                  <th className="text-left pb-2 font-medium">ITEM</th>
-                  <th className="text-center pb-2 font-medium">QTD</th>
-                  <th className="text-right pb-2 font-medium">PREÇO</th>
-                  <th className="text-right pb-2 font-medium">TOTAL</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {order.items.map((item, idx) => (
-                  <tr key={idx} className="text-sm">
-                    <td className="py-3">
-                      <div>
-                        <p className="font-medium">{item.product.name}</p>
-                        {item.addons.length > 0 && (
-                          <div className="mt-1 space-y-0.5">
-                            {item.addons.map((addon, addonIdx) => (
-                              <p key={addonIdx} className="text-xs text-muted-foreground">
-                                + {addon.name}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                        {item.notes && (
-                          <p className="text-xs text-destructive mt-1">
-                            Obs: {item.notes}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-center py-3">{item.quantity}</td>
-                    <td className="text-right py-3">€{Number(item.product.price).toFixed(2)}</td>
-                    <td className="text-right py-3 font-semibold">€{calculateItemTotal(item).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Separator />
-
-          {/* Totals */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>€{subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Taxa de Entrega</span>
-              <span>€{(Number(order.total_amount) - subtotal).toFixed(2)}</span>
-            </div>
-            <Separator />
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total</span>
-              <span>€{Number(order.total_amount).toFixed(2)}</span>
-            </div>
-          </div>
-        </CardContent>
-      </ScrollArea>
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar Pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja cancelar o pedido #{order.id.slice(0, 8).toUpperCase()}?
+              Esta ação não pode ser desfeita. O cliente será notificado via WhatsApp.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelOrder}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Sim, Cancelar Pedido
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

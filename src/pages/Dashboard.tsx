@@ -1,25 +1,26 @@
-import { useEffect, useState } from 'react';
-import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { useOrderStore } from '@/stores/orderStore';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Filter, Clock } from 'lucide-react';
-import { OrderWithDetails } from '@/types/database';
-import { useToast } from '@/hooks/use-toast';
+import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { OrderDetailsPanel } from '@/components/OrderDetailsPanel';
+import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/hooks/use-toast';
+import type { OrderWithDetails } from '@/types/database';
+import { Search, Filter, Clock, Euro, Package, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const Dashboard = () => {
-  const { restaurant } = useRestaurantStore();
+export default function Dashboard() {
+  const { restaurant } = useRestaurantGuard();
   const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const { toast } = useToast();
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -47,113 +48,117 @@ const Dashboard = () => {
   const filterOrders = (ordersList: OrderWithDetails[]) => {
     if (!searchQuery) return ordersList;
     
+    const query = searchQuery.toLowerCase();
     return ordersList.filter(order => 
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.user_phone.includes(searchQuery) ||
-      order.delivery_address.toLowerCase().includes(searchQuery.toLowerCase())
+      order.id.toLowerCase().includes(query) ||
+      order.user_phone.includes(query) ||
+      order.delivery_address.toLowerCase().includes(query) ||
+      order.customer?.name?.toLowerCase().includes(query)
     );
   };
 
   const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'new':
-        return 'Novo';
-      case 'preparing':
-        return 'Em Preparação';
-      case 'out_for_delivery':
-        return 'Em Entrega';
-      case 'completed':
-        return 'Pronto';
-      case 'cancelled':
-        return 'Cancelado';
-      default:
-        return status;
-    }
+    const labels: Record<string, string> = {
+      new: 'Novo',
+      preparing: 'Preparando',
+      out_for_delivery: 'Em Entrega',
+      completed: 'Concluído',
+      cancelled: 'Cancelado',
+    };
+    return labels[status] || status;
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'new':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
-      case 'preparing':
-        return 'bg-warning/10 text-warning';
-      case 'out_for_delivery':
-        return 'bg-info/10 text-info';
-      case 'completed':
-        return 'bg-success/10 text-success';
-      case 'cancelled':
-        return 'bg-destructive/10 text-destructive';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
+    const colors: Record<string, string> = {
+      new: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+      preparing: 'bg-warning/10 text-warning',
+      out_for_delivery: 'bg-info/10 text-info',
+      completed: 'bg-success/10 text-success',
+      cancelled: 'bg-destructive/10 text-destructive',
+    };
+    return colors[status] || 'bg-muted text-muted-foreground';
   };
 
   const getStatusBorderColor = (status: string) => {
-    switch (status) {
-      case 'new':
-        return 'border-blue-500';
-      case 'preparing':
-        return 'border-warning';
-      case 'out_for_delivery':
-        return 'border-info';
-      case 'completed':
-        return 'border-success';
-      case 'cancelled':
-        return 'border-destructive';
-      default:
-        return 'border-border';
-    }
+    const borderColors: Record<string, string> = {
+      new: 'border-blue-500',
+      preparing: 'border-warning',
+      out_for_delivery: 'border-info',
+      completed: 'border-success',
+      cancelled: 'border-destructive',
+    };
+    return borderColors[status] || 'border-border';
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: 'new' | 'preparing' | 'out_for_delivery' | 'completed' | 'cancelled') => {
+  const handleStatusChange = async (orderId: string, newStatus: OrderWithDetails['status']) => {
     await updateOrderStatus(orderId, newStatus);
-    
-    toast({
-      title: "Pedido atualizado",
-      description: `Status alterado para ${getStatusLabel(newStatus)}`,
-    });
   };
 
   const openWhatsApp = (phone: string) => {
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
   };
 
-  const OrderCard = ({ order }: { order: OrderWithDetails }) => {
-    const isSelected = selectedOrder?.id === order.id;
-    
+  // OrderCard Component
+  const OrderCard = ({ order, isSelected }: { order: OrderWithDetails; isSelected: boolean }) => {
+    const timeAgo = useTimeAgo(order.created_at);
+    const isUrgent = isOrderUrgent(order);
+    const customerName = order.customer?.name || order.user_phone.split(' ')[0] || 'Cliente';
+
     return (
       <Card 
         className={cn(
-          "mb-3 cursor-pointer transition-all hover:shadow-md",
-          isSelected && `border-l-4 ${getStatusBorderColor(order.status)} bg-accent/50`
+          "mb-3 cursor-pointer transition-all duration-300 hover:shadow-md",
+          isSelected && `border-l-4 ${getStatusBorderColor(order.status)} bg-accent/50 scale-[1.01]`,
+          isUrgent && "ring-2 ring-destructive"
         )}
         onClick={() => setSelectedOrder(order)}
       >
         <CardContent className="p-4">
+          {/* Badges superiores */}
+          <div className="flex items-center gap-2 mb-3">
+            {isUrgent && (
+              <Badge variant="destructive" className="text-xs">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                Urgente
+              </Badge>
+            )}
+            {order.order_notes && (
+              <Badge variant="outline" className="text-xs">
+                📋 Obs
+              </Badge>
+            )}
+          </div>
+
           <div className="flex items-start justify-between mb-3">
-            <div>
-              <h3 className="font-bold text-lg">
-                #{order.id.slice(0, 2).toUpperCase()}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {order.user_phone.split(' ')[0] || 'Cliente'}
-              </p>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-semibold text-base">
+                  #{order.id.slice(0, 8).toUpperCase()}
+                </span>
+                <Badge className={cn("text-xs", getStatusColor(order.status))}>
+                  {getStatusLabel(order.status)}
+                </Badge>
+              </div>
+              <p className="text-sm font-medium text-foreground">{customerName}</p>
+              <p className="text-xs text-muted-foreground">{order.user_phone}</p>
             </div>
-            <Badge className={cn("text-xs font-semibold", getStatusColor(order.status))}>
-              {getStatusLabel(order.status).toUpperCase()}
-            </Badge>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-            <Clock className="h-3.5 w-3.5" />
-            <span>{new Date(order.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</span>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mb-3">
+            <div className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              <span className={cn(isUrgent && "text-destructive font-semibold")}>
+                {timeAgo}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Package className="h-3 w-3" />
+              <span>{order.items.length} {order.items.length === 1 ? 'item' : 'itens'}</span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t">
-            <span className="font-bold text-lg">€{Number(order.total_amount).toFixed(2)}</span>
-            <span className="text-sm text-muted-foreground">
-              {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
-            </span>
+          <div className="flex items-center justify-between pt-3 border-t">
+            <span className="font-bold text-lg">€{order.total_amount.toFixed(2)}</span>
           </div>
         </CardContent>
       </Card>
@@ -220,7 +225,7 @@ const Dashboard = () => {
               </TabsList>
 
               <TabsContent value="active" className="mt-0">
-                <ScrollArea className="h-[calc(100vh-240px)]">
+                <div className="h-[calc(100vh-240px)] overflow-auto">
                   <div className="p-4">
                     {filterOrders(activeOrders).length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
@@ -228,15 +233,19 @@ const Dashboard = () => {
                       </div>
                     ) : (
                       filterOrders(activeOrders).map(order => (
-                        <OrderCard key={order.id} order={order} />
+                        <OrderCard 
+                          key={order.id} 
+                          order={order} 
+                          isSelected={selectedOrder?.id === order.id}
+                        />
                       ))
                     )}
                   </div>
-                </ScrollArea>
+                </div>
               </TabsContent>
 
               <TabsContent value="history" className="mt-0">
-                <ScrollArea className="h-[calc(100vh-240px)]">
+                <div className="h-[calc(100vh-240px)] overflow-auto">
                   <div className="p-4">
                     {filterOrders(historicalOrders).length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
@@ -244,11 +253,15 @@ const Dashboard = () => {
                       </div>
                     ) : (
                       filterOrders(historicalOrders).map(order => (
-                        <OrderCard key={order.id} order={order} />
+                        <OrderCard 
+                          key={order.id} 
+                          order={order} 
+                          isSelected={selectedOrder?.id === order.id}
+                        />
                       ))
                     )}
                   </div>
-                </ScrollArea>
+                </div>
               </TabsContent>
             </Tabs>
           </Card>
@@ -267,6 +280,4 @@ const Dashboard = () => {
       </div>
     </div>
   );
-};
-
-export default Dashboard;
+}
