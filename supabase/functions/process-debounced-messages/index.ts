@@ -103,12 +103,16 @@ Deno.serve(async (req) => {
       throw new Error(`Restaurant not found: ${restaurantError?.message}`);
     }
 
-    const whatsappInstance = restaurant.whatsapp_instances;
-    if (!whatsappInstance || whatsappInstance.length === 0) {
+    // Normalizar whatsapp_instances para sempre ser array
+    const whatsappInstances = Array.isArray(restaurant.whatsapp_instances)
+      ? restaurant.whatsapp_instances
+      : [restaurant.whatsapp_instances];
+
+    if (!whatsappInstances || whatsappInstances.length === 0 || !whatsappInstances[0]) {
       throw new Error('WhatsApp instance not found');
     }
 
-    const instanceName = whatsappInstance[0].instance_name;
+    const instanceName = whatsappInstances[0].instance_name;
 
     // 6. Chamar o AI Agent com a mensagem compilada
     console.log(`[process-debounced-messages] Invoking whatsapp-ai-agent...`);
