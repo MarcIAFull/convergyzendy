@@ -19,13 +19,19 @@ import {
   BarChart3,
   Users as UsersIcon,
   Shield,
+  Bell,
+  BellOff,
+  ClipboardCheck,
 } from "lucide-react";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { Badge } from "@/components/ui/badge";
 
 const DashboardLayout = () => {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { signOut } = useAuth();
   const { loading, error, ready, retry } = useRestaurantGuard();
+  const { unreadOrders, unreadMessages, soundEnabled, toggleSound, markOrdersRead, markMessagesRead } = useNotifications();
 
   // Loading state
   if (loading) {
@@ -80,18 +86,28 @@ const DashboardLayout = () => {
   }
 
   const navigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Dashboard", href: "/", icon: LayoutDashboard, badge: unreadOrders },
     { name: "Menu", href: "/menu", icon: Package },
     { name: "Analytics", href: "/analytics", icon: BarChart3 },
     { name: "Customers", href: "/customers", icon: UsersIcon },
-    { name: "Messages", href: "/messages", icon: MessageSquare },
+    { name: "Messages", href: "/messages", icon: MessageSquare, badge: unreadMessages },
     { name: "AI Configuration", href: "/ai-configuration", icon: Brain },
     { name: "Restaurant AI Settings", href: "/restaurant-ai-settings", icon: Brain },
     { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "WhatsApp Connection", href: "/whatsapp-connection", icon: Smartphone },
     { name: "Admin", href: "/admin", icon: Shield },
+    { name: "System Check", href: "/system-check", icon: ClipboardCheck },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
+
+  // Mark as read when navigating
+  const handleNavigation = (href: string) => {
+    if (href === '/') {
+      markOrdersRead();
+    } else if (href === '/messages') {
+      markMessagesRead();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -109,6 +125,18 @@ const DashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSound}
+              title={soundEnabled ? 'Desativar som' : 'Ativar som'}
+            >
+              {soundEnabled ? (
+                <Bell className="h-5 w-5" />
+              ) : (
+                <BellOff className="h-5 w-5" />
+              )}
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -139,7 +167,7 @@ const DashboardLayout = () => {
             {navigation.map((item) => {
               const isActive = location.pathname === item.href;
               return (
-                <Link key={item.href} to={item.href}>
+                <Link key={item.href} to={item.href} onClick={() => handleNavigation(item.href)}>
                   <Button
                     variant={isActive ? "secondary" : "ghost"}
                     className={cn(
@@ -149,6 +177,11 @@ const DashboardLayout = () => {
                   >
                     <item.icon className="mr-2 h-4 w-4" />
                     {item.name}
+                    {item.badge && item.badge > 0 && (
+                      <Badge variant="destructive" className="ml-auto">
+                        {item.badge}
+                      </Badge>
+                    )}
                   </Button>
                 </Link>
               );
