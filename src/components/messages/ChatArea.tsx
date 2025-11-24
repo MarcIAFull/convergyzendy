@@ -143,6 +143,19 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
 
   return (
     <div className="flex flex-col h-full">
+      {/* Alerta Fixo de Atenção */}
+      {mode === 'manual' && (
+        <Alert className="m-4 mb-0 border-2 border-orange-500 bg-orange-500/10">
+          <User className="h-5 w-5 text-orange-500" />
+          <AlertDescription className="text-sm font-medium text-orange-500 flex items-center justify-between">
+            <div>
+              <span className="font-bold">⚠️ MODO MANUAL ATIVO</span>
+              <p className="text-xs mt-1 text-orange-600">Você está no controle desta conversa. A IA não responderá automaticamente.</p>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="border-b border-border p-4">
         <div className="flex items-center justify-between">
@@ -213,14 +226,6 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
 
       {/* Footer */}
       <div className="border-t border-border p-4">
-        {mode === 'ai' && (
-          <Alert className="mb-3 bg-primary/10 border-primary/20">
-            <Bot className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-sm text-primary">
-              🤖 A IA está respondendo automaticamente
-            </AlertDescription>
-          </Alert>
-        )}
 
         <div className="flex gap-2">
           <Input
