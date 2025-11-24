@@ -48,7 +48,8 @@ export default function DeliveryZones() {
     min_order_amount: 0,
     max_delivery_time_minutes: 60,
     is_active: true,
-    priority: 0
+    priority: 0,
+    radius: 5
   });
 
   const [restaurantLocation, setRestaurantLocation] = useState<[number, number] | null>(null);
@@ -108,7 +109,7 @@ export default function DeliveryZones() {
         coordinates: {
           type: 'circle',
           center: { lat: restaurantLocation[0], lng: restaurantLocation[1] },
-          radius: 5 // Default 5km radius
+          radius: formData.radius
         },
         fee_type: formData.fee_type,
         fee_amount: formData.fee_amount,
@@ -170,7 +171,8 @@ export default function DeliveryZones() {
       min_order_amount: 0,
       max_delivery_time_minutes: 60,
       is_active: true,
-      priority: 0
+      priority: 0,
+      radius: 5
     });
     setEditingZone(null);
   };
@@ -220,6 +222,22 @@ export default function DeliveryZones() {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Centro, Zona Norte, etc."
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="radius">Raio de Entrega (km)</Label>
+                  <Input
+                    id="radius"
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="50"
+                    value={formData.radius}
+                    onChange={(e) => setFormData({ ...formData, radius: parseFloat(e.target.value) })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Área circular a partir do restaurante
+                  </p>
                 </div>
 
                 <div>
@@ -338,6 +356,9 @@ export default function DeliveryZones() {
                         <p>
                           Taxa: €{zone.fee_amount.toFixed(2)} ({zone.fee_type === 'fixed' ? 'Fixa' : zone.fee_type === 'per_km' ? 'Por Km' : 'Escalonada'})
                         </p>
+                        {zone.coordinates?.radius && (
+                          <p>Raio: {zone.coordinates.radius} km</p>
+                        )}
                         {zone.min_order_amount && (
                           <p>Pedido mínimo: €{zone.min_order_amount.toFixed(2)}</p>
                         )}
@@ -359,7 +380,8 @@ export default function DeliveryZones() {
                             min_order_amount: zone.min_order_amount || 0,
                             max_delivery_time_minutes: zone.max_delivery_time_minutes || 60,
                             is_active: zone.is_active,
-                            priority: zone.priority
+                            priority: zone.priority,
+                            radius: zone.coordinates?.radius || 5
                           });
                           setDialogOpen(true);
                         }}
