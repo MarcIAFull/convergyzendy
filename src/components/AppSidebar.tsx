@@ -14,6 +14,8 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarSeparator,
+  SidebarHeader,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -84,6 +86,23 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
+      <SidebarHeader className="border-b">
+        <div className="flex items-center justify-between p-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <span className="text-lg font-bold">Z</span>
+            </div>
+            {open && (
+              <div>
+                <h1 className="text-sm font-bold text-foreground">Zendy</h1>
+                <p className="text-xs text-muted-foreground">Delivery AI</p>
+              </div>
+            )}
+          </div>
+          <SidebarTrigger />
+        </div>
+      </SidebarHeader>
+      
       <SidebarContent>
         {/* Operations */}
         <SidebarGroup>
