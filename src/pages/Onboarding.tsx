@@ -101,168 +101,49 @@ const Onboarding = () => {
     }
 
     try {
-      console.log('[Onboarding] 🚀 Iniciando criação de restaurante...');
+      console.log('[Onboarding] 🚀 Iniciando criação de restaurante via RPC...');
       
-      // FASE 1: Validar sessão
-      const isAuthenticated = await ensureValidSession();
-      if (!isAuthenticated) {
-        console.error('[Onboarding] ❌ Sessão inválida');
-        toast.error('Sua sessão expirou. Por favor, faça login novamente.');
-        await supabase.auth.signOut();
+      // Validar que temos um usuário autenticado
+      if (!user?.id) {
+        console.error('[Onboarding] ❌ Usuário não autenticado');
+        toast.error('Você precisa estar autenticado. Faça login novamente.');
         navigate('/login');
         return;
       }
 
-      // FASE 2: Verificar se auth.uid() está funcionando
-      let { valid: authUidValid, uid: authUid } = await verifyAuthUid();
-      
-      if (!authUidValid || !authUid) {
-        console.error('[Onboarding] ❌ auth.uid() não está funcionando');
-        
-        // Tentar recarregar o token
-        console.log('[Onboarding] 🔄 Tentando recarregar token...');
-        const reloaded = await forceTokenReload();
-        
-        if (!reloaded) {
-          toast.error('Erro de autenticação. Por favor, faça login novamente.');
-          await supabase.auth.signOut();
-          navigate('/login');
-          return;
-        }
-        
-        // Verificar novamente após reload
-        const retryResult = await verifyAuthUid();
-        authUidValid = retryResult.valid;
-        authUid = retryResult.uid;
-        
-        if (!authUidValid || !authUid) {
-          console.error('[Onboarding] ❌ auth.uid() ainda não funciona após reload');
-          toast.error('Erro crítico de autenticação. Por favor, tente fazer login novamente.');
-          await supabase.auth.signOut();
-          navigate('/login');
-          return;
-        }
-        
-        console.log('[Onboarding] ✅ auth.uid() funcionando após reload:', authUid);
-      }
-
-      // FASE 3: Confirmar que auth.uid() = user.id
-      if (authUid !== user.id) {
-        console.error('[Onboarding] ❌ Inconsistência:', {
-          authUid,
-          userId: user.id
+      // Chamar função RPC que cria restaurante + owner em uma transação atômica
+      console.log('[Onboarding] 📞 Chamando create_restaurant_with_owner...');
+      const { data: result, error: rpcError } = await supabase
+        .rpc('create_restaurant_with_owner', {
+          p_name: data.name,
+          p_phone: data.phone,
+          p_address: data.address,
+          p_delivery_fee: data.deliveryFee,
+          p_opening_hours: data.openingHours || null
         });
-        toast.error('Erro de autenticação. IDs não correspondem.');
-        await supabase.auth.signOut();
-        navigate('/login');
-        return;
-      }
 
-      console.log('[Onboarding] ✅ Tudo pronto. auth.uid() =', authUid);
-
-      // FASE 4: Pegar session fresca IMEDIATAMENTE antes do INSERT
-      console.log('[Onboarding] 🔑 Obtendo session fresca...');
-      const { data: { session: freshSession }, error: sessionError } = 
-        await supabase.auth.getSession();
-
-      if (!freshSession || !freshSession.access_token) {
-        console.error('[Onboarding] ❌ Nenhum access_token disponível');
-        toast.error('Token de autenticação não encontrado. Faça login novamente.');
-        await supabase.auth.signOut();
-        navigate('/login');
-        return;
-      }
-
-      console.log('[Onboarding] ✅ Access token presente:', 
-        freshSession.access_token.substring(0, 20) + '...'
-      );
-
-      // Garantir que o user_id da session é o mesmo
-      if (freshSession.user.id !== user.id) {
-        console.error('[Onboarding] ❌ Session user mismatch:', {
-          sessionUserId: freshSession.user.id,
-          currentUserId: user.id
-        });
-        toast.error('Inconsistência de usuário. Faça login novamente.');
-        await supabase.auth.signOut();
-        navigate('/login');
-        return;
-      }
-
-      // FASE 5: Forçar o client a usar essa session
-      console.log('[Onboarding] 🔧 Forçando session no client...');
-      await supabase.auth.setSession({
-        access_token: freshSession.access_token,
-        refresh_token: freshSession.refresh_token
-      });
-
-      console.log('[Onboarding] ✅ Session forçada no client');
-
-      // Pequeno delay para garantir propagação
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // FASE 6: LOGGING DETALHADO antes do INSERT
-      console.log('[Onboarding] 📊 Estado antes do INSERT:', {
-        authUidValid,
-        authUid,
-        userId: user.id,
-        sessionUserId: freshSession.user.id,
-        match: authUid === user.id && freshSession.user.id === user.id,
-        hasAccessToken: !!freshSession.access_token
-      });
-
-      // FASE 7: Criar restaurante
-      console.log('[Onboarding] 📝 Inserindo restaurante...');
-
-      const { data: restaurant, error: restaurantError } = await supabase
-        .from('restaurants')
-        .insert({
-          name: data.name,
-          phone: data.phone,
-          address: data.address,
-          delivery_fee: data.deliveryFee,
-          opening_hours: data.openingHours,
-          is_open: true,
-          user_id: freshSession.user.id, // Usar o ID da session fresca
-        })
-        .select()
-        .single();
-
-      console.log('[Onboarding] 📝 INSERT response:', { 
-        success: !!restaurant, 
-        error: restaurantError 
-      });
-
-      if (restaurantError) {
+      if (rpcError) {
         console.error('[Onboarding] ❌ Erro ao criar restaurante:', {
-          code: restaurantError.code,
-          message: restaurantError.message,
-          details: restaurantError.details,
-          hint: restaurantError.hint
+          code: rpcError.code,
+          message: rpcError.message,
+          details: rpcError.details,
         });
-        
-        if (restaurantError.message?.includes('row-level security')) {
-          toast.error('Erro de permissão RLS. Verifique os logs do console.');
-        } else {
-          toast.error(`Erro: ${restaurantError.message}`);
-        }
-        throw restaurantError;
+        toast.error(`Erro ao criar restaurante: ${rpcError.message}`);
+        return;
       }
 
-      console.log('[Onboarding] ✅ Restaurante criado:', restaurant.id);
+      // Type guard para o resultado
+      const restaurantResult = result as { id: string; user_id: string; name: string; success: boolean } | null;
+      
+      if (!restaurantResult || !restaurantResult.id) {
+        console.error('[Onboarding] ❌ Resultado inválido da RPC:', result);
+        toast.error('Erro ao criar restaurante. Tente novamente.');
+        return;
+      }
 
-      // Create restaurant owner mapping
-      const { error: ownerError } = await supabase
-        .from('restaurant_owners')
-        .insert({
-          user_id: freshSession.user.id,
-          restaurant_id: restaurant.id,
-          role: 'owner',
-        });
+      console.log('[Onboarding] ✅ Restaurante criado via RPC:', restaurantResult);
 
-      if (ownerError) throw ownerError;
-
-      setRestaurantId(restaurant.id);
+      setRestaurantId(restaurantResult.id);
       setCompletedSteps([...completedSteps, 'restaurant']);
       setCurrentStep('menu');
       
