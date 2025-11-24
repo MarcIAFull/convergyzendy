@@ -889,6 +889,62 @@ export type Database = {
           },
         ]
       }
+      message_debounce_queue: {
+        Row: {
+          created_at: string
+          customer_phone: string
+          error_message: string | null
+          first_message_at: string
+          id: string
+          last_message_at: string
+          messages: Json
+          metadata: Json | null
+          processed_at: string | null
+          restaurant_id: string
+          scheduled_process_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_phone: string
+          error_message?: string | null
+          first_message_at?: string
+          id?: string
+          last_message_at?: string
+          messages?: Json
+          metadata?: Json | null
+          processed_at?: string | null
+          restaurant_id: string
+          scheduled_process_at: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_phone?: string
+          error_message?: string | null
+          first_message_at?: string
+          id?: string
+          last_message_at?: string
+          messages?: Json
+          metadata?: Json | null
+          processed_at?: string | null
+          restaurant_id?: string
+          scheduled_process_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_debounce_queue_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           body: string
