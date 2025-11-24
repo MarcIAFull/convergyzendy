@@ -10,6 +10,7 @@ import { CompactToolsList } from '@/components/ai-config/CompactToolsList';
 import { ModelParametersCard } from '@/components/ai-config/ModelParametersCard';
 import { BehaviorConfigCard } from '@/components/ai-config/BehaviorConfigCard';
 import { RecoveryMessagesCard } from '@/components/ai-config/RecoveryMessagesCard';
+import { OrchestrationRulesEditor } from '@/components/ai-config/OrchestrationRulesEditor';
 
 export default function AIConfiguration() {
   const { toast } = useToast();
@@ -325,6 +326,7 @@ export default function AIConfiguration() {
             <UnifiedPromptEditor 
               prompt={unifiedPrompt}
               onChange={setUnifiedPrompt}
+              agentId={selectedAgent.id}
             />
 
             {/* Tools */}
@@ -334,6 +336,14 @@ export default function AIConfiguration() {
               onUpdateTool={handleUpdateTool}
               onDeleteTool={handleDeleteTool}
             />
+
+            {/* Orchestration Rules */}
+            {selectedAgent.type === 'orchestrator' && (
+              <OrchestrationRulesEditor
+                agent={selectedAgent}
+                onUpdate={handleAgentUpdate}
+              />
+            )}
 
             {/* Behavior Config */}
             <BehaviorConfigCard 

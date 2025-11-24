@@ -172,7 +172,6 @@ export type Database = {
       }
       agents: {
         Row: {
-          base_system_prompt: string
           behavior_config: Json | null
           created_at: string
           frequency_penalty: number | null
@@ -190,7 +189,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          base_system_prompt: string
           behavior_config?: Json | null
           created_at?: string
           frequency_penalty?: number | null
@@ -208,7 +206,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          base_system_prompt?: string
           behavior_config?: Json | null
           created_at?: string
           frequency_penalty?: number | null

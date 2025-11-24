@@ -90,47 +90,108 @@ export const AVAILABLE_TOOLS = [
   {
     name: 'add_to_cart',
     label: 'Add to Cart',
-    description: 'Add a product to the shopping cart'
+    description: 'Add a product to the shopping cart',
+    parameters: {
+      product_id: { type: 'string', required: true, description: 'Product UUID' },
+      quantity: { type: 'number', required: false, description: 'Quantity (default 1)' },
+      addon_ids: { type: 'array', required: false, description: 'Addon UUIDs' },
+      notes: { type: 'string', required: false, description: 'Special instructions' }
+    }
   },
   {
     name: 'remove_from_cart',
     label: 'Remove from Cart',
-    description: 'Remove a product from the cart'
+    description: 'Remove a product from the cart',
+    parameters: {
+      product_id: { type: 'string', required: true, description: 'Product UUID to remove' }
+    }
+  },
+  {
+    name: 'clear_cart',
+    label: 'Clear Cart',
+    description: 'Clear all items from the customer\'s cart',
+    parameters: {}
+  },
+  {
+    name: 'show_cart',
+    label: 'Show Cart',
+    description: 'Display the current cart contents to the customer',
+    parameters: {}
+  },
+  {
+    name: 'search_menu',
+    label: 'Search Menu',
+    description: 'Search products by name, category, or description (handles typos)',
+    parameters: {
+      query: { type: 'string', required: true, description: 'Search term' },
+      category: { type: 'string', required: false, description: 'Filter by category' },
+      max_results: { type: 'number', required: false, description: 'Max results (default 5)' }
+    }
   },
   {
     name: 'set_delivery_address',
     label: 'Set Delivery Address',
-    description: 'Set or update the delivery address'
+    description: 'Set or update the delivery address',
+    parameters: {
+      address: { type: 'string', required: true, description: 'Full delivery address' }
+    }
   },
   {
     name: 'set_payment_method',
     label: 'Set Payment Method',
-    description: 'Set the payment method (cash, card, mbway)'
+    description: 'Set the payment method (cash, card, mbway)',
+    parameters: {
+      method: { type: 'string', required: true, description: 'Payment method', enum: ['cash', 'card', 'mbway'] }
+    }
   },
   {
     name: 'finalize_order',
     label: 'Finalize Order',
-    description: 'Complete and submit the order'
+    description: 'Complete and submit the order',
+    parameters: {}
   },
   {
     name: 'update_customer_profile',
     label: 'Update Customer Profile',
-    description: 'Save customer information for future orders'
+    description: 'Save customer information for future orders',
+    parameters: {
+      name: { type: 'string', required: false, description: 'Customer name' },
+      default_address: { type: 'object', required: false, description: 'Default address' },
+      default_payment_method: { type: 'string', required: false, description: 'Default payment method' }
+    }
   },
   {
     name: 'add_pending_item',
     label: 'Add Pending Item',
-    description: 'Add product to pending items list (before cart)'
+    description: 'Add product to pending items list (for multi-item orders)',
+    parameters: {
+      product_id: { type: 'string', required: true, description: 'Product UUID' },
+      quantity: { type: 'number', required: false, description: 'Quantity (default 1)' },
+      addon_ids: { type: 'array', required: false, description: 'Addon UUIDs' },
+      notes: { type: 'string', required: false, description: 'Special instructions' }
+    }
+  },
+  {
+    name: 'remove_pending_item',
+    label: 'Remove Pending Item',
+    description: 'Remove or modify a pending item before confirmation',
+    parameters: {
+      product_id: { type: 'string', required: true, description: 'Product UUID' },
+      action: { type: 'string', required: true, description: 'Action to perform', enum: ['remove_all', 'decrease_quantity'] },
+      quantity_change: { type: 'number', required: false, description: 'Specific quantity to remove' }
+    }
   },
   {
     name: 'clear_pending_items',
     label: 'Clear Pending Items',
-    description: 'Clear all pending items'
+    description: 'Discard all pending items without adding to cart',
+    parameters: {}
   },
   {
     name: 'confirm_pending_items',
     label: 'Confirm Pending Items',
-    description: 'Move all pending items to cart'
+    description: 'Move all pending items to cart',
+    parameters: {}
   }
 ] as const;
 

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ChevronDown, ChevronRight, Settings2, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Settings2, Trash2, Info } from 'lucide-react';
 import { AgentTool, AVAILABLE_TOOLS } from '@/types/agent';
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ToolParametersViewer } from './ToolParametersViewer';
 
 interface CompactToolsListProps {
   tools: AgentTool[];
@@ -31,6 +32,7 @@ export function CompactToolsList({
 }: CompactToolsListProps) {
   const [expanded, setExpanded] = useState(true);
   const [editingTool, setEditingTool] = useState<AgentTool | null>(null);
+  const [viewingToolParams, setViewingToolParams] = useState<string | null>(null);
   const [usageRules, setUsageRules] = useState('');
 
   const enabledCount = tools.filter(t => t.enabled).length;
@@ -95,7 +97,17 @@ export function CompactToolsList({
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
+                          onClick={() => setViewingToolParams(tool.tool_name)}
+                          title="Ver parâmetros"
+                        >
+                          <Info className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
                           onClick={() => handleOpenSettings(tool)}
+                          title="Regras de uso"
                         >
                           <Settings2 className="h-4 w-4" />
                         </Button>
@@ -104,6 +116,7 @@ export function CompactToolsList({
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           onClick={() => onDeleteTool(tool.tool_name)}
+                          title="Remover"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -151,6 +164,14 @@ export function CompactToolsList({
           </div>
         </DialogContent>
       </Dialog>
+
+      {viewingToolParams && (
+        <ToolParametersViewer
+          toolName={viewingToolParams}
+          open={!!viewingToolParams}
+          onOpenChange={(open) => !open && setViewingToolParams(null)}
+        />
+      )}
     </>
   );
 }

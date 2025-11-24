@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { Agent } from '@/types/agent';
+import { behaviorConfigSchema, orchestrationConfigSchema } from '@/lib/behaviorConfigSchema';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface BehaviorConfigCardProps {
   agent: Agent;
@@ -26,13 +28,28 @@ export function BehaviorConfigCard({ agent, onUpdate }: BehaviorConfigCardProps)
   const handleJsonChange = (value: string) => {
     try {
       const parsed = JSON.parse(value);
+      
+      // Validate schemas
+      const behaviorResult = behaviorConfigSchema.safeParse(parsed.behavior_config);
+      const orchestrationResult = orchestrationConfigSchema.safeParse(parsed.orchestration_config);
+      
+      if (!behaviorResult.success) {
+        setJsonError(`Behavior Config inválido: ${behaviorResult.error.issues[0].message}`);
+        return;
+      }
+      
+      if (!orchestrationResult.success) {
+        setJsonError(`Orchestration Config inválido: ${orchestrationResult.error.issues[0].message}`);
+        return;
+      }
+      
       setJsonError(null);
       onUpdate({
         behavior_config: parsed.behavior_config,
         orchestration_config: parsed.orchestration_config,
       });
     } catch (error) {
-      setJsonError('JSON inválido');
+      setJsonError('JSON inválido - verifique a sintaxe');
     }
   };
 
@@ -59,7 +76,10 @@ export function BehaviorConfigCard({ agent, onUpdate }: BehaviorConfigCardProps)
               placeholder='{\n  "behavior_config": {},\n  "orchestration_config": {}\n}'
             />
             {jsonError && (
-              <p className="text-sm text-destructive mt-2">{jsonError}</p>
+              <Alert variant="destructive" className="mt-2">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{jsonError}</AlertDescription>
+              </Alert>
             )}
             <p className="text-xs text-muted-foreground mt-2">
               Edite a configuração JSON diretamente. Tenha cuidado com a sintaxe.

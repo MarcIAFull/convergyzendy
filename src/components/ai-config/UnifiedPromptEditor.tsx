@@ -5,36 +5,78 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Lightbulb } from 'lucide-react';
+import { PromptPreviewButton } from './PromptPreviewDialog';
 
 interface UnifiedPromptEditorProps {
   prompt: string;
   onChange: (value: string) => void;
+  agentId: string;
   previewContent?: string;
 }
 
 const TEMPLATE_VARIABLES = [
-  { name: '{{restaurant_name}}', description: 'Nome do restaurante' },
-  { name: '{{menu_products}}', description: 'Lista de produtos do menu' },
-  { name: '{{cart_summary}}', description: 'Resumo do carrinho' },
-  { name: '{{customer_info}}', description: 'Informações do cliente' },
-  { name: '{{pending_items}}', description: 'Itens pendentes' },
-  { name: '{{conversation_history}}', description: 'Histórico da conversa' },
-  { name: '{{current_state}}', description: 'Estado atual' },
-  { name: '{{user_intent}}', description: 'Intenção do usuário' },
-  { name: '{{target_state}}', description: 'Estado alvo' },
-  { name: '{{pending_product}}', description: 'Produto pendente' },
+  { 
+    name: '{{restaurant_name}}', 
+    description: 'Nome do restaurante',
+    example: 'Pizza da Casa'
+  },
+  { 
+    name: '{{menu_products}}', 
+    description: 'Lista completa de produtos disponíveis',
+    example: '• Pizza Margherita (ID: abc-123) - €9.98\n• Brigadeiro (ID: def-456) - €2.50'
+  },
+  { 
+    name: '{{cart_summary}}', 
+    description: 'Resumo do carrinho atual',
+    example: '2x Pizza Margherita (€19.96), 1x Água (€1.50) | Total: €21.46'
+  },
+  { 
+    name: '{{customer_info}}', 
+    description: 'Perfil do cliente salvo',
+    example: 'Name: João Silva, Address: Rua X, Payment: card'
+  },
+  { 
+    name: '{{conversation_history}}', 
+    description: 'Últimas mensagens da conversa',
+    example: 'Customer: Quero uma pizza\nAgent: Temos Margherita e Pepperoni...'
+  },
+  { 
+    name: '{{current_state}}', 
+    description: 'Estado atual da conversa',
+    example: 'browsing_menu, confirming_item, providing_address'
+  },
+  { 
+    name: '{{user_intent}}', 
+    description: 'Intenção classificada pelo orquestrador',
+    example: 'browse_product, confirm_item, finalize'
+  },
+  { 
+    name: '{{target_state}}', 
+    description: 'Estado alvo sugerido pelo orquestrador',
+    example: 'confirming_item, collecting_address'
+  },
+  { 
+    name: '{{pending_items}}', 
+    description: 'Itens aguardando confirmação (pedidos múltiplos)',
+    example: '2x Pizza Margherita, 1x Coca-Cola'
+  }
 ];
 
-export function UnifiedPromptEditor({ prompt, onChange, previewContent }: UnifiedPromptEditorProps) {
+export function UnifiedPromptEditor({ prompt, onChange, agentId, previewContent }: UnifiedPromptEditorProps) {
   const [activeTab, setActiveTab] = useState('edit');
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>System Prompt</CardTitle>
-        <CardDescription>
-          Define o comportamento e personalidade do agente de IA
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>System Prompt</CardTitle>
+            <CardDescription>
+              Define o comportamento e personalidade do agente de IA
+            </CardDescription>
+          </div>
+          <PromptPreviewButton prompt={prompt} agentId={agentId} />
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -88,18 +130,26 @@ export function UnifiedPromptEditor({ prompt, onChange, previewContent }: Unifie
                 {TEMPLATE_VARIABLES.map((variable) => (
                   <div
                     key={variable.name}
-                    className="p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer space-y-2"
                     onClick={() => {
                       onChange(prompt + ' ' + variable.name);
                       setActiveTab('edit');
                     }}
                   >
-                    <code className="text-sm font-mono bg-primary/10 text-primary px-2 py-1 rounded">
-                      {variable.name}
-                    </code>
-                    <p className="text-sm text-muted-foreground mt-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <code className="text-sm font-mono bg-primary/10 text-primary px-2 py-1 rounded">
+                        {variable.name}
+                      </code>
+                      <Badge variant="outline" className="text-xs">
+                        Clique para inserir
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
                       {variable.description}
                     </p>
+                    <div className="bg-muted/50 p-2 rounded text-xs font-mono text-muted-foreground">
+                      <strong>Exemplo:</strong> {variable.example}
+                    </div>
                   </div>
                 ))}
               </div>
