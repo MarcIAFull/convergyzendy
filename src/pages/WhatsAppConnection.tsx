@@ -42,6 +42,8 @@ export default function WhatsAppConnection() {
   const [instanceName, setInstanceName] = useState<string | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+  const [qrExpiresIn, setQrExpiresIn] = useState<number>(30);
+  const [resetting, setResetting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
@@ -66,6 +68,44 @@ export default function WhatsAppConnection() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!confirm('Deseja realmente resetar a instância? Isso irá desconectar o WhatsApp atual e gerar um novo QR code.')) {
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('evolution-reset');
+      
+      if (error) {
+        toast({
+          title: "Erro ao Resetar",
+          description: error.message || "Não foi possível resetar a instância.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await fetchStatus();
+      
+      toast({
+        title: "✅ Instância Resetada!",
+        description: "A instância foi resetada com sucesso. Escaneie o novo QR code.",
+      });
+      
+      setTimeout(() => setQrModalOpen(true), 500);
+    } catch (error) {
+      console.error('Failed to reset instance:', error);
+      toast({
+        title: "Erro Inesperado",
+        description: "Erro ao resetar a instância. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -133,6 +173,33 @@ export default function WhatsAppConnection() {
       setConnecting(false);
     }
   };
+
+  // QR code expiration timer (30 seconds)
+  useEffect(() => {
+    if (status?.status === 'waiting_qr' && status?.qr?.qrText) {
+      setQrExpiresIn(30);
+      
+      const timer = setInterval(() => {
+        setQrExpiresIn((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+      return () => clearInterval(timer);
+    }
+  }, [status?.qr?.qrText]);
+
+  // Auto-refresh QR code before it expires
+  useEffect(() => {
+    if (qrExpiresIn === 5 && status?.status === 'waiting_qr') {
+      console.log('[WhatsAppConnection] QR code expiring soon, auto-refreshing...');
+      fetchStatus();
+    }
+  }, [qrExpiresIn, status?.status]);
 
   // Generate QR code image when qrText changes
   useEffect(() => {
@@ -351,7 +418,7 @@ export default function WhatsAppConnection() {
           <div className="flex gap-2">
             <Button 
               onClick={handleConnect} 
-              disabled={connecting}
+              disabled={connecting || resetting}
               className="flex-1"
               size="lg"
             >
@@ -381,6 +448,26 @@ export default function WhatsAppConnection() {
               </Button>
             )}
           </div>
+
+          {/* Reset Button */}
+          {status?.status !== 'unknown' && (
+            <Button 
+              onClick={handleReset} 
+              disabled={resetting || connecting}
+              variant="destructive"
+              size="sm"
+              className="w-full"
+            >
+              {resetting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  A resetar...
+                </>
+              ) : (
+                'Resetar Instância (Desconecta e Recria)'
+              )}
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -455,6 +542,18 @@ export default function WhatsAppConnection() {
           </DialogHeader>
           
           <div className="space-y-4">
+            {/* QR Code Timer */}
+            {status?.status === 'waiting_qr' && qrExpiresIn > 0 && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <span>
+                  {qrExpiresIn > 0 
+                    ? `QR code expira em ${qrExpiresIn}s` 
+                    : 'QR code expirado - clique em Atualizar'}
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-center p-4">
               {status?.qr?.qrText ? (
                 <div className="p-4 bg-white rounded-lg border-2 border-border">
@@ -467,6 +566,25 @@ export default function WhatsAppConnection() {
               )}
             </div>
             
+            {qrExpiresIn === 0 && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>QR Code Expirado!</strong> Clique em "Atualizar QR Code" para gerar um novo código.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {status?.error && status.error.includes('428') && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Conexão Recusada (Erro 428)</strong><br />
+                  O QR code pode ter expirado ou o número já está conectado noutro dispositivo. Clique em "Resetar Instância" abaixo para resolver.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <Alert>
               <Smartphone className="h-4 w-4" />
               <AlertDescription>
@@ -474,18 +592,33 @@ export default function WhatsAppConnection() {
               </AlertDescription>
             </Alert>
 
-            <Button 
-              onClick={handleConnect} 
-              disabled={connecting}
-              variant="outline" 
-              className="w-full"
-            >
-              {connecting ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />A atualizar...</>
-              ) : (
-                <><RefreshCw className="w-4 h-4 mr-2" />Atualizar QR Code</>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleConnect} 
+                disabled={connecting}
+                variant="outline" 
+                className="flex-1"
+              >
+                {connecting ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />A atualizar...</>
+                ) : (
+                  <><RefreshCw className="w-4 h-4 mr-2" />Atualizar QR Code</>
+                )}
+              </Button>
+
+              <Button 
+                onClick={handleReset} 
+                disabled={resetting}
+                variant="destructive" 
+                className="flex-1"
+              >
+                {resetting ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />A resetar...</>
+                ) : (
+                  'Resetar Instância'
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

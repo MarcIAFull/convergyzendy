@@ -223,6 +223,35 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
   return await response.json();
 }
 
+export async function deleteInstance(instanceName: string): Promise<void> {
+  const { apiUrl, apiKey } = getConfig();
+  
+  console.log(`[evolutionClient] Deleting instance ${instanceName}`);
+  
+  const response = await fetch(
+    `${apiUrl}/instance/delete/${instanceName}`,
+    {
+      method: 'DELETE',
+      headers: getAuthHeaders(apiKey),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[evolutionClient] Instance deletion failed:`, errorText);
+    
+    // If instance doesn't exist (404), that's fine
+    if (response.status === 404) {
+      console.log(`[evolutionClient] Instance ${instanceName} not found, skipping deletion`);
+      return;
+    }
+    
+    throw new Error(`Evolution API instance deletion failed: ${response.status} - ${errorText}`);
+  }
+  
+  console.log(`[evolutionClient] Instance ${instanceName} deleted successfully`);
+}
+
 export async function sendWhatsAppMessage(
   instanceName: string,
   phone: string,
