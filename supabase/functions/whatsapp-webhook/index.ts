@@ -102,10 +102,61 @@ serve(async (req) => {
       console.log('[whatsapp-webhook] Event type:', event);
       console.log('[whatsapp-webhook] Data:', JSON.stringify(data, null, 2));
 
+      // Handle connection.update events
+      if (event === 'connection.update') {
+        const connectionState = data.state; // 'open', 'connecting', 'qr', 'close', 'refused'
+        const statusReason = data.statusReason;
+        
+        console.log(`[whatsapp-webhook] Connection update: state=${connectionState}, reason=${statusReason}`);
+        
+        let mappedStatus = 'disconnected';
+        
+        if (connectionState === 'open') {
+          mappedStatus = 'connected';
+        } else if (connectionState === 'connecting' || connectionState === 'qr') {
+          mappedStatus = 'waiting_qr';
+        } else if (connectionState === 'close' || connectionState === 'refused') {
+          mappedStatus = 'disconnected';
+        }
+        
+        // Update status in database in real-time
+        const { error: updateError } = await supabase
+          .from('whatsapp_instances')
+          .update({
+            status: mappedStatus,
+            last_connected_at: mappedStatus === 'connected' ? new Date().toISOString() : null,
+            last_checked_at: new Date().toISOString(),
+            metadata: { connectionState, statusReason, updatedViaWebhook: true }
+          })
+          .eq('instance_name', instanceName);
+        
+        if (updateError) {
+          console.error('[whatsapp-webhook] Failed to update instance status:', updateError);
+        }
+        
+        // Log system event
+        await supabase
+          .from('system_logs')
+          .insert({
+            restaurant_id: restaurantId,
+            log_type: 'whatsapp_connection',
+            severity: mappedStatus === 'connected' ? 'info' : (connectionState === 'refused' ? 'error' : 'warn'),
+            message: `WhatsApp ${mappedStatus} (state: ${connectionState}, reason: ${statusReason})`,
+            metadata: { connectionState, statusReason, instanceName }
+          });
+        
+        console.log(`[whatsapp-webhook] Status updated to: ${mappedStatus}`);
+        
+        return new Response(JSON.stringify({ ok: true, status: mappedStatus }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
+      }
+
       // Only process incoming messages
       if (event !== 'messages.upsert' || !data) {
-        console.log('[EvolutionWebhook] Ignoring event (not messages.upsert or no data)');
-        return new Response(JSON.stringify({ ok: true, note: 'Not a message event' }), {
+        console.log('[EvolutionWebhook] Ignoring event (not messages.upsert or connection.update)');
+        return new Response(JSON.stringify({ ok: true, note: 'Event not processed' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         });
