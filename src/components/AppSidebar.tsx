@@ -69,7 +69,6 @@ export function AppSidebar() {
     { title: "Menu", url: "/menu", icon: Package },
     { title: "Zonas de Entrega", url: "/delivery-zones", icon: MapPin },
     { title: "Clientes", url: "/customers", icon: Users },
-    { title: "Equipe", url: "/team", icon: UserPlus },
   ];
 
   const communicationRoutes = [
@@ -82,6 +81,7 @@ export function AppSidebar() {
 
   const adminRoutes = [
     { title: "Painel Admin", url: "/admin", icon: Shield },
+    { title: "Gestão de Equipe", url: "/admin/team", icon: UserPlus },
     { title: "Configuração Global de IA", url: "/admin/ai-configuration", icon: Settings },
     { title: "System Check", url: "/admin/system-check", icon: Shield },
   ];
