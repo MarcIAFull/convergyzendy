@@ -202,7 +202,7 @@ export default function DeliveryZones() {
                 Nova Zona
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md z-50 bg-background">
               <DialogHeader>
                 <DialogTitle>
                   {editingZone ? 'Editar Zona' : 'Nova Zona de Entrega'}
