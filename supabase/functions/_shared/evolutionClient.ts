@@ -113,7 +113,7 @@ export async function getInstanceStatus(instanceName: string): Promise<InstanceS
   return await response.json();
 }
 
-export async function getInstanceQrCode(instanceName: string): Promise<{ code: string; base64: string }> {
+export async function getInstanceQrCode(instanceName: string): Promise<{ qrText: string } | null> {
   const { apiUrl, apiKey } = getConfig();
   
   console.log(`[evolutionClient] Fetching QR code for ${instanceName}`);
@@ -133,9 +133,13 @@ export async function getInstanceQrCode(instanceName: string): Promise<{ code: s
   }
 
   const qrData = await response.json();
-  console.log(`[evolutionClient] QR code received:`, { hasCode: !!qrData.code, hasBase64: !!qrData.base64 });
+  console.log(`[evolutionClient] QR code received:`, { 
+    hasCode: !!qrData?.code,
+    codeLength: qrData?.code?.length 
+  });
   
-  return qrData;
+  // Return only the QR text - frontend will generate the image
+  return qrData?.code ? { qrText: qrData.code } : null;
 }
 
 export async function createOrConnectInstance(instanceName: string, webhookUrl?: string): Promise<any> {
