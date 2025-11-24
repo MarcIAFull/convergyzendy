@@ -321,7 +321,7 @@ export default function WhatsAppConnection() {
           </Button>
 
           {/* QR Code Section */}
-          {status?.status === 'waiting_qr' && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
+          {status?.status === 'waiting_qr' && status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
             const qrSrc = status.qr.qrImageUrl ?? (status.qr.qrBase64 ? `data:image/png;base64,${status.qr.qrBase64}` : null);
             
             if (!qrSrc) return null;
