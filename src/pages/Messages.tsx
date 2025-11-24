@@ -20,19 +20,29 @@ export default function Messages() {
     selectConversation,
     loadCustomerDetails,
     toggleMode,
+    subscribeToConversations,
+    subscribeToCustomerDetails,
   } = useConversationsStore();
 
   useEffect(() => {
     if (restaurant?.id) {
       loadConversations(restaurant.id);
+      
+      // Subscribe to real-time updates
+      const unsubscribe = subscribeToConversations(restaurant.id);
+      return unsubscribe;
     }
-  }, [restaurant?.id, loadConversations]);
+  }, [restaurant?.id, loadConversations, subscribeToConversations]);
 
   useEffect(() => {
     if (selectedPhone && restaurant?.id) {
       loadCustomerDetails(selectedPhone, restaurant.id);
+      
+      // Subscribe to customer details updates
+      const unsubscribe = subscribeToCustomerDetails(selectedPhone, restaurant.id);
+      return unsubscribe;
     }
-  }, [selectedPhone, restaurant?.id, loadCustomerDetails]);
+  }, [selectedPhone, restaurant?.id, loadCustomerDetails, subscribeToCustomerDetails]);
 
   if (restaurantLoading || loading) {
     return (

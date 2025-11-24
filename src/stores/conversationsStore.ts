@@ -12,6 +12,8 @@ interface ConversationsStore {
   selectConversation: (phone: string) => void;
   loadCustomerDetails: (phone: string, restaurantId: string) => Promise<void>;
   toggleMode: (phone: string, restaurantId: string, mode: 'ai' | 'manual') => Promise<void>;
+  subscribeToConversations: (restaurantId: string) => () => void;
+  subscribeToCustomerDetails: (phone: string, restaurantId: string) => () => void;
   reset: () => void;
 }
 
@@ -191,6 +193,87 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
       console.error('Error toggling mode:', error);
       throw error;
     }
+  },
+
+  subscribeToConversations: (restaurantId: string) => {
+    const channel = supabase
+      .channel('conversations-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `restaurant_id=eq.${restaurantId}`
+      }, (payload) => {
+        console.log('New message detected:', payload);
+        get().loadConversations(restaurantId);
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversation_mode',
+        filter: `restaurant_id=eq.${restaurantId}`
+      }, (payload) => {
+        console.log('Conversation mode changed:', payload);
+        get().loadConversations(restaurantId);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'conversation_state',
+        filter: `restaurant_id=eq.${restaurantId}`
+      }, (payload) => {
+        console.log('Conversation state changed:', payload);
+        get().loadConversations(restaurantId);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'customers'
+      }, (payload) => {
+        console.log('Customer updated:', payload);
+        get().loadConversations(restaurantId);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToCustomerDetails: (phone: string, restaurantId: string) => {
+    const channel = supabase
+      .channel(`customer-details-${phone}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'cart_items'
+      }, (payload) => {
+        console.log('Cart items changed:', payload);
+        get().loadCustomerDetails(phone, restaurantId);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'carts',
+        filter: `user_phone=eq.${phone}`
+      }, (payload) => {
+        console.log('Cart updated:', payload);
+        get().loadCustomerDetails(phone, restaurantId);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'customers',
+        filter: `phone=eq.${phone}`
+      }, (payload) => {
+        console.log('Customer info updated:', payload);
+        get().loadCustomerDetails(phone, restaurantId);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 
   reset: () => {
