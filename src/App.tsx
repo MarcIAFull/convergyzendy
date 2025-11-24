@@ -18,6 +18,7 @@ import TestWhatsApp from "@/pages/TestWhatsApp";
 import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import AIConfiguration from "@/pages/AIConfiguration";
 import RestaurantAISettings from "@/pages/RestaurantAISettings";
+import Admin from "@/pages/Admin";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import NotFound from "@/pages/NotFound";
@@ -57,6 +58,7 @@ const App = () => (
                 <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
                 <Route path="/ai-configuration" element={<AIConfiguration />} />
                 <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
+                <Route path="/admin" element={<Admin />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
