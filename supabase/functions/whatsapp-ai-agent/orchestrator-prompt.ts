@@ -11,8 +11,6 @@ export function buildOrchestratorPrompt(context: {
   cartItems: any[];
   cartTotal: number;
   menuProducts: any[];
-  pendingProduct: any | null;
-  lastShownProduct: any | null;
   restaurantName: string;
   conversationHistory: any[];
 }): string {
@@ -22,8 +20,6 @@ export function buildOrchestratorPrompt(context: {
     cartItems, 
     cartTotal, 
     menuProducts, 
-    pendingProduct, 
-    lastShownProduct,
     restaurantName,
     conversationHistory 
   } = context;
@@ -62,12 +58,12 @@ You must ALWAYS output exactly this JSON structure:
 # INTENT DEFINITIONS
 
 ## confirm_item
-User is confirming/accepting a product that the agent just offered or described.
+User is confirming/accepting a product that the agent just offered or described, OR confirming a single pending item.
 Indicators:
 - Agent just described or offered a specific product in the previous turn
 - User replies affirmatively (any form of "yes", "ok", "I want that", etc.)
-- A pending_product exists in context
 - User is NOT mentioning a different/new product
+- There is a single pending item awaiting confirmation
 
 ## browse_product
 User is asking about or requesting a specific product by name.
@@ -130,11 +126,12 @@ Indicators:
 - User is exploring options before committing
 
 ## confirm_pending_items
-User confirms a list of pending products the agent just proposed.
+User confirms multiple pending products the agent just proposed.
 Indicators:
-- There are pending items in the conversation
-- Agent just presented a list of products
+- There are multiple pending items in the conversation (2 or more)
+- Agent just presented a list of products for confirmation
 - User replies affirmatively ("yes", "that's fine", "add them all", "confirm")
+- User is confirming the entire pending selection, not a single item
 
 ## unclear
 User's intent cannot be confidently determined from the context.
@@ -148,10 +145,6 @@ Use this sparingly - only when truly ambiguous.
 
 **Cart:** ${cartSummary} (Total: €${cartTotal})
 
-**Pending Product:** ${pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'}
-
-**Last Shown Product:** ${lastShownProduct ? `${lastShownProduct.name} (ID: ${lastShownProduct.id})` : 'None'}
-
 **Available Products:**
 ${productList}
 
@@ -161,9 +154,9 @@ ${fullHistory}
 # CLASSIFICATION STRATEGY
 
 1. **Look at the last 2-3 turns of dialogue** to understand the immediate context
-2. **Check if the agent just offered a product** in the previous turn
+2. **Check if the agent just offered a product or products** in the previous turn
 3. **Analyze the user's current message** in relation to that context
-4. **Consider pending_product and last_shown_product** as strong signals
+4. **Check if multiple products were mentioned** to determine if pending items workflow applies
 5. **Evaluate the current state** to understand where we are in the flow
 6. **Determine the most likely intent** based on all of the above
 
@@ -180,15 +173,15 @@ Your target_state should reflect where the conversation should go next:
 
 # EXAMPLES
 
-## Example 1: Confirmation after offer
+## Example 1: Confirmation after single product offer
 Agent: "Temos a Pizza Margherita por €9.98. Queres adicionar ao carrinho?"
 User: "Quero"
-Context: pending_product exists (Pizza Margherita)
+Context: Agent just offered a single product
 → {
   "intent": "confirm_item",
   "target_state": "confirming_item",
   "confidence": 0.95,
-  "reasoning": "Agent just offered Pizza Margherita, user replied affirmatively, pending_product exists"
+  "reasoning": "Agent just offered Pizza Margherita, user replied affirmatively with single product context"
 }
 
 ## Example 2: Browsing a product
@@ -210,9 +203,20 @@ User: "Vocês fazem entregas?"
   "reasoning": "User asking informational question about delivery service"
 }
 
-## Example 4: Vague reply without context
+## Example 4: Confirming multiple pending items
+Agent: "Então queres Pizza, Brigadeiro e Água. Confirmas?"
+User: "Sim, confirmo"
+Context: Multiple pending items exist
+→ {
+  "intent": "confirm_pending_items",
+  "target_state": "confirming_item",
+  "confidence": 0.95,
+  "reasoning": "User confirming multiple pending items that agent just summarized"
+}
+
+## Example 5: Vague reply without context
 User: "Pode ser"
-Context: No pending product, no recent offer from agent
+Context: No pending items, no recent offer from agent
 → {
   "intent": "unclear",
   "target_state": "idle",
@@ -220,7 +224,7 @@ Context: No pending product, no recent offer from agent
   "reasoning": "User reply is vague and no product was recently offered"
 }
 
-## Example 5: Providing address
+## Example 6: Providing address
 State: collecting_address
 User: "Rua das Flores, 123, Lisboa"
 → {
@@ -234,11 +238,12 @@ User: "Rua das Flores, 123, Lisboa"
 
 1. **NO KEYWORD MATCHING** - Do not rely on fixed word lists. Analyze context.
 2. **CONSIDER FULL HISTORY** - Use the entire conversation to understand intent.
-3. **PENDING PRODUCT IS KEY** - If pending_product exists and user replies positively → likely confirm_item
-4. **AGENT'S LAST MESSAGE MATTERS** - What did the agent just say? Is it an offer? A question?
-5. **STATE INFORMS INTENT** - If state is "collecting_address", address-like input → provide_address
-6. **CONFIDENCE MATTERS** - If you're not sure, lower the confidence or use "unclear"
-7. **OUTPUT ONLY JSON** - No explanations outside the JSON structure
+3. **MULTIPLE PRODUCTS = PENDING ITEMS** - If user mentions multiple products → manage_pending_items
+4. **PENDING ITEMS CONFIRMATION** - If agent summarized pending items and user confirms → confirm_pending_items
+5. **AGENT'S LAST MESSAGE MATTERS** - What did the agent just say? Is it an offer? A question? A summary?
+6. **STATE INFORMS INTENT** - If state is "collecting_address", address-like input → provide_address
+7. **CONFIDENCE MATTERS** - If you're not sure, lower the confidence or use "unclear"
+8. **OUTPUT ONLY JSON** - No explanations outside the JSON structure
 
 # YOUR TASK
 Analyze the current context and output ONLY the intent classification JSON.`;

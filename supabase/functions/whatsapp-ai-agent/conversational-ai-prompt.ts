@@ -44,7 +44,15 @@ export function buildConversationalAIPrompt(context: {
     : 'Carrinho vazio';
 
   const pendingSummary = pendingItems.length > 0
-    ? pendingItems.map(item => `${item.quantity}x ${item.product_name}${item.notes ? ` (${item.notes})` : ''}`).join(', ')
+    ? pendingItems.map(item => {
+        const product = item.product || menuProducts.find((p: any) => p.id === item.product_id);
+        const productName = product?.name || 'Unknown';
+        const addonsText = item.addons && item.addons.length > 0
+          ? ` + ${item.addons.map((a: any) => a.name).join(', ')}`
+          : '';
+        const notesText = item.notes ? ` (${item.notes})` : '';
+        return `${item.quantity}x ${productName}${addonsText}${notesText}`;
+      }).join(', ')
     : 'Nenhum item pendente';
 
   const customerInfo = customer
@@ -151,11 +159,11 @@ ${productList}
 
 **Examples of direct add_to_cart:**
 
-✅ User: "Quero uma pizza" (no pending items)
+✅ User: "Quero uma pizza" (no pending items, single product request)
    → Call add_to_cart(product_id: pizza-uuid)
 
-✅ User: "Sim" (confirming a single pending product)
-   → Call add_to_cart(product_id: pending-product-uuid)
+✅ User: "Sim" (confirming single product offer, no pending items)
+   → Call add_to_cart(product_id: offered-product-uuid)
 
 ## 🚨 HANDLING ADDONS (CRITICAL):
 
@@ -384,9 +392,10 @@ The user is confirming pending items. You should:
 ## confirm_item
 The user is confirming a product. You should:
 1. Check if there are pending items
-2. If YES → Call confirm_pending_items
-3. If NO → Call add_to_cart with the product
-4. Ask if they want anything else
+2. If YES (multiple items) → Call confirm_pending_items
+3. If YES (single item) → Call add_to_cart with that item
+4. If NO → Call add_to_cart with the product just offered
+5. Ask if they want anything else
 
 ## browse_product
 The user is asking about OR requesting products. You should:
