@@ -64,7 +64,29 @@ serve(async (req) => {
     console.log(`[evolution-status] Checking status for instance: ${instance.instance_name}`);
 
     // Get status from Evolution API
-    const status = await getInstanceStatus(instance.instance_name);
+    let status;
+    try {
+      status = await getInstanceStatus(instance.instance_name);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If instance doesn't exist in Evolution API (404), return disconnected status
+      if (errorMessage.includes('404')) {
+        console.log(`[evolution-status] Instance ${instance.instance_name} not found in Evolution API (404)`);
+        return new Response(
+          JSON.stringify({
+            status: 'disconnected',
+            instanceName: instance.instance_name,
+            message: 'Instance not found in Evolution API. Please reconnect.',
+            needsConnection: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // For other errors, throw to be handled by outer catch
+      throw error;
+    }
     
     let qrData = null;
     let mappedStatus = 'disconnected';
