@@ -1,0 +1,4 @@
+// This is a placeholder file
+// The actual notification sound should be a real MP3 file
+// For now, we'll use a data URI in the code directly
+export default null;
