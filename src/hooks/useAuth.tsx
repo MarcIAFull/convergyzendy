@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, waitForAuth } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useRestaurantStore } from '@/stores/restaurantStore';
@@ -34,17 +34,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('[Auth] State change:', _event);
       
-      // Clear store when user signs out
-      if (_event === 'SIGNED_OUT') {
+      if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') {
+        console.log('[Auth] ✅ Token recebido, verificando propagação...');
+        
+        // Aguardar token estar disponível
+        await waitForAuth(3000);
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+      } else if (_event === 'SIGNED_OUT') {
         console.log('[Auth] 🧹 Clearing restaurant store on logout');
         useRestaurantStore.getState().clearRestaurant();
+        setSession(null);
+        setUser(null);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
       }
       
-      setSession(session);
-      setUser(session?.user ?? null);
       setLoading(false);
     });
 

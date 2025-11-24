@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { supabase, ensureValidSession } from '@/integrations/supabase/client';
+import { supabase, ensureValidSession, verifyAuthUid, forceTokenReload } from '@/integrations/supabase/client';
 import { Check, Loader2 } from 'lucide-react';
 import RestaurantInfoStep from '@/components/onboarding/RestaurantInfoStep';
 import MenuSetupStep from '@/components/onboarding/MenuSetupStep';
@@ -101,48 +101,71 @@ const Onboarding = () => {
     }
 
     try {
-      // Validate session before INSERT
-      console.log('[Onboarding] Validando autenticação para user:', user.id);
-      const isAuthenticated = await ensureValidSession();
+      console.log('[Onboarding] 🚀 Iniciando criação de restaurante...');
       
+      // 1. Validar sessão
+      const isAuthenticated = await ensureValidSession();
       if (!isAuthenticated) {
-        console.error('[Onboarding] Sessão inválida');
+        console.error('[Onboarding] ❌ Sessão inválida');
         toast.error('Sua sessão expirou. Por favor, faça login novamente.');
         await supabase.auth.signOut();
         navigate('/login');
         return;
       }
 
-      // Get fresh session to ensure token is available
-      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
+      // 2. Verificar se auth.uid() está funcionando
+      let { valid: authUidValid, uid: authUid } = await verifyAuthUid();
       
-      if (sessionError || !freshSession) {
-        console.error('[Onboarding] Erro ao obter sessão:', sessionError);
-        toast.error('Erro de autenticação. Por favor, faça login novamente.');
+      if (!authUidValid || !authUid) {
+        console.error('[Onboarding] ❌ auth.uid() não está funcionando');
+        
+        // Tentar recarregar o token
+        console.log('[Onboarding] 🔄 Tentando recarregar token...');
+        const reloaded = await forceTokenReload();
+        
+        if (!reloaded) {
+          toast.error('Erro de autenticação. Por favor, faça login novamente.');
+          await supabase.auth.signOut();
+          navigate('/login');
+          return;
+        }
+        
+        // Verificar novamente após reload
+        const retryResult = await verifyAuthUid();
+        authUidValid = retryResult.valid;
+        authUid = retryResult.uid;
+        
+        if (!authUidValid || !authUid) {
+          console.error('[Onboarding] ❌ auth.uid() ainda não funciona após reload');
+          toast.error('Erro crítico de autenticação. Por favor, tente fazer login novamente.');
+          await supabase.auth.signOut();
+          navigate('/login');
+          return;
+        }
+        
+        console.log('[Onboarding] ✅ auth.uid() funcionando após reload:', authUid);
+      }
+
+      // 3. Confirmar que auth.uid() = user.id
+      if (authUid !== user.id) {
+        console.error('[Onboarding] ❌ Inconsistência:', {
+          authUid,
+          userId: user.id
+        });
+        toast.error('Erro de autenticação. IDs não correspondem.');
         await supabase.auth.signOut();
         navigate('/login');
         return;
       }
 
-      console.log('[Onboarding] Sessão válida confirmada, criando restaurante...');
-      console.log('[Onboarding] User ID na sessão:', freshSession.user.id);
-      console.log('[Onboarding] User ID do context:', user.id);
-
-      // Ensure both IDs match
-      if (freshSession.user.id !== user.id) {
-        console.error('[Onboarding] IDs não correspondem!');
-        toast.error('Erro de autenticação. Por favor, faça login novamente.');
-        await supabase.auth.signOut();
-        navigate('/login');
-        return;
-      }
-
-      // Small delay to ensure JWT token is fully propagated in Supabase client
+      console.log('[Onboarding] ✅ Tudo pronto. auth.uid() =', authUid);
+      
+      // 4. Delay para garantir propagação
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      console.log('[Onboarding] Criando restaurante com user_id:', freshSession.user.id);
+      // 5. Criar restaurante
+      console.log('[Onboarding] 📝 Inserindo restaurante...');
 
-      // Create restaurant with user_id from fresh session
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .insert({
@@ -152,25 +175,23 @@ const Onboarding = () => {
           delivery_fee: data.deliveryFee,
           opening_hours: data.openingHours,
           is_open: true,
-          user_id: freshSession.user.id, // Use ID from fresh session
+          user_id: user.id,
         })
         .select()
         .single();
 
       if (restaurantError) {
-        console.error('[Onboarding] Erro ao criar restaurante:', restaurantError);
+        console.error('[Onboarding] ❌ Erro ao criar restaurante:', restaurantError);
         
-        // Specific message for RLS errors
         if (restaurantError.message?.includes('row-level security')) {
-          toast.error('Erro de autenticação. Sua sessão pode ter expirado. Por favor, faça login novamente.');
-          navigate('/login');
+          toast.error('Erro de autenticação RLS. Verifique os logs.');
         } else {
-          toast.error(`Erro ao criar restaurante: ${restaurantError.message}`);
+          toast.error(`Erro: ${restaurantError.message}`);
         }
         throw restaurantError;
       }
 
-      console.log('[Onboarding] Restaurante criado com sucesso:', restaurant.id);
+      console.log('[Onboarding] ✅ Restaurante criado:', restaurant.id);
 
       // Create restaurant owner mapping
       const { error: ownerError } = await supabase
@@ -189,7 +210,7 @@ const Onboarding = () => {
       
       toast.success('Restaurante criado com sucesso!');
     } catch (error: any) {
-      console.error('Restaurant creation error:', error);
+      console.error('[Onboarding] 💥 Erro fatal:', error);
       toast.error(error.message || 'Erro ao criar restaurante');
       throw error;
     }

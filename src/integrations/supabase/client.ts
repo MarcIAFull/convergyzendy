@@ -75,3 +75,67 @@ export const ensureValidSession = async (): Promise<boolean> => {
   console.log('[SupabaseClient] ✅ Sessão válida');
   return true;
 };
+
+/**
+ * Verifica se auth.uid() retorna um valor válido
+ * Testa ANTES de fazer operações críticas com RLS
+ */
+export const verifyAuthUid = async (): Promise<{ valid: boolean; uid: string | null }> => {
+  try {
+    console.log('[SupabaseClient] 🔍 Testando auth.uid()...');
+    
+    // Usar a função SQL que criamos para testar auth.uid()
+    const { data, error } = await supabase
+      .rpc('get_current_user_id');
+    
+    if (error) {
+      console.error('[SupabaseClient] ❌ Erro ao testar auth.uid():', error);
+      return { valid: false, uid: null };
+    }
+    
+    if (!data) {
+      console.warn('[SupabaseClient] ⚠️ auth.uid() retornou NULL');
+      return { valid: false, uid: null };
+    }
+    
+    console.log('[SupabaseClient] ✅ auth.uid() válido:', data);
+    return { valid: true, uid: data };
+  } catch (error) {
+    console.error('[SupabaseClient] ❌ Exceção ao testar auth.uid():', error);
+    return { valid: false, uid: null };
+  }
+};
+
+/**
+ * Força o Supabase client a recarregar o token do localStorage
+ */
+export const forceTokenReload = async (): Promise<boolean> => {
+  try {
+    console.log('[SupabaseClient] 🔄 Forçando reload do token...');
+    
+    // Pegar o token do localStorage
+    const storageKey = `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+    const storedSession = localStorage.getItem(storageKey);
+    
+    if (!storedSession) {
+      console.error('[SupabaseClient] ❌ Nenhum token no localStorage');
+      return false;
+    }
+    
+    // Forçar o Supabase client a usar a sessão armazenada
+    const { data: { session }, error } = await supabase.auth.setSession(
+      JSON.parse(storedSession)
+    );
+    
+    if (error || !session) {
+      console.error('[SupabaseClient] ❌ Erro ao recarregar sessão:', error);
+      return false;
+    }
+    
+    console.log('[SupabaseClient] ✅ Token recarregado com sucesso');
+    return true;
+  } catch (error) {
+    console.error('[SupabaseClient] ❌ Exceção ao recarregar token:', error);
+    return false;
+  }
+};
