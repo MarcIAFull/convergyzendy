@@ -49,6 +49,42 @@ export type Database = {
           },
         ]
       }
+      address_cache: {
+        Row: {
+          address_components: Json | null
+          address_query: string
+          created_at: string
+          expires_at: string
+          formatted_address: string
+          google_place_id: string | null
+          id: string
+          latitude: number
+          longitude: number
+        }
+        Insert: {
+          address_components?: Json | null
+          address_query: string
+          created_at?: string
+          expires_at?: string
+          formatted_address: string
+          google_place_id?: string | null
+          id?: string
+          latitude: number
+          longitude: number
+        }
+        Update: {
+          address_components?: Json | null
+          address_query?: string
+          created_at?: string
+          expires_at?: string
+          formatted_address?: string
+          google_place_id?: string | null
+          id?: string
+          latitude?: number
+          longitude?: number
+        }
+        Relationships: []
+      }
       agent_prompt_blocks: {
         Row: {
           agent_id: string
@@ -633,6 +669,95 @@ export type Database = {
           },
         ]
       }
+      delivery_zones: {
+        Row: {
+          coordinates: Json
+          created_at: string
+          fee_amount: number
+          fee_type: string
+          id: string
+          is_active: boolean
+          max_delivery_time_minutes: number | null
+          min_order_amount: number | null
+          name: string
+          priority: number
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          coordinates: Json
+          created_at?: string
+          fee_amount?: number
+          fee_type?: string
+          id?: string
+          is_active?: boolean
+          max_delivery_time_minutes?: number | null
+          min_order_amount?: number | null
+          name: string
+          priority?: number
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          coordinates?: Json
+          created_at?: string
+          fee_amount?: number
+          fee_type?: string
+          id?: string
+          is_active?: boolean
+          max_delivery_time_minutes?: number | null
+          min_order_amount?: number | null
+          name?: string
+          priority?: number
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_zones_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distance_matrix_cache: {
+        Row: {
+          created_at: string
+          destination_lat: number
+          destination_lng: number
+          distance_meters: number
+          duration_seconds: number
+          expires_at: string
+          id: string
+          origin_lat: number
+          origin_lng: number
+        }
+        Insert: {
+          created_at?: string
+          destination_lat: number
+          destination_lng: number
+          distance_meters: number
+          duration_seconds: number
+          expires_at?: string
+          id?: string
+          origin_lat: number
+          origin_lng: number
+        }
+        Update: {
+          created_at?: string
+          destination_lat?: number
+          destination_lng?: number
+          distance_meters?: number
+          duration_seconds?: number
+          expires_at?: string
+          id?: string
+          origin_lat?: number
+          origin_lng?: number
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           amount_due: number
@@ -1163,8 +1288,11 @@ export type Database = {
           address: string
           created_at: string
           delivery_fee: number
+          google_place_id: string | null
           id: string
           is_open: boolean
+          latitude: number | null
+          longitude: number | null
           name: string
           opening_hours: Json | null
           phone: string
@@ -1177,8 +1305,11 @@ export type Database = {
           address: string
           created_at?: string
           delivery_fee?: number
+          google_place_id?: string | null
           id?: string
           is_open?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name: string
           opening_hours?: Json | null
           phone: string
@@ -1191,8 +1322,11 @@ export type Database = {
           address?: string
           created_at?: string
           delivery_fee?: number
+          google_place_id?: string | null
           id?: string
           is_open?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           opening_hours?: Json | null
           phone?: string
@@ -1594,6 +1728,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_expired_caches: { Args: never; Returns: undefined }
       create_restaurant_with_owner: {
         Args: {
           p_address: string
