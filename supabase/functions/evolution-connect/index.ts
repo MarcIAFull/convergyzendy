@@ -58,7 +58,8 @@ serve(async (req) => {
     console.log(`[evolution-connect] Creating/connecting instance for restaurant ${restaurant.id}: ${instanceName}`);
 
     // Create or connect instance via Evolution API (includes validation)
-    const result = await createOrConnectInstance(instanceName, restaurant.phone);
+    // Don't pass webhook URL - let it use the default Supabase webhook
+    const result = await createOrConnectInstance(instanceName);
 
     // Determine status based on result
     const instanceStatus = result.alreadyExists ? 
