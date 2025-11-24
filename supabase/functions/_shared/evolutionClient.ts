@@ -184,8 +184,14 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
     const errorText = await response.text();
     console.error(`[evolutionClient] Instance creation failed:`, errorText);
     
-    // If instance already exists, try to get its status
-    if (response.status === 409 || errorText.includes('already exists')) {
+    // If instance already exists (403 Forbidden or 409 Conflict), try to get its status
+    const isAlreadyExists = 
+      response.status === 403 || 
+      response.status === 409 || 
+      errorText.includes('already exists') || 
+      errorText.includes('already in use');
+    
+    if (isAlreadyExists) {
       console.log(`[evolutionClient] Instance ${instanceName} already exists, fetching status`);
       try {
         const status = await getInstanceStatus(instanceName);
