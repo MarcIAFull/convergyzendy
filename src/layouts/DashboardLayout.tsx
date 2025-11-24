@@ -18,6 +18,7 @@ import {
   Brain,
   BarChart3,
   Users as UsersIcon,
+  Shield,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -88,6 +89,7 @@ const DashboardLayout = () => {
     { name: "Restaurant AI Settings", href: "/restaurant-ai-settings", icon: Brain },
     { name: "Test WhatsApp", href: "/test-whatsapp", icon: TestTube },
     { name: "WhatsApp Connection", href: "/whatsapp-connection", icon: Smartphone },
+    { name: "Admin", href: "/admin", icon: Shield },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 
