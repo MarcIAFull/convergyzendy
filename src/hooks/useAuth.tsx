@@ -34,14 +34,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('[Auth] State change:', _event);
       
       if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') {
         console.log('[Auth] ✅ Token recebido, verificando propagação...');
         
-        // Aguardar token estar disponível
-        await waitForAuth(3000);
+        // Aguardar token estar disponível (não bloqueia o callback)
+        waitForAuth(3000).then(() => {
+          console.log('[Auth] ✅ Token propagado');
+        });
         
         setSession(session);
         setUser(session?.user ?? null);
