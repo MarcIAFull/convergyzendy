@@ -886,6 +886,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_restaurant_with_owner: {
+        Args: {
+          p_address: string
+          p_delivery_fee: number
+          p_name: string
+          p_opening_hours?: Json
+          p_phone: string
+        }
+        Returns: Json
+      }
       detect_abandoned_carts: {
         Args: { p_delay_minutes?: number; p_restaurant_id: string }
         Returns: {
