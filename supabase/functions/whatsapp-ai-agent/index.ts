@@ -274,6 +274,31 @@ serve(async (req) => {
 
     console.log(`[Context] Customer: ${customer ? 'Found' : 'New'}`);
 
+    // Load pending items (multi-item workflow)
+    const { data: pendingItemsData } = await supabase
+      .from('conversation_pending_items')
+      .select(`
+        *,
+        products (id, name, price, description),
+        addons:addon_ids (id, name, price)
+      `)
+      .eq('user_phone', customerPhone)
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    const pendingItems = (pendingItemsData || []).map((item: any) => ({
+      id: item.id,
+      product_id: item.product_id,
+      product: item.products,
+      quantity: item.quantity,
+      addon_ids: item.addon_ids || [],
+      notes: item.notes,
+      status: item.status
+    }));
+
+    console.log(`[Context] Pending items: ${pendingItems.length} items`);
+
     // ============================================================
     // CONTEXT VALIDATION & LOGGING
     // ============================================================
@@ -456,7 +481,7 @@ serve(async (req) => {
       targetState,
       conversationHistory,
       customer,
-      pendingItems: [] // Removed pending items workflow
+      pendingItems
     });
     
     let conversationalSystemPrompt = buildSystemPromptFromBlocks(
@@ -995,6 +1020,139 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
               }))
             })
           });
+          break;
+        }
+        
+        case 'add_pending_item': {
+          const { product_id, quantity = 1, addon_ids = [], notes } = args;
+          
+          const product = availableProducts.find(p => p.id === product_id);
+          if (!product) {
+            console.error(`[Tool] Product not found: ${product_id}`);
+            continue;
+          }
+          
+          const { data: pendingItem, error: pendingError } = await supabase
+            .from('conversation_pending_items')
+            .insert({
+              user_phone: customerPhone,
+              restaurant_id: restaurantId,
+              product_id,
+              quantity,
+              addon_ids,
+              notes,
+              status: 'pending'
+            })
+            .select()
+            .single();
+          
+          if (pendingError) {
+            console.error('[Tool] Add pending item error:', pendingError);
+          } else {
+            console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to pending items`);
+          }
+          break;
+        }
+        
+        case 'confirm_pending_items': {
+          console.log('[Tool] ⚡ Confirming all pending items...');
+          
+          // Load all pending items
+          const { data: itemsToConfirm } = await supabase
+            .from('conversation_pending_items')
+            .select('*')
+            .eq('user_phone', customerPhone)
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'pending');
+          
+          if (!itemsToConfirm || itemsToConfirm.length === 0) {
+            console.log('[Tool] ⚠️ No pending items to confirm');
+            continue;
+          }
+          
+          // Create cart if needed
+          if (!activeCart) {
+            const { data: newCart } = await supabase
+              .from('carts')
+              .insert({
+                restaurant_id: restaurantId,
+                user_phone: customerPhone,
+                status: 'active'
+              })
+              .select()
+              .single();
+            activeCart = newCart;
+          }
+          
+          // Move each pending item to cart
+          for (const pendingItem of itemsToConfirm) {
+            // Check if product already in cart
+            const existingCartItem = cartItems.find(
+              (ci: any) => ci.product_id === pendingItem.product_id
+            );
+            
+            if (existingCartItem) {
+              // Update quantity
+              await supabase
+                .from('cart_items')
+                .update({ 
+                  quantity: existingCartItem.quantity + pendingItem.quantity 
+                })
+                .eq('cart_id', activeCart!.id)
+                .eq('product_id', pendingItem.product_id);
+              
+              console.log(`[Tool] ✅ Updated quantity for existing item`);
+            } else {
+              // Add new item
+              const { data: cartItem } = await supabase
+                .from('cart_items')
+                .insert({
+                  cart_id: activeCart!.id,
+                  product_id: pendingItem.product_id,
+                  quantity: pendingItem.quantity,
+                  notes: pendingItem.notes
+                })
+                .select()
+                .single();
+              
+              // Add addons if specified
+              if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
+                const addonInserts = pendingItem.addon_ids.map((addon_id: string) => ({
+                  cart_item_id: cartItem.id,
+                  addon_id
+                }));
+                
+                await supabase
+                  .from('cart_item_addons')
+                  .insert(addonInserts);
+              }
+              
+              console.log(`[Tool] ✅ Added pending item to cart`);
+            }
+          }
+          
+          // Mark all pending items as confirmed
+          await supabase
+            .from('conversation_pending_items')
+            .update({ status: 'confirmed' })
+            .eq('user_phone', customerPhone)
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'pending');
+          
+          cartModified = true;
+          console.log(`[Tool] ✅ Confirmed ${itemsToConfirm.length} pending items to cart`);
+          break;
+        }
+        
+        case 'clear_pending_items': {
+          await supabase
+            .from('conversation_pending_items')
+            .update({ status: 'discarded' })
+            .eq('user_phone', customerPhone)
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'pending');
+          
+          console.log('[Tool] ✅ Cleared all pending items');
           break;
         }
       }
