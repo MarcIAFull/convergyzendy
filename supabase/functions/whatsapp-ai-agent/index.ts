@@ -40,6 +40,37 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ============================================================
+    // CHECK IF CONVERSATION IS IN MANUAL MODE
+    // ============================================================
+    
+    console.log('[Mode Check] Checking conversation mode...');
+    
+    const { data: conversationMode } = await supabase
+      .from('conversation_mode')
+      .select('mode, taken_over_by')
+      .eq('restaurant_id', restaurantId)
+      .eq('user_phone', customerPhone)
+      .maybeSingle();
+
+    if (conversationMode?.mode === 'manual') {
+      console.log(`[Mode Check] ⚠️ Conversation in MANUAL mode (taken over by user ${conversationMode.taken_over_by})`);
+      console.log('[Mode Check] Skipping AI processing - human agent is in control');
+      return new Response(
+        JSON.stringify({ 
+          skipped: true, 
+          reason: 'manual_mode',
+          message: 'Conversation is in manual mode - AI agent skipped' 
+        }), 
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    console.log('[Mode Check] ✅ Conversation in AI mode - proceeding with AI agent\n');
+
+    // ============================================================
     // STEP 1: LOAD AGENT CONFIGURATION FROM DATABASE
     // ============================================================
     
