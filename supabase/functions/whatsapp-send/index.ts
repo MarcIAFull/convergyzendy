@@ -53,7 +53,7 @@ serve(async (req) => {
 
     console.log(`[WhatsAppSend] User ${authResult.userId} authorized for restaurant ${restaurantId}`);
 
-    // Get restaurant details
+    // Fetch restaurant details and instance
     const { data: restaurant, error: restaurantError } = await supabase
       .from('restaurants')
       .select('phone')
@@ -61,18 +61,28 @@ serve(async (req) => {
       .single();
 
     if (restaurantError || !restaurant) {
-      console.error('Restaurant not found:', restaurantError);
-      return new Response(
-        JSON.stringify({ error: 'Restaurant not found' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      throw new Error('Restaurant not found');
     }
 
-    // Send message via Evolution API client
-    const evolutionData = await sendWhatsAppMessage(customerPhone, messageText);
+    // Get the restaurant's WhatsApp instance
+    const { data: instance, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_name, status')
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (instanceError || !instance) {
+      throw new Error('WhatsApp not configured for this restaurant');
+    }
+
+    if (instance.status !== 'connected') {
+      throw new Error('WhatsApp not connected. Please connect first.');
+    }
+
+    console.log(`[whatsapp-send] Sending message to ${customerPhone} via instance ${instance.instance_name}`);
+
+    // Send the message using Evolution API with restaurant's instance
+    const evolutionData = await sendWhatsAppMessage(instance.instance_name, customerPhone, messageText);
 
     // Log outbound message to database
     const { error: messageError } = await supabase

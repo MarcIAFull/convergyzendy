@@ -1,163 +1,130 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.83.0';
 import { getInstanceStatus, getInstanceQrCode } from "../_shared/evolutionClient.ts";
+import { validateRestaurantAccess } from "../_shared/authMiddleware.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface StatusResponse {
-  status: 'connected' | 'waiting_qr' | 'disconnected' | 'unknown';
-  qr: {
-    qrImageUrl: string | null;
-    qrBase64: string | null;
-  };
-  lastCheckedAt: string;
-  error?: string;
-  raw?: any;
-}
-
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const lastCheckedAt = new Date().toISOString();
-
   try {
-    console.log('[EvolutionStatus] Fetching instance status and QR code');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get instance status
-    let instanceStatus;
-    try {
-      instanceStatus = await getInstanceStatus();
-    } catch (error) {
-      console.error('[EvolutionStatusAPI] Failed to get instance status:', error);
-      
-      // Determine error message
-      let errorMessage = 'Erro ao verificar estado da instância';
-      if (error instanceof Error) {
-        if (error.message.includes('not configured')) {
-          errorMessage = 'Evolution API URL não configurado';
-        } else if (error.message.includes('ECONNREFUSED')) {
-          errorMessage = 'Falha ao conectar à Evolution API (ECONNREFUSED)';
-        } else if (error.message.includes('404')) {
-          errorMessage = 'Instância não encontrada';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
+    // Get auth token and user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing authorization');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      throw new Error('Unauthorized');
+    }
+
+    // Get user's restaurant
+    const { data: restaurantOwner } = await supabase
+      .from('restaurant_owners')
+      .select('restaurant_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!restaurantOwner) {
+      throw new Error('No restaurant found for user');
+    }
+    
+    // Get instance name from database
+    const { data: instance, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('restaurant_id', restaurantOwner.restaurant_id)
+      .single();
+
+    if (instanceError || !instance) {
+      console.log(`[evolution-status] No instance found for restaurant ${restaurantOwner.restaurant_id}`);
       return new Response(
         JSON.stringify({
-          status: 'unknown',
-          qr: {
-            qrImageUrl: null,
-            qrBase64: null,
-          },
-          lastCheckedAt,
-          error: errorMessage,
-        } as StatusResponse),
-        {
-          status: 200, // Return 200 even on error so frontend can handle gracefully
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          status: 'disconnected',
+          message: 'WhatsApp not configured. Please connect first.',
+          needsConnection: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Determine connection status from Evolution API response
-    // Support multiple field names: instance.state, instance.status, state
-    const rawStatus = (
-      instanceStatus.instance?.state || 
-      instanceStatus.instance?.status || 
-      instanceStatus.state ||
-      'unknown'
-    ).toLowerCase();
-    
-    let status: StatusResponse['status'] = 'unknown';
-    
-    // Map Evolution statuses to our statuses
-    // IMPORTANT: 'open' means instance exists but NOT necessarily WhatsApp connected
-    // Only 'connected' means truly connected to WhatsApp
-    if (rawStatus === 'connected') {
-      status = 'connected';
-    } else if (rawStatus === 'open') {
-      // Instance is active but WhatsApp not connected - show as disconnected
-      status = 'disconnected';
-    } else if (rawStatus === 'close' || rawStatus === 'closed' || rawStatus === 'disconnected') {
-      status = 'disconnected';
-    } else if (rawStatus === 'connecting' || rawStatus === 'qr' || rawStatus === 'qrreadcode') {
-      status = 'waiting_qr';
-    }
+    console.log(`[evolution-status] Checking status for instance: ${instance.instance_name}`);
 
-    console.log(`[EvolutionStatus] Raw status field: ${rawStatus} -> mapped to: ${status}`);
-
-    // Try to get QR code if not connected
+    // Get status from Evolution API
+    const status = await getInstanceStatus(instance.instance_name);
+    
     let qrData = null;
-    if (status !== 'connected') {
-      try {
-        qrData = await getInstanceQrCode();
-        console.log('[EvolutionStatus] QR code retrieved successfully');
-      } catch (error) {
-        // QR code might not be available if already connected or in transition
-        console.log('[EvolutionStatus] QR code not available (this is normal if already connected)');
-      }
-    }
+    let mappedStatus = 'disconnected';
 
-    const response: StatusResponse = {
-      status,
-      qr: {
-        qrImageUrl: qrData?.code || null,
-        qrBase64: qrData?.base64 || null,
-      },
-      lastCheckedAt,
-      raw: instanceStatus, // Include raw response for debugging
-    };
-
-    console.log('[EvolutionStatus] Returning response:', { status: response.status, hasQr: !!qrData, rawStatus });
-
-    return new Response(
-      JSON.stringify(response),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    );
-
-  } catch (error) {
-    console.error('[EvolutionStatusAPI] Unexpected error:', error);
-    
-    // Determine error message
-    let errorMessage = 'Erro inesperado ao verificar estado';
-    if (error instanceof Error) {
-      if (error.message.includes('not configured')) {
-        errorMessage = 'Evolution API URL não configurado';
-      } else if (error.message.includes('ECONNREFUSED')) {
-        errorMessage = 'Falha ao conectar à Evolution API (ECONNREFUSED)';
-      } else if (error.message.includes('404')) {
-        errorMessage = 'Instância não encontrada';
+    if (status.instance?.state === 'open') {
+      if (status.instance?.status === 'connected') {
+        mappedStatus = 'connected';
       } else {
-        errorMessage = error.message;
+        // Status is open but not connected - waiting for QR scan
+        mappedStatus = 'disconnected';
+        try {
+          qrData = await getInstanceQrCode(instance.instance_name);
+        } catch (e) {
+          console.error('[evolution-status] Error getting QR code:', e);
+        }
+      }
+    } else if (status.instance?.state === 'connecting' || status.instance?.state === 'qr') {
+      mappedStatus = 'waiting_qr';
+      try {
+        qrData = await getInstanceQrCode(instance.instance_name);
+      } catch (e) {
+        console.error('[evolution-status] Error getting QR code:', e);
       }
     }
-    
-    const errorResponse: StatusResponse = {
-      status: 'unknown',
-      qr: {
-        qrImageUrl: null,
-        qrBase64: null,
-      },
-      lastCheckedAt,
-      error: errorMessage,
-      raw: null,
-    };
+
+    // Update database with current status
+    await supabase
+      .from('whatsapp_instances')
+      .update({
+        status: mappedStatus,
+        qr_code: qrData?.code || null,
+        qr_code_base64: qrData?.base64 || null,
+        phone_number: status.instance?.owner || instance.phone_number,
+        last_connected_at: mappedStatus === 'connected' ? new Date().toISOString() : instance.last_connected_at,
+        last_checked_at: new Date().toISOString(),
+        metadata: status
+      })
+      .eq('id', instance.id);
 
     return new Response(
-      JSON.stringify(errorResponse),
-      {
-        status: 200, // Return 200 to allow graceful frontend handling
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      JSON.stringify({
+        status: mappedStatus,
+        instanceName: instance.instance_name,
+        phoneNumber: status.instance?.owner,
+        qrCode: qrData,
+        rawStatus: status,
+        lastChecked: new Date().toISOString()
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('[evolution-status] Error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        status: 'unknown'
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

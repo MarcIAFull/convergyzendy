@@ -1349,9 +1349,18 @@ ${validatedToolCalls.map((tc: any) => {
     console.log(`[WhatsApp] Message to send: "${finalResponse.substring(0, 150)}${finalResponse.length > 150 ? '...' : ''}"`);
     console.log(`[WhatsApp] Message length: ${finalResponse.length} characters`);
     
+    // Get restaurant's WhatsApp instance
+    const { data: whatsappInstance } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_name, status')
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    const instanceName = whatsappInstance?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
+    
     // Send WhatsApp response (non-blocking for test environments)
     try {
-      await sendWhatsAppMessage(customerPhone, finalResponse);
+      await sendWhatsAppMessage(instanceName, customerPhone, finalResponse);
       console.log(`[WhatsApp] ✅ WhatsApp message sent successfully`);
     } catch (whatsappError: any) {
       console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);

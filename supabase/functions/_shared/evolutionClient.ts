@@ -1,24 +1,13 @@
-/**
- * Centralized Evolution API Client
- * Handles all WhatsApp API communications via Evolution API
- */
-
 interface EvolutionConfig {
   apiUrl: string;
   apiKey: string;
-  instanceName: string;
 }
 
 interface InstanceStatus {
-  instance: {
-    instanceName: string;
+  instance?: {
+    state: string;
     status?: string;
-    state?: string;
-  };
-  state?: string;
-  qrcode?: {
-    code: string;
-    base64: string;
+    owner?: string;
   };
 }
 
@@ -28,198 +17,169 @@ interface SendMessageResponse {
     fromMe: boolean;
     id: string;
   };
-  message: any;
-  messageTimestamp: string;
-  status: string;
 }
 
-/**
- * Get Evolution API configuration from environment variables
- */
 function getConfig(): EvolutionConfig {
   const apiUrl = Deno.env.get('EVOLUTION_API_URL');
   const apiKey = Deno.env.get('EVOLUTION_API_KEY');
-  const instanceName = Deno.env.get('EVOLUTION_INSTANCE_NAME');
 
-  if (!apiUrl || !apiKey || !instanceName) {
-    const missing = [];
-    if (!apiUrl) missing.push('EVOLUTION_API_URL');
-    if (!apiKey) missing.push('EVOLUTION_API_KEY');
-    if (!instanceName) missing.push('EVOLUTION_INSTANCE_NAME');
-    
-    console.error('[EvolutionClient] Missing required environment variables:', missing.join(', '));
-    throw new Error(`Evolution API not configured. Missing: ${missing.join(', ')}`);
+  if (!apiUrl || !apiKey) {
+    throw new Error('Evolution API configuration missing');
   }
 
-  // Remove trailing slash from apiUrl to avoid double slashes
-  const cleanApiUrl = apiUrl.replace(/\/+$/, '');
-
-  return { apiUrl: cleanApiUrl, apiKey, instanceName };
+  return { apiUrl, apiKey };
 }
 
-/**
- * Format phone number for WhatsApp (remove + and add @s.whatsapp.net)
- */
-function formatPhoneNumber(phone: string): string {
-  return phone.replace(/\+/g, '') + '@s.whatsapp.net';
-}
-
-/**
- * Get the current status of the WhatsApp instance
- */
-export async function getInstanceStatus(): Promise<InstanceStatus> {
-  const config = getConfig();
-  const url = `${config.apiUrl}/instance/connectionState/${config.instanceName}`;
+export function formatPhoneNumber(phone: string): string {
+  // Remove any non-digit characters
+  let cleaned = phone.replace(/\D/g, '');
   
-  console.log(`[EvolutionClient] Fetching instance status from ${url}`);
+  // If it doesn't start with country code, assume Brazil (+55)
+  if (!cleaned.startsWith('55')) {
+    cleaned = '55' + cleaned;
+  }
+  
+  return cleaned + '@s.whatsapp.net';
+}
 
-  try {
-    const response = await fetch(url, {
+export async function getInstanceStatus(instanceName: string): Promise<InstanceStatus> {
+  const { apiUrl, apiKey } = getConfig();
+  
+  const response = await fetch(
+    `${apiUrl}/instance/connectionState/${instanceName}`,
+    {
       method: 'GET',
       headers: {
-        'apikey': config.apiKey,
+        'apikey': apiKey,
+        'Content-Type': 'application/json',
       },
-    });
-
-    console.log(`[EvolutionClient][RAW_STATUS] HTTP ${response.status} from ${url}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[EvolutionClient] Failed to get instance status: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to get instance status: ${response.status} - ${errorText}`);
     }
+  );
 
-    const data = await response.json();
-    console.log('[EvolutionClient][RAW_STATUS] Full response:', JSON.stringify(data, null, 2));
-    console.log('[EvolutionClient] Instance status retrieved successfully:', data.instance?.state || data.instance?.status || data.state);
-    return data;
-  } catch (error) {
-    console.error('[EvolutionClient] Error getting instance status:', error);
-    throw error;
+  if (!response.ok) {
+    throw new Error(`Evolution API status check failed: ${response.status}`);
   }
+
+  return await response.json();
 }
 
-/**
- * Get QR code for WhatsApp instance connection
- */
-export async function getInstanceQrCode(): Promise<{ code: string; base64: string }> {
-  const config = getConfig();
-  const url = `${config.apiUrl}/instance/connect/${config.instanceName}`;
+export async function getInstanceQrCode(instanceName: string): Promise<{ code: string; base64: string }> {
+  const { apiUrl, apiKey } = getConfig();
   
-  console.log(`[EvolutionClient] Fetching QR code from ${url}`);
-
-  try {
-    const response = await fetch(url, {
+  const response = await fetch(
+    `${apiUrl}/instance/connect/${instanceName}`,
+    {
       method: 'GET',
       headers: {
-        'apikey': config.apiKey,
+        'apikey': apiKey,
+        'Content-Type': 'application/json',
       },
-    });
-
-    console.log(`[EvolutionClient][RAW_STATUS] HTTP ${response.status} from ${url}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[EvolutionClient] Failed to get QR code: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to get QR code: ${response.status} - ${errorText}`);
     }
+  );
 
-    const data = await response.json();
-    console.log('[EvolutionClient][RAW_STATUS] QR response:', JSON.stringify(data, null, 2));
-    
-    if (!data.qrcode && !data.code && !data.base64) {
-      console.error('[EvolutionClient] No QR code in response. Instance might already be connected.');
-      throw new Error('No QR code available. Instance might already be connected.');
-    }
-
-    console.log('[EvolutionClient] QR code retrieved successfully');
-    // Support multiple response formats
-    return data.qrcode || { code: data.code, base64: data.base64 };
-  } catch (error) {
-    console.error('[EvolutionClient] Error getting QR code:', error);
-    throw error;
+  if (!response.ok) {
+    throw new Error(`Evolution API QR code fetch failed: ${response.status}`);
   }
+
+  return await response.json();
 }
 
-/**
- * Create or connect to an Evolution instance
- * @returns Instance information
- */
-export async function createOrConnectInstance(): Promise<any> {
-  const config = getConfig();
-  const url = `${config.apiUrl}/instance/create`;
+export async function createOrConnectInstance(instanceName: string, webhookUrl?: string): Promise<any> {
+  const { apiUrl, apiKey } = getConfig();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
   
-  console.log(`[EvolutionClient] Creating/connecting instance ${config.instanceName} at ${url}`);
+  const webhookUrlToUse = webhookUrl || `${supabaseUrl}/functions/v1/whatsapp-webhook`;
+  
+  const payload = {
+    instanceName,
+    token: apiKey,
+    qrcode: true,
+    integration: "WHATSAPP-BAILEYS",
+    webhook: {
+      enabled: true,
+      url: webhookUrlToUse,
+      webhookByEvents: false,
+      webhookBase64: true,
+      events: [
+        "MESSAGES_UPSERT",
+        "MESSAGES_UPDATE",
+        "CONNECTION_UPDATE"
+      ]
+    },
+    settings: {
+      rejectCall: false,
+      msgCall: "Desculpe, não atendo chamadas.",
+      groupsIgnore: true,
+      alwaysOnline: true,
+      readMessages: false,
+      readStatus: false,
+      syncFullHistory: false
+    }
+  };
 
-  try {
-    const response = await fetch(url, {
+  console.log(`[evolutionClient] Creating instance ${instanceName} with webhook: ${webhookUrlToUse}`);
+
+  const response = await fetch(
+    `${apiUrl}/instance/create`,
+    {
       method: 'POST',
       headers: {
+        'apikey': apiKey,
         'Content-Type': 'application/json',
-        'apikey': config.apiKey,
       },
-      body: JSON.stringify({
-        instanceName: config.instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[EvolutionClient] Failed to create/connect instance: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to create/connect instance: ${response.status} - ${errorText}`);
+      body: JSON.stringify(payload),
     }
+  );
 
-    const data = await response.json();
-    console.log('[EvolutionClient] Instance created/connected successfully');
-    return data;
-  } catch (error) {
-    console.error('[EvolutionClient] Error creating/connecting instance:', error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[evolutionClient] Instance creation failed:`, errorText);
+    
+    // If instance already exists, try to connect it
+    if (response.status === 409 || errorText.includes('already exists')) {
+      console.log(`[evolutionClient] Instance exists, attempting to connect: ${instanceName}`);
+      return await getInstanceQrCode(instanceName);
+    }
+    
+    throw new Error(`Evolution API instance creation failed: ${response.status} - ${errorText}`);
   }
+
+  return await response.json();
 }
 
-/**
- * Send a WhatsApp message via Evolution API
- * @param phone - Phone number (with or without +)
- * @param message - Text message to send
- * @returns Response from Evolution API
- */
 export async function sendWhatsAppMessage(
+  instanceName: string,
   phone: string,
   message: string
 ): Promise<SendMessageResponse> {
-  const config = getConfig();
-  const formattedPhone = formatPhoneNumber(phone);
-  const url = `${config.apiUrl}/message/sendText/${config.instanceName}`;
+  const { apiUrl, apiKey } = getConfig();
   
-  console.log(`[EvolutionClient] Sending message to ${formattedPhone} via ${url}`);
+  const formattedPhone = formatPhoneNumber(phone);
+  
+  const payload = {
+    number: formattedPhone,
+    text: message,
+    delay: 1000,
+  };
 
-  try {
-    const response = await fetch(url, {
+  console.log(`[evolutionClient] Sending message via instance ${instanceName} to ${formattedPhone}`);
+
+  const response = await fetch(
+    `${apiUrl}/message/sendText/${instanceName}`,
+    {
       method: 'POST',
       headers: {
+        'apikey': apiKey,
         'Content-Type': 'application/json',
-        'apikey': config.apiKey,
       },
-      body: JSON.stringify({
-        number: formattedPhone,
-        text: message,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[EvolutionClient] Failed to send message: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to send message: ${response.status} - ${errorText}`);
+      body: JSON.stringify(payload),
     }
+  );
 
-    const data = await response.json();
-    console.log('[EvolutionClient] Message sent successfully:', data.key?.id);
-    return data;
-  } catch (error) {
-    console.error('[EvolutionClient] Error sending message:', error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to send WhatsApp message: ${response.status} - ${errorText}`);
   }
+
+  return await response.json();
 }

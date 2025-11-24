@@ -35,8 +35,11 @@ serve(async (req) => {
 
     console.log(`[EvolutionTestMessage] Sending test message to ${phone}`);
 
+    // Get instance name from environment (fallback for testing)
+    const instanceName = Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'test_instance';
+
     // Send message via Evolution API client
-    const result = await sendWhatsAppMessage(phone, message);
+    const result = await sendWhatsAppMessage(instanceName, phone, message);
 
     console.log('[EvolutionTestMessage] Test message sent successfully');
 
