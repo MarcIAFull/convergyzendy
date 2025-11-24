@@ -27,7 +27,7 @@ export default function PublicMenu() {
       fetchMenuBySlug(slug);
       setSlug(slug);
     }
-  }, [slug, fetchMenuBySlug, setSlug]);
+  }, [slug]);
 
   console.log('[PublicMenu] Render state:', { slug, loading, error, hasMenuData: !!menuData });
 
