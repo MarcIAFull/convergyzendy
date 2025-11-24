@@ -381,6 +381,47 @@ export type Database = {
           },
         ]
       }
+      conversation_mode: {
+        Row: {
+          created_at: string
+          id: string
+          mode: string
+          restaurant_id: string
+          taken_over_at: string | null
+          taken_over_by: string | null
+          updated_at: string
+          user_phone: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mode: string
+          restaurant_id: string
+          taken_over_at?: string | null
+          taken_over_by?: string | null
+          updated_at?: string
+          user_phone: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mode?: string
+          restaurant_id?: string
+          taken_over_at?: string | null
+          taken_over_by?: string | null
+          updated_at?: string
+          user_phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_mode_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_pending_items: {
         Row: {
           addon_ids: string[] | null
