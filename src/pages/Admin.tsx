@@ -4,10 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, MessageSquare, ShoppingCart, Activity, Search, Shield } from 'lucide-react';
+import { Users, MessageSquare, ShoppingCart, Activity, Search, Shield, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
+import { useRestaurantStore } from '@/stores/restaurantStore';
+import { toast } from 'sonner';
 
 interface Restaurant {
   id: string;
@@ -33,6 +36,7 @@ interface SystemMetrics {
 
 export default function Admin() {
   const navigate = useNavigate();
+  const { setRestaurant } = useRestaurantStore();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -142,6 +146,20 @@ export default function Admin() {
     };
     const config = statusMap[status as keyof typeof statusMap] || statusMap.disconnected;
     return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const handleSwitchToRestaurant = async (restaurantId: string) => {
+    try {
+      const restaurant = restaurants.find(r => r.id === restaurantId);
+      if (restaurant) {
+        setRestaurant(restaurant as any);
+        toast.success(`Alternado para ${restaurant.name}`);
+        navigate('/');
+      }
+    } catch (error) {
+      console.error('[Admin] Error switching restaurant:', error);
+      toast.error('Erro ao alternar restaurante');
+    }
   };
 
   const filteredRestaurants = restaurants.filter(r =>
@@ -262,6 +280,7 @@ export default function Admin() {
                 <TableHead>Last Connected</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -288,6 +307,16 @@ export default function Admin() {
                     </TableCell>
                     <TableCell>
                       {format(new Date(restaurant.created_at), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSwitchToRestaurant(restaurant.id)}
+                      >
+                        Gerenciar
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );

@@ -27,6 +27,7 @@ import {
   BarChart3,
   Settings,
   Shield,
+  UserPlus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -68,6 +69,7 @@ export function AppSidebar() {
     { title: "Menu", url: "/menu", icon: Package },
     { title: "Zonas de Entrega", url: "/delivery-zones", icon: MapPin },
     { title: "Clientes", url: "/customers", icon: Users },
+    { title: "Equipe", url: "/team", icon: UserPlus },
   ];
 
   const communicationRoutes = [
