@@ -7,6 +7,7 @@ import { detectOfferedProduct } from './product-detection.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 import { updateCustomerInsightsAfterOrder } from '../_shared/customerInsights.ts';
+import { buildConversationContext } from './context-builder.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,220 +111,36 @@ serve(async (req) => {
     console.log('[Agent Config] =============================================\n');
 
     // ============================================================
-    // STEP 2: LOAD CONTEXT
+    // STEP 2: LOAD UNIFIED CONTEXT
     // ============================================================
     
-    // Load restaurant
-    const { data: restaurant } = await supabase
-      .from('restaurants')
-      .select('*')
-      .eq('id', restaurantId)
-      .single();
-
-    if (!restaurant) throw new Error('Restaurant not found');
-
-    // ============================================================
-    // LOAD RESTAURANT-SPECIFIC AI SETTINGS
-    // ============================================================
+    const context = await buildConversationContext(
+      supabase,
+      restaurantId,
+      customerPhone,
+      rawMessage
+    );
     
-    console.log('[AI Settings] ========== LOADING RESTAURANT AI SETTINGS ==========');
-    
-    const { data: restaurantAISettings } = await supabase
-      .from('restaurant_ai_settings')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .maybeSingle();
-    
-    if (restaurantAISettings) {
-      console.log('[AI Settings] ✅ Restaurant AI settings loaded:');
-      console.log(`[AI Settings]   - Tone: ${restaurantAISettings.tone}`);
-      console.log(`[AI Settings]   - Upsell Level: ${restaurantAISettings.upsell_aggressiveness}`);
-      console.log(`[AI Settings]   - Max Questions: ${restaurantAISettings.max_additional_questions_before_checkout}`);
-      console.log(`[AI Settings]   - Language: ${restaurantAISettings.language}`);
-      if (restaurantAISettings.greeting_message) {
-        console.log(`[AI Settings]   - Custom Greeting: "${restaurantAISettings.greeting_message.substring(0, 50)}..."`);
-      }
-      if (restaurantAISettings.closing_message) {
-        console.log(`[AI Settings]   - Custom Closing: "${restaurantAISettings.closing_message.substring(0, 50)}..."`);
-      }
-    } else {
-      console.log('[AI Settings] ⚠️ No custom AI settings found - using defaults');
-    }
-    
-    // Load prompt overrides (if any)
-    const { data: promptOverrides } = await supabase
-      .from('restaurant_prompt_overrides')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
-    
-    if (promptOverrides && promptOverrides.length > 0) {
-      console.log(`[AI Settings] ✅ ${promptOverrides.length} prompt override(s) loaded`);
-      promptOverrides.forEach(override => {
-        console.log(`[AI Settings]   - Override block: ${override.block_key}`);
-      });
-    } else {
-      console.log('[AI Settings] No prompt overrides configured');
-    }
-    
-    console.log('[AI Settings] ========================================\n');
-
-    // Load menu with products
-    const { data: categories } = await supabase
-      .from('categories')
-      .select(`
-        id, name, sort_order,
-        products!inner (
-          id, name, description, price, is_available,
-          addons (id, name, price)
-        )
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('products.is_available', true)
-      .order('sort_order');
-
-    const availableProducts = categories?.flatMap(cat => 
-      cat.products?.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        description: p.description,
-        category: cat.name,
-        addons: p.addons || []
-      })) || []
-    ) || [];
-
-    console.log(`[Context] Loaded ${availableProducts.length} products`);
-
-    // Load conversation history (last 10 messages)
-    const { data: messageHistory } = await supabase
-      .from('messages')
-      .select('body, direction, timestamp')
-      .eq('restaurant_id', restaurantId)
-      .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
-      .order('timestamp', { ascending: false })
-      .limit(10);
-
-    const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = (messageHistory || []).reverse().map(msg => ({
-      role: (msg.direction === 'incoming' ? 'user' : 'assistant') as 'user' | 'assistant',
-      content: msg.body
-    }));
-
-    // Load active cart
-    const { data: activeCarts } = await supabase
-      .from('carts')
-      .select(`
-        id, status, created_at,
-        cart_items (
-          id, quantity, notes, product_id,
-          products (id, name, price)
-        )
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('user_phone', customerPhone)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
-
-    let activeCart = activeCarts?.[0] || null;
-    const cartItems = activeCart?.cart_items?.map((item: any) => ({
-      product_id: item.product_id,
-      product_name: item.products.name,
-      quantity: item.quantity,
-      price: item.products.price,
-      total_price: item.quantity * item.products.price,
-      notes: item.notes
-    })) || [];
-
-    const cartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
-
-    console.log(`[Context] Cart: ${cartItems.length} items, Total: €${cartTotal}`);
-
-    // Load/create conversation state
-    let { data: conversationState } = await supabase
-      .from('conversation_state')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('user_phone', customerPhone)
-      .maybeSingle();
-
-    if (!conversationState) {
-      const { data: newState } = await supabase
-        .from('conversation_state')
-        .insert({
-          restaurant_id: restaurantId,
-          user_phone: customerPhone,
-          state: 'idle',
-          cart_id: activeCart?.id || null
-        })
-        .select()
-        .single();
-      conversationState = newState;
-    }
-
-    const currentState = conversationState?.state || 'idle';
-    const stateMetadata = conversationState?.metadata || {};
-    const pendingProduct = stateMetadata.pending_product || null;
-    const lastShownProduct = stateMetadata.last_shown_product || null;
-    const lastShownProducts = (conversationState?.last_shown_products || []) as Array<{id: string; name: string}>;
-
-    // Load customer profile
-    const { data: customer } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('phone', customerPhone)
-      .maybeSingle();
-
-    console.log(`[Context] Customer: ${customer ? 'Found' : 'New'}`);
-
-    // Load pending items (multi-item workflow)
-    const { data: pendingItemsData } = await supabase
-      .from('conversation_pending_items')
-      .select(`
-        *,
-        products (id, name, price, description),
-        addons:addon_ids (id, name, price)
-      `)
-      .eq('user_phone', customerPhone)
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-
-    const pendingItems = (pendingItemsData || []).map((item: any) => ({
-      id: item.id,
-      product_id: item.product_id,
-      product: item.products,
-      quantity: item.quantity,
-      addon_ids: item.addon_ids || [],
-      notes: item.notes,
-      status: item.status
-    }));
-
-    console.log(`[Context] Pending items: ${pendingItems.length} items`);
-
-    // ============================================================
-    // CONTEXT VALIDATION & LOGGING
-    // ============================================================
-    
-    console.log('\n[Context] ========== CONTEXT VALIDATION ==========');
-    console.log(`[Context] User message: "${rawMessage}"`);
-    console.log(`[Context] History length: ${conversationHistory.length} messages`);
-    console.log(`[Context] Current state: ${currentState}`);
-    console.log(`[Context] Pending product: ${pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'}`);
-    console.log(`[Context] Last shown product: ${lastShownProduct ? `${lastShownProduct.name} (ID: ${lastShownProduct.id})` : 'None'}`);
-    console.log(`[Context] Last shown products (search): ${lastShownProducts.length} products`);
-    console.log(`[Context] Cart items: ${cartItems.length} items, Total: €${cartTotal.toFixed(2)}`);
-    console.log(`[Context] Available products: ${availableProducts.length}`);
-    
-    if (conversationHistory.length > 0) {
-      const recentHistory = conversationHistory.slice(-3);
-      console.log(`[Context] Recent conversation (last 3):`);
-      recentHistory.forEach((msg, idx) => {
-        const role = msg.role === 'user' ? 'Customer' : 'Agent';
-        const preview = msg.content.substring(0, 60);
-        console.log(`[Context]   ${idx + 1}. ${role}: "${preview}${msg.content.length > 60 ? '...' : ''}"`);
-      });
-    }
-    
-    console.log('[Context] ===========================================\n');
+    // Destructure for easier access
+    let activeCart = context.activeCart; // Use 'let' because it gets reassigned
+    const {
+      restaurant,
+      restaurantAISettings,
+      promptOverrides,
+      availableProducts,
+      conversationHistory,
+      cartItems,
+      customer,
+      pendingItems,
+      conversationState,
+      lastShownProducts,
+      cartTotal,
+      currentState,
+      stateMetadata,
+      pendingProduct,
+      lastShownProduct,
+      formatted
+    } = context;
 
     // ============================================================
     // STEP 2: CALL ORDER ORCHESTRATOR
@@ -355,15 +172,16 @@ serve(async (req) => {
     );
     
     if (useOrchestratorDB && orchestratorPromptBlocks.length > 0) {
-      // Apply template variables
+      // Apply template variables using unified formatted context
       orchestratorSystemPrompt = applyTemplateVariables(orchestratorSystemPrompt, {
         restaurant_name: restaurant.name,
-        menu_products: formatMenuForPrompt(availableProducts),
-        cart_summary: formatCartForPrompt(cartItems, cartTotal),
-        customer_info: formatCustomerForPrompt(customer),
-        conversation_history: formatHistoryForPrompt(conversationHistory),
+        menu_products: formatted.menu,
+        cart_summary: formatted.cart,
+        customer_info: formatted.customer,
+        conversation_history: formatted.history,
         current_state: currentState,
-        pending_product: pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None'
+        pending_product: pendingProduct ? `${pendingProduct.name} (ID: ${pendingProduct.id})` : 'None',
+        pending_items: formatted.pendingItems
       });
       
       // Apply orchestration config if present
@@ -490,16 +308,17 @@ serve(async (req) => {
     );
     
     if (useConversationalDB && conversationalPromptBlocks.length > 0) {
-      // Apply template variables
+      // Apply template variables using unified formatted context
       conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
         restaurant_name: restaurant.name,
-        menu_products: formatMenuForPrompt(availableProducts),
-        cart_summary: formatCartForPrompt(cartItems, cartTotal),
-        customer_info: formatCustomerForPrompt(customer),
-        conversation_history: formatHistoryForPrompt(conversationHistory.slice(-5)),
+        menu_products: formatted.menu,
+        cart_summary: formatted.cart,
+        customer_info: formatted.customer,
+        conversation_history: formatted.history,
         current_state: currentState,
         user_intent: intent,
-        target_state: targetState
+        target_state: targetState,
+        pending_items: formatted.pendingItems
       });
       
       // ============================================================
@@ -1686,61 +1505,6 @@ function applyTemplateVariables(prompt: string, variables: Record<string, string
   }
   
   return result;
-}
-
-/**
- * Format menu products for prompt injection
- */
-function formatMenuForPrompt(products: any[]): string {
-  return products.map(p => {
-    const addonsText = p.addons && p.addons.length > 0
-      ? `\n  Addons: ${p.addons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`
-      : '';
-    return `• ${p.name} (ID: ${p.id}) - €${p.price}${p.description ? ` - ${p.description}` : ''}${addonsText}`;
-  }).join('\n');
-}
-
-/**
- * Format cart for prompt injection
- */
-function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
-  if (cartItems.length === 0) return 'Empty cart';
-  
-  const itemsText = cartItems.map(item => 
-    `${item.quantity}x ${item.product_name} (€${item.total_price})`
-  ).join(', ');
-  
-  return `${itemsText} | Total: €${cartTotal.toFixed(2)}`;
-}
-
-/**
- * Format customer info for prompt injection
- */
-function formatCustomerForPrompt(customer: any | null): string {
-  if (!customer) return 'New customer - no saved data';
-  
-  const parts = [];
-  if (customer.name) parts.push(`Name: ${customer.name}`);
-  if (customer.default_address) {
-    const addr = typeof customer.default_address === 'string' 
-      ? customer.default_address 
-      : JSON.stringify(customer.default_address);
-    parts.push(`Address: ${addr}`);
-  }
-  if (customer.default_payment_method) parts.push(`Payment: ${customer.default_payment_method}`);
-  
-  return parts.length > 0 ? parts.join(', ') : 'Customer exists but no saved preferences';
-}
-
-/**
- * Format conversation history for prompt injection
- */
-function formatHistoryForPrompt(history: any[]): string {
-  if (history.length === 0) return 'No previous conversation';
-  
-  return history.map(msg => 
-    `${msg.role === 'user' ? 'Customer' : 'Agent'}: ${msg.content}`
-  ).join('\n');
 }
 
 /**
