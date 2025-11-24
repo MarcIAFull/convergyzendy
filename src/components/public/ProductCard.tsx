@@ -7,15 +7,21 @@ import { Button } from '@/components/ui/button';
 interface ProductCardProps {
   product: Product;
   onClick: () => void;
+  accentColor?: string;
 }
 
-export const ProductCard = ({ product, onClick }: ProductCardProps) => {
+export const ProductCard = ({ product, onClick, accentColor }: ProductCardProps) => {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-PT', {
       style: 'currency',
       currency: 'EUR',
     }).format(price);
   };
+
+  const buttonStyle = accentColor ? {
+    backgroundColor: accentColor,
+    color: '#ffffff'
+  } : undefined;
 
   return (
     <Card
@@ -36,7 +42,13 @@ export const ProductCard = ({ product, onClick }: ProductCardProps) => {
         )}
         
         {(product as any).is_featured && (
-          <Badge className="absolute top-2 right-2 bg-orange text-primary-foreground">
+          <Badge 
+            className="absolute top-2 right-2"
+            style={accentColor ? { 
+              backgroundColor: accentColor,
+              color: '#ffffff'
+            } : undefined}
+          >
             Destaque
           </Badge>
         )}
@@ -58,7 +70,11 @@ export const ProductCard = ({ product, onClick }: ProductCardProps) => {
             {formatPrice(product.price)}
           </span>
 
-          <Button size="sm" className="bg-orange hover:bg-orange/90">
+          <Button 
+            size="sm" 
+            className={accentColor ? '' : 'bg-orange hover:bg-orange/90'}
+            style={buttonStyle}
+          >
             <Plus className="w-4 h-4 mr-1" />
             Adicionar
           </Button>
