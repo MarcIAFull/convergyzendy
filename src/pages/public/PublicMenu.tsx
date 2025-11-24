@@ -77,6 +77,21 @@ export default function PublicMenu() {
     products: products.filter((p) => p.category_id === category.id),
   }));
 
+  // Aplicar cores customizadas
+  useEffect(() => {
+    if (settings.primary_color) {
+      document.documentElement.style.setProperty('--public-primary', settings.primary_color);
+    }
+    if (settings.accent_color) {
+      document.documentElement.style.setProperty('--public-accent', settings.accent_color);
+    }
+    
+    return () => {
+      document.documentElement.style.removeProperty('--public-primary');
+      document.documentElement.style.removeProperty('--public-accent');
+    };
+  }, [settings.primary_color, settings.accent_color]);
+
   return (
     <>
       <Helmet>
@@ -140,6 +155,7 @@ export default function PublicMenu() {
                         key={product.id}
                         product={product}
                         onClick={() => handleProductClick(product)}
+                        accentColor={settings.accent_color || undefined}
                       />
                     ))}
                   </div>

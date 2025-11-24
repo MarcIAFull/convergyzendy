@@ -50,6 +50,7 @@ export const usePublicMenuSettingsStore = create<PublicMenuSettingsState>((set) 
       set({ settings: data, loading: false });
     } catch (error: any) {
       set({ error: error.message, loading: false });
+      throw error; // Propagar erro para o componente
     }
   },
 

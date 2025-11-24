@@ -48,6 +48,17 @@ export function PublicMenuTab() {
 
   const [newKeyword, setNewKeyword] = useState('');
 
+  // Debounce slug validation
+  useEffect(() => {
+    if (!formData.slug || !restaurant) return;
+    
+    const timer = setTimeout(() => {
+      validateSlug(formData.slug);
+    }, 800);
+    
+    return () => clearTimeout(timer);
+  }, [formData.slug, restaurant]);
+
   useEffect(() => {
     if (restaurant) {
       fetchSettings(restaurant.id);
@@ -113,10 +124,6 @@ export function PublicMenuTab() {
   const handleSlugChange = (value: string) => {
     const formatted = value.toLowerCase().replace(/[^a-z0-9-]/g, '');
     setFormData({ ...formData, slug: formatted });
-    
-    // Debounce validation
-    const timer = setTimeout(() => validateSlug(formatted), 500);
-    return () => clearTimeout(timer);
   };
 
   const handleImageUpload = async (file: File, type: 'logo' | 'banner') => {
