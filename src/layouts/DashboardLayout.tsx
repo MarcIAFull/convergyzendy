@@ -16,6 +16,8 @@ import {
   TestTube,
   Smartphone,
   Brain,
+  BarChart3,
+  Users as UsersIcon,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -79,6 +81,8 @@ const DashboardLayout = () => {
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Menu", href: "/menu", icon: Package },
+    { name: "Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Customers", href: "/customers", icon: UsersIcon },
     { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "AI Configuration", href: "/ai-configuration", icon: Brain },
     { name: "Restaurant AI Settings", href: "/restaurant-ai-settings", icon: Brain },

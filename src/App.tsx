@@ -10,6 +10,8 @@ import DashboardLayout from "@/layouts/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
 import MenuManagement from "@/pages/MenuManagement";
 import OrderDetail from "@/pages/OrderDetail";
+import Analytics from "@/pages/Analytics";
+import Customers from "@/pages/Customers";
 import Settings from "@/pages/Settings";
 import Messages from "@/pages/Messages";
 import TestWhatsApp from "@/pages/TestWhatsApp";
@@ -46,6 +48,8 @@ const App = () => (
               >
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/menu" element={<MenuManagement />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/customers" element={<Customers />} />
                 <Route path="/orders/:id" element={<OrderDetail />} />
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/test-whatsapp" element={<TestWhatsApp />} />
