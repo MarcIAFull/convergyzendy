@@ -26,6 +26,8 @@ import PublicMenu from "@/pages/public/PublicMenu";
 import PublicCart from "@/pages/public/PublicCart";
 import PublicCheckout from "@/pages/public/PublicCheckout";
 import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
+import TeamManagement from "@/pages/TeamManagement";
+import AcceptInvitation from "@/pages/AcceptInvitation";
 import { AdminRoute } from "@/components/AdminRoute";
 import { HelmetProvider } from 'react-helmet-async';
 
@@ -47,6 +49,7 @@ const App = () => (
                 <Route path="/menu/:slug/cart" element={<PublicCart />} />
                 <Route path="/menu/:slug/checkout" element={<PublicCheckout />} />
                 <Route path="/menu/:slug/order-confirmed/:orderId" element={<PublicOrderConfirmed />} />
+                <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
                 
                 {/* Auth Routes */}
                 <Route path="/login" element={<Login />} />
@@ -69,6 +72,7 @@ const App = () => (
                   <Route path="/menu" element={<MenuManagement />} />
                   <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />
+                  <Route path="/team" element={<TeamManagement />} />
                   <Route path="/orders/:id" element={<OrderDetail />} />
                   
                   {/* Communication */}

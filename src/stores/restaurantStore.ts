@@ -33,31 +33,33 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
         return;
       }
 
-      console.log('[RestaurantStore] 🔍 Fetching restaurant for user:', user.id);
+      console.log('[RestaurantStore] 🔍 Fetching restaurants for user:', user.id);
 
-      // Get restaurant via restaurant_owners
-      const { data: ownership, error: ownershipError } = await supabase
+      // Get all restaurants for this user via restaurant_owners
+      const { data: ownerships, error: ownershipError } = await supabase
         .from('restaurant_owners')
         .select('restaurant_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
+        .eq('user_id', user.id);
 
       if (ownershipError) {
         console.error('[RestaurantStore] ❌ Ownership query error:', ownershipError);
         throw ownershipError;
       }
 
-      if (!ownership) {
+      if (!ownerships || ownerships.length === 0) {
         console.log('[RestaurantStore] ⚠️ No restaurant ownership found');
         set({ restaurant: null, loading: false });
         return;
       }
 
+      // Use the first restaurant as default
+      const firstOwnership = ownerships[0];
+
       // Fetch restaurant data
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .select('*')
-        .eq('id', ownership.restaurant_id)
+        .eq('id', firstOwnership.restaurant_id)
         .single();
 
       if (restaurantError) {

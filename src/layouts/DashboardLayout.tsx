@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,12 +14,20 @@ import {
 import { useNotifications } from "@/contexts/NotificationContext";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { RestaurantSwitcher } from "@/components/RestaurantSwitcher";
+import { useUserRestaurantsStore } from "@/stores/userRestaurantsStore";
 
 const DashboardLayout = () => {
   const { theme, setTheme } = useTheme();
   const { signOut } = useAuth();
   const { loading, error, ready, retry } = useRestaurantGuard();
   const { soundEnabled, toggleSound } = useNotifications();
+  const { fetchUserRestaurants } = useUserRestaurantsStore();
+
+  // Fetch user restaurants on mount
+  useEffect(() => {
+    fetchUserRestaurants();
+  }, [fetchUserRestaurants]);
 
   // Loading state
   if (loading) {
@@ -80,8 +89,9 @@ const DashboardLayout = () => {
         <div className="flex-1 flex flex-col">
           {/* Top Navigation Bar */}
           <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center justify-end px-4">
-
+            <div className="flex h-16 items-center justify-between px-4">
+              <RestaurantSwitcher />
+              
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
