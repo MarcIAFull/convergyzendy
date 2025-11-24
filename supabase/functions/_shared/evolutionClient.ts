@@ -36,8 +36,6 @@ function getConfig(): EvolutionConfig {
 function getAuthHeaders(apiKey: string): Record<string, string> {
   return {
     'apikey': apiKey,
-    'api-key': apiKey,
-    'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   };
 }
@@ -147,6 +145,7 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
   
   const payload = {
     instanceName,
+    token: apiKey,
     qrcode: true,
     integration: "WHATSAPP-BAILEYS",
     webhook: {
