@@ -47,7 +47,7 @@ export default function WhatsAppConnection() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (showToast = false) => {
     try {
       const { data, error } = await supabase.functions.invoke('evolution-status');
       
@@ -59,16 +59,31 @@ export default function WhatsAppConnection() {
       if (data.instanceName) {
         setInstanceName(data.instanceName);
       }
+
+      // Show success toast if connection is established and showToast is true
+      if (showToast && data?.status === 'connected') {
+        toast({
+          title: "✅ WhatsApp Conectado!",
+          description: "A conexão foi estabelecida com sucesso.",
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch Evolution status:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível verificar o estado da conexão.",
-        variant: "destructive",
-      });
+      if (showToast) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível verificar o estado da conexão.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefreshStatus = () => {
+    setLoading(true);
+    fetchStatus(true);
   };
 
   const handleReset = async () => {
@@ -320,7 +335,7 @@ export default function WhatsAppConnection() {
               <CardTitle>Estado da Conexão</CardTitle>
               <CardDescription>Estado atual do WhatsApp Business</CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={fetchStatus} disabled={loading}>
+            <Button variant="ghost" size="icon" onClick={() => fetchStatus()} disabled={loading}>
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
@@ -330,13 +345,30 @@ export default function WhatsAppConnection() {
             <div className="flex-1">
               {status && getStatusBadge(status.status)}
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="w-4 h-4" />
-              <span>
-                {status?.lastCheckedAt 
-                  ? new Date(status.lastCheckedAt).toLocaleTimeString('pt-PT')
-                  : '--:--:--'}
-              </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshStatus}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Verificar Status
+                  </>
+                )}
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <span>
+                  {status?.lastCheckedAt 
+                    ? new Date(status.lastCheckedAt).toLocaleTimeString('pt-PT')
+                    : '--:--:--'}
+                </span>
+              </div>
             </div>
           </div>
 

@@ -100,47 +100,61 @@ serve(async (req) => {
       throw error;
     }
     
+    // Get QR code if needed
     let qrData = null;
-    let mappedStatus = 'disconnected';
-
+    
+    // Determine status based on Evolution API response
+    let instanceStatus: 'connected' | 'waiting_qr' | 'disconnected' = 'disconnected';
+    
+    console.log('[evolution-status] Evolution API state:', status?.instance?.state);
+    
     if (status.instance?.state === 'open') {
-      if (status.instance?.status === 'connected') {
-        mappedStatus = 'connected';
-      } else {
-        // Status is open but not connected - waiting for QR scan
-        mappedStatus = 'disconnected';
-        try {
-          qrData = await getInstanceQrCode(instance.instance_name);
-        } catch (e) {
-          console.error('[evolution-status] Error getting QR code:', e);
-        }
-      }
+      instanceStatus = 'connected';
+      console.log('[evolution-status] ✅ WhatsApp is CONNECTED (state: open)');
     } else if (status.instance?.state === 'connecting' || status.instance?.state === 'qr') {
-      mappedStatus = 'waiting_qr';
+      instanceStatus = 'waiting_qr';
+      console.log('[evolution-status] ⏳ WhatsApp is WAITING for QR scan');
       try {
         qrData = await getInstanceQrCode(instance.instance_name);
       } catch (e) {
         console.error('[evolution-status] Error getting QR code:', e);
       }
+    } else if (status.instance?.state === 'close') {
+      instanceStatus = 'disconnected';
+      console.log('[evolution-status] ❌ WhatsApp is DISCONNECTED (state: close)');
+    } else {
+      console.log('[evolution-status] ⚠️ Unknown state:', status?.instance?.state);
     }
 
     // Update database with current status
+    console.log('[evolution-status] Updating database:', {
+      oldStatus: instance.status,
+      newStatus: instanceStatus,
+      hasQrCode: !!qrData?.qrText
+    });
+    
     await supabase
       .from('whatsapp_instances')
       .update({
-        status: mappedStatus,
+        status: instanceStatus,
         qr_code: qrData?.qrText || null,
         qr_code_base64: null,
         phone_number: status.instance?.owner || instance.phone_number,
-        last_connected_at: mappedStatus === 'connected' ? new Date().toISOString() : instance.last_connected_at,
+        last_connected_at: instanceStatus === 'connected' ? new Date().toISOString() : instance.last_connected_at,
         last_checked_at: new Date().toISOString(),
-        metadata: status
+        metadata: { 
+          lastEvolutionState: status?.instance?.state,
+          hasQrCode: !!qrData?.qrText,
+          checkedAt: new Date().toISOString(),
+          phoneNumber: status?.instance?.owner || null,
+          raw: status
+        }
       })
       .eq('id', instance.id);
 
     return new Response(
       JSON.stringify({
-        status: mappedStatus,
+        status: instanceStatus,
         instanceName: instance.instance_name,
         phoneNumber: status.instance?.owner,
         qr: qrData ? {
