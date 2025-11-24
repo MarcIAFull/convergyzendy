@@ -7,8 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone, QrCode } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ConnectionStatus = 'connected' | 'waiting_qr' | 'disconnected' | 'unknown';
 
@@ -33,6 +40,7 @@ export default function WhatsAppConnection() {
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste. 😊");
   const [sending, setSending] = useState(false);
   const [instanceName, setInstanceName] = useState<string | null>(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async () => {
@@ -96,19 +104,22 @@ export default function WhatsAppConnection() {
         return;
       }
 
+      await fetchStatus();
+      
       if (data?.alreadyExists) {
         toast({
           title: "✅ Instância Reconectada!",
-          description: "A sua instância WhatsApp foi reconectada com sucesso.",
+          description: "Clique em 'Ver Código QR' para conectar o WhatsApp.",
         });
       } else {
         toast({
           title: "✅ Instância Criada!",
-          description: "Por favor, digitalize o código QR abaixo para conectar o WhatsApp.",
+          description: "Clique em 'Ver Código QR' para conectar o WhatsApp.",
         });
       }
       
-      await fetchStatus();
+      // Auto-open QR modal after fetching status
+      setTimeout(() => setQrModalOpen(true), 500);
     } catch (error) {
       console.error('Failed to connect instance:', error);
       toast({
@@ -301,59 +312,39 @@ export default function WhatsAppConnection() {
           </div>
 
           {/* Connect Button */}
-          <Button 
-            onClick={handleConnect} 
-            disabled={connecting}
-            className="w-full"
-            size="lg"
-          >
-            {connecting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                A conectar...
-              </>
-            ) : (
-              <>
-                <Smartphone className="w-4 h-4 mr-2" />
-                Criar / Conectar Instância
-              </>
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleConnect} 
+              disabled={connecting}
+              className="flex-1"
+              size="lg"
+            >
+              {connecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  A conectar...
+                </>
+              ) : (
+                <>
+                  <Smartphone className="w-4 h-4 mr-2" />
+                  Criar / Conectar Instância
+                </>
+              )}
+            </Button>
+            
+            {/* Show QR Button */}
+            {status?.status === 'waiting_qr' && status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (
+              <Button 
+                onClick={() => setQrModalOpen(true)} 
+                variant="outline"
+                size="lg"
+                className="flex-1"
+              >
+                <QrCode className="w-4 h-4 mr-2" />
+                Ver Código QR
+              </Button>
             )}
-          </Button>
-
-          {/* QR Code Section */}
-          {status?.status === 'waiting_qr' && status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
-            const qrSrc = status.qr.qrImageUrl ?? (status.qr.qrBase64 ? `data:image/png;base64,${status.qr.qrBase64}` : null);
-            
-            if (!qrSrc) return null;
-            
-            return (
-              <div className="pt-6 border-t space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold">Ligar WhatsApp Business</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Digitaliza este código QR para conectar a tua conta
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-center gap-4">
-                  <div className="p-4 bg-white rounded-lg border-2 border-border">
-                    <img 
-                      src={qrSrc} 
-                      alt="QR Code" 
-                      className="w-64 h-64"
-                    />
-                  </div>
-                  
-                  <Alert>
-                    <Smartphone className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              </div>
-            );
-          })()}
+          </div>
         </CardContent>
       </Card>
 
@@ -416,6 +407,54 @@ export default function WhatsAppConnection() {
           )}
         </CardContent>
       </Card>
+
+      {/* QR Code Modal */}
+      <Dialog open={qrModalOpen} onOpenChange={setQrModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Conectar WhatsApp Business</DialogTitle>
+            <DialogDescription>
+              Digitaliza este código QR para conectar a tua conta WhatsApp Business
+            </DialogDescription>
+          </DialogHeader>
+          
+          {status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
+            const qrSrc = status.qr.qrImageUrl ?? (status.qr.qrBase64 ? `data:image/png;base64,${status.qr.qrBase64}` : null);
+            
+            if (!qrSrc) return <p className="text-center text-muted-foreground">Código QR não disponível</p>;
+            
+            return (
+              <div className="space-y-4">
+                <div className="flex justify-center p-4">
+                  <div className="p-4 bg-white rounded-lg border-2 border-border">
+                    <img 
+                      src={qrSrc} 
+                      alt="QR Code" 
+                      className="w-64 h-64"
+                    />
+                  </div>
+                </div>
+                
+                <Alert>
+                  <Smartphone className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
+                  </AlertDescription>
+                </Alert>
+
+                <Button 
+                  onClick={fetchStatus} 
+                  variant="outline" 
+                  className="w-full"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Atualizar QR Code
+                </Button>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
