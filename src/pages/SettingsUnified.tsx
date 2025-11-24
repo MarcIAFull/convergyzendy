@@ -1,0 +1,56 @@
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Store, Smartphone, Brain, CreditCard } from 'lucide-react';
+import { RestaurantTab } from '@/components/settings/RestaurantTab';
+import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
+import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
+import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
+
+export default function SettingsUnified() {
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Configurações</h1>
+        <p className="text-muted-foreground mt-2">
+          Gerir todas as configurações do seu restaurante
+        </p>
+      </div>
+
+      <Tabs defaultValue="restaurant" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="restaurant" className="flex items-center gap-2">
+            <Store className="h-4 w-4" />
+            <span className="hidden sm:inline">Restaurante</span>
+          </TabsTrigger>
+          <TabsTrigger value="whatsapp" className="flex items-center gap-2">
+            <Smartphone className="h-4 w-4" />
+            <span className="hidden sm:inline">WhatsApp</span>
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            <span className="hidden sm:inline">IA & Automação</span>
+          </TabsTrigger>
+          <TabsTrigger value="subscription" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline">Subscrição</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="restaurant">
+          <RestaurantTab />
+        </TabsContent>
+
+        <TabsContent value="whatsapp">
+          <WhatsAppTab />
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <AIPersonalizationTab />
+        </TabsContent>
+
+        <TabsContent value="subscription">
+          <SubscriptionTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
