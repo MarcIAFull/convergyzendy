@@ -1078,6 +1078,86 @@ export type Database = {
           },
         ]
       }
+      restaurant_settings: {
+        Row: {
+          accent_color: string | null
+          banner_url: string | null
+          checkout_web_enabled: boolean | null
+          checkout_whatsapp_enabled: boolean | null
+          created_at: string | null
+          custom_domain: string | null
+          estimated_prep_time_minutes: number | null
+          facebook_url: string | null
+          id: string
+          instagram_url: string | null
+          logo_url: string | null
+          max_delivery_distance_km: number | null
+          menu_enabled: boolean | null
+          meta_description: string | null
+          meta_keywords: string[] | null
+          meta_title: string | null
+          min_order_amount: number | null
+          primary_color: string | null
+          restaurant_id: string
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          banner_url?: string | null
+          checkout_web_enabled?: boolean | null
+          checkout_whatsapp_enabled?: boolean | null
+          created_at?: string | null
+          custom_domain?: string | null
+          estimated_prep_time_minutes?: number | null
+          facebook_url?: string | null
+          id?: string
+          instagram_url?: string | null
+          logo_url?: string | null
+          max_delivery_distance_km?: number | null
+          menu_enabled?: boolean | null
+          meta_description?: string | null
+          meta_keywords?: string[] | null
+          meta_title?: string | null
+          min_order_amount?: number | null
+          primary_color?: string | null
+          restaurant_id: string
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          banner_url?: string | null
+          checkout_web_enabled?: boolean | null
+          checkout_whatsapp_enabled?: boolean | null
+          created_at?: string | null
+          custom_domain?: string | null
+          estimated_prep_time_minutes?: number | null
+          facebook_url?: string | null
+          id?: string
+          instagram_url?: string | null
+          logo_url?: string | null
+          max_delivery_distance_km?: number | null
+          menu_enabled?: boolean | null
+          meta_description?: string | null
+          meta_keywords?: string[] | null
+          meta_title?: string | null
+          min_order_amount?: number | null
+          primary_color?: string | null
+          restaurant_id?: string
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           address: string
@@ -1366,6 +1446,96 @@ export type Database = {
         }
         Relationships: []
       }
+      web_orders: {
+        Row: {
+          cart_id: string
+          created_at: string | null
+          customer_email: string | null
+          customer_name: string
+          customer_phone: string
+          delivery_address: string
+          delivery_fee: number
+          delivery_instructions: string | null
+          delivery_lat: number | null
+          delivery_lng: number | null
+          id: string
+          ip_address: unknown
+          items: Json
+          payment_method: string
+          payment_status: string | null
+          restaurant_id: string
+          source: string | null
+          status: string | null
+          subtotal: number
+          total_amount: number
+          updated_at: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          cart_id: string
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name: string
+          customer_phone: string
+          delivery_address: string
+          delivery_fee: number
+          delivery_instructions?: string | null
+          delivery_lat?: number | null
+          delivery_lng?: number | null
+          id?: string
+          ip_address?: unknown
+          items: Json
+          payment_method: string
+          payment_status?: string | null
+          restaurant_id: string
+          source?: string | null
+          status?: string | null
+          subtotal: number
+          total_amount: number
+          updated_at?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          cart_id?: string
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string
+          customer_phone?: string
+          delivery_address?: string
+          delivery_fee?: number
+          delivery_instructions?: string | null
+          delivery_lat?: number | null
+          delivery_lng?: number | null
+          id?: string
+          ip_address?: unknown
+          items?: Json
+          payment_method?: string
+          payment_status?: string | null
+          restaurant_id?: string
+          source?: string | null
+          status?: string | null
+          subtotal?: number
+          total_amount?: number
+          updated_at?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "web_orders_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "web_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_instances: {
         Row: {
           created_at: string | null
@@ -1464,6 +1634,10 @@ export type Database = {
           minutes_since_activity: number
           user_phone: string
         }[]
+      }
+      generate_unique_slug: {
+        Args: { restaurant_name: string }
+        Returns: string
       }
       get_current_user_id: { Args: never; Returns: string }
       get_restaurant_by_instance: {
