@@ -16,20 +16,16 @@ export const usePublicMenuStore = create<PublicMenuState>((set) => ({
   error: null,
 
   fetchMenuBySlug: async (slug: string) => {
-    console.log('[PublicMenuStore] Starting fetch for slug:', slug);
     set({ loading: true, error: null });
 
     try {
       // 1. Buscar restaurant_settings por slug
-      console.log('[PublicMenuStore] Fetching restaurant_settings...');
       const { data: settings, error: settingsError } = await supabase
         .from('restaurant_settings')
         .select('*')
         .eq('slug', slug)
         .eq('menu_enabled', true)
         .single();
-
-      console.log('[PublicMenuStore] Settings result:', { settings, settingsError });
 
       if (settingsError || !settings) {
         throw new Error('Menu não encontrado ou não está disponível');

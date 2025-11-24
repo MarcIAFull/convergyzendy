@@ -21,15 +21,11 @@ export default function PublicMenu() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    console.log('[PublicMenu] Slug from params:', slug);
     if (slug) {
-      console.log('[PublicMenu] Fetching menu for slug:', slug);
       fetchMenuBySlug(slug);
       setSlug(slug);
     }
   }, [slug]);
-
-  console.log('[PublicMenu] Render state:', { slug, loading, error, hasMenuData: !!menuData });
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
