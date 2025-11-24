@@ -114,9 +114,8 @@ serve(async (req) => {
           'Instance already exists. Reconnecting...' : 
           'Instance created. Please scan QR code.',
         status: instanceStatus,
-        qr: result.code || result.base64 ? {
-          qrImageUrl: result.code || null,
-          qrBase64: result.base64 || null,
+        qr: result.qrText ? {
+          qrText: result.qrText,
         } : null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

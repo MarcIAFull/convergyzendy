@@ -56,10 +56,7 @@ serve(async (req) => {
           status: 'disconnected',
           message: 'WhatsApp not configured. Please connect first.',
           needsConnection: true,
-          qr: {
-            qrImageUrl: null,
-            qrBase64: null,
-          },
+          qr: null,
           lastCheckedAt: new Date().toISOString()
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -91,10 +88,7 @@ serve(async (req) => {
             instanceName: instance.instance_name,
             message: 'Instance not found in Evolution API. Please reconnect.',
             needsConnection: true,
-            qr: {
-              qrImageUrl: null,
-              qrBase64: null,
-            },
+            qr: null,
             lastCheckedAt: new Date().toISOString()
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
@@ -135,8 +129,8 @@ serve(async (req) => {
       .from('whatsapp_instances')
       .update({
         status: mappedStatus,
-        qr_code: qrData?.code || null,
-        qr_code_base64: qrData?.base64 || null,
+        qr_code: qrData?.qrText || null,
+        qr_code_base64: null,
         phone_number: status.instance?.owner || instance.phone_number,
         last_connected_at: mappedStatus === 'connected' ? new Date().toISOString() : instance.last_connected_at,
         last_checked_at: new Date().toISOString(),
@@ -149,10 +143,9 @@ serve(async (req) => {
         status: mappedStatus,
         instanceName: instance.instance_name,
         phoneNumber: status.instance?.owner,
-        qr: {
-          qrImageUrl: qrData?.code || null,
-          qrBase64: qrData?.base64 || null,
-        },
+        qr: qrData ? {
+          qrText: qrData.qrText || null,
+        } : null,
         rawStatus: status,
         lastCheckedAt: new Date().toISOString()
       }),

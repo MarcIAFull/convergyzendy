@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -16,15 +16,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import QRCodeLib from "qrcode";
 
 type ConnectionStatus = 'connected' | 'waiting_qr' | 'disconnected' | 'unknown';
 
 interface StatusResponse {
   status: ConnectionStatus;
   qr: {
-    qrImageUrl: string | null;
-    qrBase64: string | null;
-  };
+    qrText: string | null;
+  } | null;
   lastCheckedAt: string;
   message?: string;
   error?: string;
@@ -41,6 +41,8 @@ export default function WhatsAppConnection() {
   const [sending, setSending] = useState(false);
   const [instanceName, setInstanceName] = useState<string | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async () => {
@@ -131,6 +133,40 @@ export default function WhatsAppConnection() {
       setConnecting(false);
     }
   };
+
+  // Generate QR code image when qrText changes
+  useEffect(() => {
+    const generateQRCode = async () => {
+      if (status?.qr?.qrText && canvasRef.current) {
+        try {
+          await QRCodeLib.toCanvas(canvasRef.current, status.qr.qrText, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          
+          // Also generate data URL for fallback
+          const dataUrl = await QRCodeLib.toDataURL(status.qr.qrText, {
+            width: 256,
+            margin: 2
+          });
+          setQrImageUrl(dataUrl);
+        } catch (err) {
+          console.error('Error generating QR code:', err);
+          toast({
+            title: "Erro ao gerar QR code",
+            description: "Não foi possível gerar a imagem do QR code",
+            variant: "destructive"
+          });
+        }
+      }
+    };
+    
+    generateQRCode();
+  }, [status?.qr?.qrText]);
 
   useEffect(() => {
     fetchStatus();
@@ -333,7 +369,7 @@ export default function WhatsAppConnection() {
             </Button>
             
             {/* Show QR Button */}
-            {status?.status === 'waiting_qr' && status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (
+            {status?.status === 'waiting_qr' && status?.qr?.qrText && (
               <Button 
                 onClick={() => setQrModalOpen(true)} 
                 variant="outline"
@@ -418,41 +454,39 @@ export default function WhatsAppConnection() {
             </DialogDescription>
           </DialogHeader>
           
-          {status?.qr && (status.qr.qrBase64 || status.qr.qrImageUrl) && (() => {
-            const qrSrc = status.qr.qrImageUrl ?? (status.qr.qrBase64 ? `data:image/png;base64,${status.qr.qrBase64}` : null);
-            
-            if (!qrSrc) return <p className="text-center text-muted-foreground">Código QR não disponível</p>;
-            
-            return (
-              <div className="space-y-4">
-                <div className="flex justify-center p-4">
-                  <div className="p-4 bg-white rounded-lg border-2 border-border">
-                    <img 
-                      src={qrSrc} 
-                      alt="QR Code" 
-                      className="w-64 h-64"
-                    />
-                  </div>
+          <div className="space-y-4">
+            <div className="flex justify-center p-4">
+              {status?.qr?.qrText ? (
+                <div className="p-4 bg-white rounded-lg border-2 border-border">
+                  <canvas ref={canvasRef} />
                 </div>
-                
-                <Alert>
-                  <Smartphone className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
-                  </AlertDescription>
-                </Alert>
+              ) : (
+                <div className="w-64 h-64 border-2 border-border rounded-lg flex items-center justify-center bg-muted">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            
+            <Alert>
+              <Smartphone className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Passos:</strong> Abre o WhatsApp Business no teu telemóvel, vai a <strong>Definições → Dispositivos ligados</strong> e lê este código QR.
+              </AlertDescription>
+            </Alert>
 
-                <Button 
-                  onClick={fetchStatus} 
-                  variant="outline" 
-                  className="w-full"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Atualizar QR Code
-                </Button>
-              </div>
-            );
-          })()}
+            <Button 
+              onClick={handleConnect} 
+              disabled={connecting}
+              variant="outline" 
+              className="w-full"
+            >
+              {connecting ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />A atualizar...</>
+              ) : (
+                <><RefreshCw className="w-4 h-4 mr-2" />Atualizar QR Code</>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
