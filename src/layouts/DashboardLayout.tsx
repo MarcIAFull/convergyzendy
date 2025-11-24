@@ -79,7 +79,6 @@ const DashboardLayout = () => {
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Menu", href: "/menu", icon: Package },
-    { name: "Orders", href: "/orders", icon: Menu },
     { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "AI Configuration", href: "/ai-configuration", icon: Brain },
     { name: "Restaurant AI Settings", href: "/restaurant-ai-settings", icon: Brain },

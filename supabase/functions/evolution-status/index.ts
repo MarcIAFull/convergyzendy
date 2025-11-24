@@ -78,8 +78,13 @@ serve(async (req) => {
     let status: StatusResponse['status'] = 'unknown';
     
     // Map Evolution statuses to our statuses
-    if (rawStatus === 'open' || rawStatus === 'connected') {
+    // IMPORTANT: 'open' means instance exists but NOT necessarily WhatsApp connected
+    // Only 'connected' means truly connected to WhatsApp
+    if (rawStatus === 'connected') {
       status = 'connected';
+    } else if (rawStatus === 'open') {
+      // Instance is active but WhatsApp not connected - show as disconnected
+      status = 'disconnected';
     } else if (rawStatus === 'close' || rawStatus === 'closed' || rawStatus === 'disconnected') {
       status = 'disconnected';
     } else if (rawStatus === 'connecting' || rawStatus === 'qr' || rawStatus === 'qrreadcode') {
