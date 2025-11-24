@@ -1,9 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
 import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
+import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 
 export default function SettingsUnified() {
   return (
@@ -16,10 +17,14 @@ export default function SettingsUnified() {
       </div>
 
       <Tabs defaultValue="restaurant" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
+          </TabsTrigger>
+          <TabsTrigger value="public-menu" className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            <span className="hidden sm:inline">Menu Público</span>
           </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex items-center gap-2">
             <Smartphone className="h-4 w-4" />
@@ -37,6 +42,10 @@ export default function SettingsUnified() {
 
         <TabsContent value="restaurant">
           <RestaurantTab />
+        </TabsContent>
+
+        <TabsContent value="public-menu">
+          <PublicMenuTab />
         </TabsContent>
 
         <TabsContent value="whatsapp">
