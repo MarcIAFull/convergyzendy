@@ -87,19 +87,24 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
-        <div className="flex items-center justify-between p-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <span className="text-lg font-bold">Z</span>
-            </div>
-            {open && (
-              <div>
-                <h1 className="text-sm font-bold text-foreground">Zendy</h1>
-                <p className="text-xs text-muted-foreground">Delivery AI</p>
+        <div className="flex flex-col items-center gap-2 p-2">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <span className="text-lg font-bold">Z</span>
               </div>
-            )}
+              {open && (
+                <div>
+                  <h1 className="text-sm font-bold text-foreground">Zendy</h1>
+                  <p className="text-xs text-muted-foreground">Delivery AI</p>
+                </div>
+              )}
+            </div>
+            {open && <SidebarTrigger />}
           </div>
-          <SidebarTrigger />
+          {!open && (
+            <SidebarTrigger className="w-8 h-8" />
+          )}
         </div>
       </SidebarHeader>
       
