@@ -160,8 +160,6 @@ serve(async (req) => {
       cartItems,
       cartTotal,
       menuProducts: availableProducts,
-      pendingProduct: pendingProduct,
-      lastShownProduct: lastShownProduct,
       restaurantName: restaurant.name,
       conversationHistory
     });
