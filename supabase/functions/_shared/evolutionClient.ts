@@ -147,7 +147,6 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
   
   const payload = {
     instanceName,
-    token: apiKey,
     qrcode: true,
     integration: "WHATSAPP-BAILEYS",
     webhook: {
