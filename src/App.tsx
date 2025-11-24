@@ -25,6 +25,11 @@ import SystemCheck from "@/pages/SystemCheck";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import NotFound from "@/pages/NotFound";
+import PublicMenu from "@/pages/public/PublicMenu";
+import PublicCart from "@/pages/public/PublicCart";
+import PublicCheckout from "@/pages/public/PublicCheckout";
+import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
+import { HelmetProvider } from 'react-helmet-async';
 
 const queryClient = new QueryClient();
 
@@ -34,44 +39,56 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-            <NotificationProvider>
-              <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/onboarding" element={
-                <ProtectedRoute>
-                  <Onboarding />
-                </ProtectedRoute>
-              } />
-              <Route
-                element={
+        <HelmetProvider>
+          <BrowserRouter>
+            <AuthProvider>
+              <NotificationProvider>
+                <Routes>
+                {/* Public Routes */}
+                <Route path="/menu/:slug" element={<PublicMenu />} />
+                <Route path="/menu/:slug/cart" element={<PublicCart />} />
+                <Route path="/menu/:slug/checkout" element={<PublicCheckout />} />
+                <Route path="/menu/:slug/order-confirmed/:orderId" element={<PublicOrderConfirmed />} />
+                
+                {/* Auth Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/onboarding" element={
                   <ProtectedRoute>
-                    <DashboardLayout />
+                    <Onboarding />
                   </ProtectedRoute>
-                }
-              >
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/menu" element={<MenuManagement />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/orders/:id" element={<OrderDetail />} />
-                <Route path="/messages" element={<Messages />} />
-                <Route path="/test-whatsapp" element={<TestWhatsApp />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
-                <Route path="/ai-configuration" element={<AIConfiguration />} />
-                <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
-                <Route path="/admin" element={<Admin />} />
-                <Route path="/subscription" element={<Subscription />} />
-                <Route path="/system-check" element={<SystemCheck />} />
-              </Route>
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-              </Routes>
-            </NotificationProvider>
-          </AuthProvider>
-        </BrowserRouter>
+                } />
+                
+                {/* Protected Dashboard Routes */}
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/menu" element={<MenuManagement />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/orders/:id" element={<OrderDetail />} />
+                  <Route path="/messages" element={<Messages />} />
+                  <Route path="/test-whatsapp" element={<TestWhatsApp />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
+                  <Route path="/ai-configuration" element={<AIConfiguration />} />
+                  <Route path="/restaurant-ai-settings" element={<RestaurantAISettings />} />
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/subscription" element={<Subscription />} />
+                  <Route path="/system-check" element={<SystemCheck />} />
+                </Route>
+                
+                {/* 404 Catch-All */}
+                <Route path="*" element={<NotFound />} />
+                </Routes>
+              </NotificationProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </HelmetProvider>
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>
