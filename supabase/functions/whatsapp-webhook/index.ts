@@ -14,6 +14,11 @@ import {
   logRateLimitHit 
 } from '../_shared/rateLimiter.ts';
 
+// Declare EdgeRuntime global for background tasks
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<any>): void;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -255,35 +260,40 @@ serve(async (req) => {
       // Check for opt-out keywords (spam prevention)
       await checkOptOut(supabase, restaurant.id, from, messageBody);
 
-      // Call AI ordering agent (handles state machine, tools, and sends reply)
-      console.log('[EvolutionWebhook] Calling whatsapp-ai-agent function');
+      // Add message to debounce queue and schedule processing
+      console.log('[whatsapp-webhook] Adding message to debounce queue');
       try {
-        const { data: aiResponse, error: aiError } = await supabase.functions.invoke('whatsapp-ai-agent', {
+        const queueId = await addToDebounceQueue(
+          supabase,
+          restaurant.id,
+          from,
+          messageBody,
+          instanceName
+        );
+
+        if (queueId) {
+          console.log(`[whatsapp-webhook] Message added to debounce queue: ${queueId}`);
+          
+          // Schedule processing using background task
+          EdgeRuntime.waitUntil(
+            scheduleProcessing(supabase, queueId)
+          );
+        }
+      } catch (debounceError) {
+        console.error('[whatsapp-webhook] Debounce error:', debounceError);
+        // Fallback to direct processing if debounce fails
+        const { error: aiError } = await supabase.functions.invoke('whatsapp-ai-agent', {
           body: {
             restaurantId: restaurant.id,
             customerPhone: from,
             messageBody: messageBody,
+            instanceName: instanceName,
           },
         });
-
-        if (aiError) {
-          console.error('[EvolutionWebhook] Error calling AI agent:', aiError);
-          // Don't throw - log and return success to Evolution
-          return new Response(JSON.stringify({ ok: true, error: 'AI agent failed', details: aiError }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          });
-        }
         
-        console.log('[EvolutionWebhook] AI agent response:', aiResponse);
-        console.log('[EvolutionWebhook] Reply sent via Evolution API');
-      } catch (aiError) {
-        console.error('[EvolutionWebhook] AI agent error:', aiError);
-        // Don't throw - log and return success to Evolution
-        return new Response(JSON.stringify({ ok: true, error: 'AI agent exception', details: String(aiError) }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        });
+        if (aiError) {
+          console.error('[whatsapp-webhook] Fallback AI agent error:', aiError);
+        }
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -304,6 +314,116 @@ serve(async (req) => {
     });
   }
 });
+
+// Debounce queue management functions
+async function addToDebounceQueue(
+  supabase: any,
+  restaurantId: string,
+  customerPhone: string,
+  messageBody: string,
+  instanceName: string
+): Promise<string | null> {
+  const DEBOUNCE_SECONDS = 5;
+  
+  // Check for existing pending entry
+  const { data: existingEntry, error: fetchError } = await supabase
+    .from('message_debounce_queue')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .eq('customer_phone', customerPhone)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('[addToDebounceQueue] Error fetching existing entry:', fetchError);
+    throw fetchError;
+  }
+
+  const now = new Date();
+  const messageEntry = {
+    body: messageBody,
+    timestamp: now.toISOString(),
+  };
+
+  if (existingEntry) {
+    // Update existing entry - append message and reset timer
+    console.log(`[addToDebounceQueue] Appending to existing queue entry: ${existingEntry.id}`);
+    
+    const updatedMessages = [...existingEntry.messages, messageEntry];
+    const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
+
+    const { error: updateError } = await supabase
+      .from('message_debounce_queue')
+      .update({
+        messages: updatedMessages,
+        last_message_at: now.toISOString(),
+        scheduled_process_at: scheduledProcessAt.toISOString(),
+        metadata: { 
+          ...existingEntry.metadata, 
+          instanceName,
+          messageCount: updatedMessages.length 
+        },
+      })
+      .eq('id', existingEntry.id);
+
+    if (updateError) {
+      console.error('[addToDebounceQueue] Error updating queue:', updateError);
+      throw updateError;
+    }
+
+    return existingEntry.id;
+  } else {
+    // Create new entry
+    console.log(`[addToDebounceQueue] Creating new queue entry for ${customerPhone}`);
+    
+    const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
+
+    const { data: newEntry, error: insertError } = await supabase
+      .from('message_debounce_queue')
+      .insert({
+        restaurant_id: restaurantId,
+        customer_phone: customerPhone,
+        messages: [messageEntry],
+        first_message_at: now.toISOString(),
+        last_message_at: now.toISOString(),
+        scheduled_process_at: scheduledProcessAt.toISOString(),
+        status: 'pending',
+        metadata: { instanceName, messageCount: 1 },
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[addToDebounceQueue] Error creating queue:', insertError);
+      throw insertError;
+    }
+
+    return newEntry.id;
+  }
+}
+
+async function scheduleProcessing(supabase: any, queueId: string) {
+  // Wait 5 seconds before processing
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  console.log(`[scheduleProcessing] Processing queue entry: ${queueId}`);
+  
+  try {
+    const { data, error } = await supabase.functions.invoke('process-debounced-messages', {
+      body: { queueId },
+    });
+
+    if (error) {
+      console.error('[scheduleProcessing] Error invoking processor:', error);
+    } else {
+      console.log('[scheduleProcessing] Processor response:', data);
+    }
+  } catch (error) {
+    console.error('[scheduleProcessing] Exception:', error);
+  }
+}
 
 // Opt-out detection function
 async function checkOptOut(supabase: any, restaurantId: string, customerPhone: string, messageBody: string) {
