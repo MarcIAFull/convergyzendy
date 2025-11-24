@@ -1395,7 +1395,8 @@ ${validatedToolCalls.map((tc: any) => {
           from_number: restaurant.phone,
           to_number: customerPhone,
           body: finalResponse,
-          direction: 'outbound'
+          direction: 'outbound',
+          sent_by: 'ai'
         });
 
       if (messageError) {

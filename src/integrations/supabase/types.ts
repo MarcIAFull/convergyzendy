@@ -896,6 +896,7 @@ export type Database = {
           from_number: string
           id: string
           restaurant_id: string
+          sent_by: string | null
           timestamp: string
           to_number: string
         }
@@ -905,6 +906,7 @@ export type Database = {
           from_number: string
           id?: string
           restaurant_id: string
+          sent_by?: string | null
           timestamp?: string
           to_number: string
         }
@@ -914,6 +916,7 @@ export type Database = {
           from_number?: string
           id?: string
           restaurant_id?: string
+          sent_by?: string | null
           timestamp?: string
           to_number?: string
         }

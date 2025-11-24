@@ -93,6 +93,7 @@ serve(async (req) => {
         to_number: customerPhone,
         body: messageText,
         direction: 'outbound',
+        sent_by: 'human',
       });
 
     if (messageError) {
