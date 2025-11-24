@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Package, Clock, Truck, CheckCircle, Phone, DollarSign, Eye } from 'lucide-react';
 import { OrderWithDetails } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
@@ -232,9 +233,26 @@ const Dashboard = () => {
 
   if (loading && orders.length === 0) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading orders...</p>
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-3">
+                <Skeleton className="h-6 w-32 mb-2" />
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );

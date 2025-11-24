@@ -9,7 +9,6 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
 import MenuManagement from "@/pages/MenuManagement";
-import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Settings from "@/pages/Settings";
 import Messages from "@/pages/Messages";
@@ -47,7 +46,6 @@ const App = () => (
               >
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/menu" element={<MenuManagement />} />
-                <Route path="/orders" element={<Orders />} />
                 <Route path="/orders/:id" element={<OrderDetail />} />
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/test-whatsapp" element={<TestWhatsApp />} />

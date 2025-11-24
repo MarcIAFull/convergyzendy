@@ -192,6 +192,16 @@ export default function WhatsAppConnection() {
             </div>
           </div>
 
+          {status?.status === 'disconnected' && !status?.error && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Instância ativa, mas WhatsApp não conectado.</strong><br />
+                Clique em "Criar / Conectar Instância" abaixo para gerar o código QR e conectar o seu WhatsApp Business.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {status?.error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
