@@ -28,6 +28,7 @@ import {
   Settings,
   Shield,
   UserPlus,
+  FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -83,6 +84,7 @@ export function AppSidebar() {
     { title: "Painel Admin", url: "/admin", icon: Shield },
     { title: "Gestão de Equipe", url: "/admin/team", icon: UserPlus },
     { title: "Configuração Global de IA", url: "/admin/ai-configuration", icon: Settings },
+    { title: "AI Interaction Logs", url: "/admin/ai-logs", icon: FileText },
     { title: "System Check", url: "/admin/system-check", icon: Shield },
   ];
 

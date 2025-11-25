@@ -16,6 +16,7 @@ import Customers from "@/pages/Customers";
 import SettingsUnified from "@/pages/SettingsUnified";
 import Messages from "@/pages/Messages";
 import AIConfiguration from "@/pages/AIConfiguration";
+import AILogs from "@/pages/AILogs";
 import Admin from "@/pages/Admin";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
@@ -87,6 +88,7 @@ const App = () => (
                   <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
                   <Route path="/admin/team" element={<AdminRoute><TeamManagement /></AdminRoute>} />
                   <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
+                  <Route path="/admin/ai-logs" element={<AdminRoute><AILogs /></AdminRoute>} />
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
                 </Route>
                 

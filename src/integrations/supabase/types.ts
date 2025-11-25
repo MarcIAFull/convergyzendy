@@ -224,6 +224,104 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_interaction_logs: {
+        Row: {
+          ai_request: Json | null
+          ai_response_raw: Json | null
+          ai_response_text: string | null
+          context_loaded: Json | null
+          conversation_id: string | null
+          created_at: string
+          customer_phone: string
+          errors: Json | null
+          final_response: string | null
+          has_errors: boolean | null
+          id: string
+          log_level: string | null
+          orchestrator_confidence: number | null
+          orchestrator_intent: string | null
+          orchestrator_reasoning: string | null
+          orchestrator_target_state: string | null
+          processing_time_ms: number | null
+          prompt_length: number | null
+          restaurant_id: string
+          state_after: string | null
+          state_before: string | null
+          system_prompt: string | null
+          tokens_used: number | null
+          tool_calls_requested: Json | null
+          tool_calls_validated: Json | null
+          tool_execution_results: Json | null
+          user_message: string
+        }
+        Insert: {
+          ai_request?: Json | null
+          ai_response_raw?: Json | null
+          ai_response_text?: string | null
+          context_loaded?: Json | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_phone: string
+          errors?: Json | null
+          final_response?: string | null
+          has_errors?: boolean | null
+          id?: string
+          log_level?: string | null
+          orchestrator_confidence?: number | null
+          orchestrator_intent?: string | null
+          orchestrator_reasoning?: string | null
+          orchestrator_target_state?: string | null
+          processing_time_ms?: number | null
+          prompt_length?: number | null
+          restaurant_id: string
+          state_after?: string | null
+          state_before?: string | null
+          system_prompt?: string | null
+          tokens_used?: number | null
+          tool_calls_requested?: Json | null
+          tool_calls_validated?: Json | null
+          tool_execution_results?: Json | null
+          user_message: string
+        }
+        Update: {
+          ai_request?: Json | null
+          ai_response_raw?: Json | null
+          ai_response_text?: string | null
+          context_loaded?: Json | null
+          conversation_id?: string | null
+          created_at?: string
+          customer_phone?: string
+          errors?: Json | null
+          final_response?: string | null
+          has_errors?: boolean | null
+          id?: string
+          log_level?: string | null
+          orchestrator_confidence?: number | null
+          orchestrator_intent?: string | null
+          orchestrator_reasoning?: string | null
+          orchestrator_target_state?: string | null
+          processing_time_ms?: number | null
+          prompt_length?: number | null
+          restaurant_id?: string
+          state_after?: string | null
+          state_before?: string | null
+          system_prompt?: string | null
+          tokens_used?: number | null
+          tool_calls_requested?: Json | null
+          tool_calls_validated?: Json | null
+          tool_execution_results?: Json | null
+          user_message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_interaction_logs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cart_item_addons: {
         Row: {
           addon_id: string
