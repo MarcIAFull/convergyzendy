@@ -324,84 +324,38 @@ async function addToDebounceQueue(
   instanceName: string
 ): Promise<string | null> {
   const DEBOUNCE_SECONDS = 5;
-  
-  // Check for existing pending entry
-  const { data: existingEntry, error: fetchError } = await supabase
-    .from('message_debounce_queue')
-    .select('*')
-    .eq('restaurant_id', restaurantId)
-    .eq('customer_phone', customerPhone)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error('[addToDebounceQueue] Error fetching existing entry:', fetchError);
-    throw fetchError;
-  }
-
   const now = new Date();
+  const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
+  
   const messageEntry = {
     body: messageBody,
     timestamp: now.toISOString(),
   };
 
-  if (existingEntry) {
-    // Update existing entry - append message and reset timer
-    console.log(`[addToDebounceQueue] Appending to existing queue entry: ${existingEntry.id}`);
-    
-    const updatedMessages = [...existingEntry.messages, messageEntry];
-    const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
+  console.log(`[addToDebounceQueue] Attempting to add/update queue for ${customerPhone}`);
 
-    const { error: updateError } = await supabase
-      .from('message_debounce_queue')
-      .update({
-        messages: updatedMessages,
-        last_message_at: now.toISOString(),
-        scheduled_process_at: scheduledProcessAt.toISOString(),
-        metadata: { 
-          ...existingEntry.metadata, 
-          instanceName,
-          messageCount: updatedMessages.length 
-        },
-      })
-      .eq('id', existingEntry.id);
+  // ATOMIC UPSERT: Try to insert, if unique constraint violated, update instead
+  // This prevents race conditions when multiple messages arrive simultaneously
+  const { data: result, error } = await supabase.rpc('upsert_debounce_message', {
+    p_restaurant_id: restaurantId,
+    p_customer_phone: customerPhone,
+    p_message_body: messageBody,
+    p_instance_name: instanceName,
+    p_debounce_seconds: DEBOUNCE_SECONDS
+  });
 
-    if (updateError) {
-      console.error('[addToDebounceQueue] Error updating queue:', updateError);
-      throw updateError;
-    }
-
-    return existingEntry.id;
-  } else {
-    // Create new entry
-    console.log(`[addToDebounceQueue] Creating new queue entry for ${customerPhone}`);
-    
-    const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
-
-    const { data: newEntry, error: insertError } = await supabase
-      .from('message_debounce_queue')
-      .insert({
-        restaurant_id: restaurantId,
-        customer_phone: customerPhone,
-        messages: [messageEntry],
-        first_message_at: now.toISOString(),
-        last_message_at: now.toISOString(),
-        scheduled_process_at: scheduledProcessAt.toISOString(),
-        status: 'pending',
-        metadata: { instanceName, messageCount: 1 },
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('[addToDebounceQueue] Error creating queue:', insertError);
-      throw insertError;
-    }
-
-    return newEntry.id;
+  if (error) {
+    console.error('[addToDebounceQueue] Error upserting queue:', error);
+    throw error;
   }
+
+  const queueId = result[0]?.id;
+  const action = result[0]?.action; // 'created' or 'updated'
+  const messageCount = result[0]?.message_count;
+
+  console.log(`[addToDebounceQueue] ${action} queue entry ${queueId} (${messageCount} messages)`);
+
+  return queueId;
 }
 
 async function scheduleProcessing(supabase: any, queueId: string) {
