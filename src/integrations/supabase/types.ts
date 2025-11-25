@@ -1185,38 +1185,53 @@ export type Database = {
       }
       restaurant_ai_settings: {
         Row: {
+          business_rules: string | null
           closing_message: string | null
           created_at: string
+          custom_instructions: string | null
+          faq_responses: string | null
           greeting_message: string | null
           id: string
           language: string
           max_additional_questions_before_checkout: number
           restaurant_id: string
+          special_offers_info: string | null
           tone: string
+          unavailable_items_handling: string | null
           updated_at: string
           upsell_aggressiveness: string
         }
         Insert: {
+          business_rules?: string | null
           closing_message?: string | null
           created_at?: string
+          custom_instructions?: string | null
+          faq_responses?: string | null
           greeting_message?: string | null
           id?: string
           language?: string
           max_additional_questions_before_checkout?: number
           restaurant_id: string
+          special_offers_info?: string | null
           tone?: string
+          unavailable_items_handling?: string | null
           updated_at?: string
           upsell_aggressiveness?: string
         }
         Update: {
+          business_rules?: string | null
           closing_message?: string | null
           created_at?: string
+          custom_instructions?: string | null
+          faq_responses?: string | null
           greeting_message?: string | null
           id?: string
           language?: string
           max_additional_questions_before_checkout?: number
           restaurant_id?: string
+          special_offers_info?: string | null
           tone?: string
+          unavailable_items_handling?: string | null
           updated_at?: string
           upsell_aggressiveness?: string
         }

@@ -11,6 +11,7 @@ import { Slider } from '@/components/ui/slider';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Info } from 'lucide-react';
 import { RestaurantAISettings, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
+import { AITestChatSimulator } from '@/components/ai-config/AITestChatSimulator';
 
 export function AIPersonalizationTab() {
   const { restaurant } = useRestaurantStore();
@@ -81,7 +82,12 @@ export function AIPersonalizationTab() {
           closing_message: settings.closing_message,
           upsell_aggressiveness: settings.upsell_aggressiveness,
           max_additional_questions_before_checkout: settings.max_additional_questions_before_checkout,
-          language: settings.language
+          language: settings.language,
+          custom_instructions: settings.custom_instructions,
+          business_rules: settings.business_rules,
+          faq_responses: settings.faq_responses,
+          unavailable_items_handling: settings.unavailable_items_handling,
+          special_offers_info: settings.special_offers_info
         })
         .eq('id', settings.id);
 
@@ -263,6 +269,98 @@ export function AIPersonalizationTab() {
               </SelectContent>
             </Select>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Instruções Personalizadas</CardTitle>
+          <CardDescription>
+            Adicione instruções específicas sobre como o agente deve se comportar
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="custom-instructions">Instruções Customizadas</Label>
+            <Textarea
+              id="custom-instructions"
+              placeholder="Ex: Sempre mencione que temos entrega grátis para pedidos acima de 20€. Seja especialmente atencioso com clientes recorrentes."
+              value={settings.custom_instructions || ''}
+              onChange={(e) => updateSetting('custom_instructions', e.target.value || null)}
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              💡 Instruções sobre comportamento, estilo de comunicação, prioridades
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="business-rules">Regras de Negócio</Label>
+            <Textarea
+              id="business-rules"
+              placeholder="Ex: Não aceitamos pedidos após as 22h. Pedido mínimo de 10€. Apenas aceitamos dinheiro e MBWay."
+              value={settings.business_rules || ''}
+              onChange={(e) => updateSetting('business_rules', e.target.value || null)}
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              📋 Políticas, restrições, horários, formas de pagamento
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="faq">Perguntas Frequentes</Label>
+            <Textarea
+              id="faq"
+              placeholder="Ex: Horário: 12h-23h todos os dias. Entrega: 30-45min. Zona de entrega: raio de 5km. Alérgenos disponíveis no menu."
+              value={settings.faq_responses || ''}
+              onChange={(e) => updateSetting('faq_responses', e.target.value || null)}
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              ❓ Respostas rápidas para perguntas comuns dos clientes
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="unavailable">Itens Indisponíveis</Label>
+            <Textarea
+              id="unavailable"
+              placeholder="Ex: Sempre sugira alternativas similares da mesma categoria. Ofereça desconto de 5% se aceitar a alternativa."
+              value={settings.unavailable_items_handling || ''}
+              onChange={(e) => updateSetting('unavailable_items_handling', e.target.value || null)}
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              🔄 Como lidar quando produtos não estão disponíveis
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="offers">Promoções Ativas</Label>
+            <Textarea
+              id="offers"
+              placeholder="Ex: Combo pizza familiar + 2L refrigerante por 15€. Desconto de 10% na segunda pizza. Sobremesa grátis em pedidos acima de 25€."
+              value={settings.special_offers_info || ''}
+              onChange={(e) => updateSetting('special_offers_info', e.target.value || null)}
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              🎁 Promoções, combos e ofertas especiais para mencionar
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Simulador de Chat</CardTitle>
+          <CardDescription>
+            Teste as configurações conversando diretamente com a IA antes de conectar ao WhatsApp
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {restaurant?.id && <AITestChatSimulator restaurantId={restaurant.id} />}
         </CardContent>
       </Card>
 

@@ -379,6 +379,33 @@ ${restaurantAISettings.upsell_aggressiveness === 'high' ? '- Actively suggest ad
 
 **Language**: ${restaurantAISettings.language}
 
+${restaurantAISettings.custom_instructions ? `
+## CUSTOM INSTRUCTIONS
+${restaurantAISettings.custom_instructions}
+` : ''}
+
+${restaurantAISettings.business_rules ? `
+## BUSINESS RULES & POLICIES
+${restaurantAISettings.business_rules}
+` : ''}
+
+${restaurantAISettings.faq_responses ? `
+## FREQUENTLY ASKED QUESTIONS
+Use these responses for common questions:
+${restaurantAISettings.faq_responses}
+` : ''}
+
+${restaurantAISettings.unavailable_items_handling ? `
+## HANDLING UNAVAILABLE ITEMS
+${restaurantAISettings.unavailable_items_handling}
+` : ''}
+
+${restaurantAISettings.special_offers_info ? `
+## ACTIVE PROMOTIONS & SPECIAL OFFERS
+Mention these when relevant:
+${restaurantAISettings.special_offers_info}
+` : ''}
+
 CRITICAL: These settings override your default behavior. Adapt your responses accordingly.
 `;
         
