@@ -19,8 +19,10 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const { email, restaurantId, role, permissions } = await req.json();
+    console.log('[Send Invitation] Request data:', { email, restaurantId, role, permissions });
 
     if (!email || !restaurantId) {
+      console.log('[Send Invitation] Missing required fields:', { email, restaurantId });
       return new Response(
         JSON.stringify({ error: 'Email e restaurantId são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -36,25 +38,44 @@ Deno.serve(async (req) => {
     );
 
     if (!authResult.authorized) {
+      console.log('[Send Invitation] Authorization failed:', authResult.error);
       return unauthorizedResponse(authResult.error || 'Acesso negado', corsHeaders);
     }
+
+    console.log('[Send Invitation] User authorized:', authResult.userId);
 
     // Create supabase client with service role
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Check if a user with this email exists and is already a member
-    const { data: { users } } = await supabase.auth.admin.listUsers();
+    console.log('[Send Invitation] Fetching all users...');
+    const { data: { users }, error: listUsersError } = await supabase.auth.admin.listUsers();
+    
+    if (listUsersError) {
+      console.error('[Send Invitation] Error listing users:', listUsersError);
+    }
+    
+    console.log('[Send Invitation] Total users found:', users?.length);
     const existingUser = users.find(u => u.email === email);
+    console.log('[Send Invitation] Existing user check:', existingUser ? 'Found' : 'Not found');
     
     if (existingUser) {
-      const { data: existingMember } = await supabase
+      console.log('[Send Invitation] User exists, checking membership...');
+      const { data: existingMember, error: memberError } = await supabase
         .from('restaurant_owners')
         .select('id')
         .eq('restaurant_id', restaurantId)
         .eq('user_id', existingUser.id)
         .maybeSingle();
 
+      if (memberError) {
+        console.error('[Send Invitation] Error checking membership:', memberError);
+      }
+
+      console.log('[Send Invitation] Existing member check:', existingMember ? 'Is member' : 'Not member');
+
       if (existingMember) {
+        console.log('[Send Invitation] User already member:', { email, restaurantId });
         return new Response(
           JSON.stringify({ error: 'Este usuário já é membro do restaurante' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,7 +84,8 @@ Deno.serve(async (req) => {
     }
 
     // Check for existing pending invitation
-    const { data: existingInvitation } = await supabase
+    console.log('[Send Invitation] Checking for existing invitations...');
+    const { data: existingInvitation, error: invitationCheckError } = await supabase
       .from('team_invitations')
       .select('id')
       .eq('restaurant_id', restaurantId)
@@ -71,7 +93,14 @@ Deno.serve(async (req) => {
       .eq('status', 'pending')
       .maybeSingle();
 
+    if (invitationCheckError) {
+      console.error('[Send Invitation] Error checking invitations:', invitationCheckError);
+    }
+
+    console.log('[Send Invitation] Existing invitation check:', existingInvitation ? 'Has pending' : 'No pending');
+
     if (existingInvitation) {
+      console.log('[Send Invitation] Invitation already exists:', { email, restaurantId });
       return new Response(
         JSON.stringify({ error: 'Já existe um convite pendente para este email' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
