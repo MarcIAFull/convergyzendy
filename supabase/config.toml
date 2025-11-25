@@ -1,5 +1,11 @@
 project_id = "tgbfqcbqfdzrtbtlycve"
 
+[functions.send-team-invitation]
+verify_jwt = true
+
+[functions.accept-team-invitation]
+verify_jwt = true
+
 [functions.whatsapp-webhook]
 verify_jwt = false
 

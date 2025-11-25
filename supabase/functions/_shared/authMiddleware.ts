@@ -41,6 +41,19 @@ export async function validateRestaurantAccess(
       return { authorized: false, error: 'Invalid or expired token' };
     }
 
+    // Check if user is a global admin
+    const { data: adminRole, error: adminError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle();
+
+    if (adminRole) {
+      console.log(`[Auth Middleware] User ${user.id} is global admin - access granted`);
+      return { authorized: true, userId: user.id };
+    }
+
     // Check if user has access to this restaurant
     const { data: ownership, error: ownershipError } = await supabase
       .from('restaurant_owners')

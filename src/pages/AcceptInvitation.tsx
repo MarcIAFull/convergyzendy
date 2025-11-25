@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function AcceptInvitation() {
   const { token } = useParams<{ token: string }>();
@@ -28,14 +29,31 @@ export default function AcceptInvitation() {
       setLoading(true);
       setError(null);
 
+      // Use public access - RLS allows SELECT by token
       const { data, error: fetchError } = await supabase
         .from('team_invitations')
-        .select('*, restaurants(name)')
+        .select(`
+          id,
+          email,
+          role,
+          status,
+          expires_at,
+          restaurant_id,
+          restaurants:restaurant_id (
+            name
+          )
+        `)
         .eq('token', token)
         .eq('status', 'pending')
-        .single();
+        .maybeSingle();
 
-      if (fetchError || !data) {
+      if (fetchError) {
+        console.error('Error fetching invitation:', fetchError);
+        setError('Erro ao carregar convite');
+        return;
+      }
+
+      if (!data) {
         setError('Convite não encontrado ou já foi aceito');
         return;
       }
@@ -53,9 +71,9 @@ export default function AcceptInvitation() {
         await handleAccept();
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching invitation:', error);
-      setError('Erro ao carregar convite');
+      setError(error.message || 'Erro ao carregar convite');
     } finally {
       setLoading(false);
     }
@@ -75,9 +93,17 @@ export default function AcceptInvitation() {
         }
       );
 
-      if (acceptError) throw acceptError;
+      if (acceptError) {
+        console.error('Error invoking accept function:', acceptError);
+        throw acceptError;
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
 
       setSuccess(true);
+      toast.success('Convite aceito com sucesso!');
       
       // Redirect to dashboard after 2 seconds
       setTimeout(() => {
@@ -88,6 +114,16 @@ export default function AcceptInvitation() {
       console.error('Error accepting invitation:', error);
       setError(error.message || 'Erro ao aceitar convite');
       setLoading(false);
+    }
+  };
+
+  const copyInvitationLink = async () => {
+    try {
+      const url = window.location.href;
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copiado!');
+    } catch (error) {
+      toast.error('Erro ao copiar link');
     }
   };
 
@@ -137,9 +173,14 @@ export default function AcceptInvitation() {
                 <h2 className="text-2xl font-bold">Erro</h2>
                 <p className="text-muted-foreground">{error}</p>
               </div>
-              <Button onClick={() => navigate('/login')} variant="outline">
-                Ir para Login
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={() => navigate('/login')} variant="outline">
+                  Ir para Login
+                </Button>
+                <Button onClick={copyInvitationLink} variant="ghost" size="icon">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
