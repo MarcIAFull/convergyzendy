@@ -212,7 +212,8 @@ serve(async (req) => {
       cartTotal,
       menuProducts: availableProducts,
       restaurantName: restaurant.name,
-      conversationHistory
+      conversationHistory,
+      pendingItems
     });
     
     let orchestratorSystemPrompt = buildSystemPromptFromBlocks(
