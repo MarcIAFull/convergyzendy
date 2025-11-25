@@ -2061,6 +2061,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      upsert_debounce_message: {
+        Args: {
+          p_customer_phone: string
+          p_debounce_seconds?: number
+          p_instance_name: string
+          p_message_body: string
+          p_restaurant_id: string
+        }
+        Returns: {
+          action: string
+          id: string
+          message_count: number
+        }[]
+      }
       user_has_restaurant_access: {
         Args: { _restaurant_id: string }
         Returns: boolean
