@@ -342,7 +342,7 @@ serve(async (req) => {
       console.log(`[Tools] ⚠️ Using ${tools.length} fallback hard-coded tools (no database config)`);
     }
     
-    // Build conversational AI system prompt
+    // Build conversational AI system prompt with ALL restaurant settings
     const conversationalFallbackPrompt = buildConversationalAIPrompt({
       restaurantName: restaurant.name,
       menuProducts: availableProducts,
@@ -353,7 +353,19 @@ serve(async (req) => {
       targetState,
       conversationHistory,
       customer,
-      pendingItems
+      pendingItems,
+      // Inject restaurant AI settings into prompt
+      tone: restaurantAISettings?.tone,
+      greetingMessage: restaurantAISettings?.greeting_message,
+      closingMessage: restaurantAISettings?.closing_message,
+      upsellAggressiveness: restaurantAISettings?.upsell_aggressiveness,
+      maxAdditionalQuestions: restaurantAISettings?.max_additional_questions_before_checkout,
+      language: restaurantAISettings?.language,
+      customInstructions: restaurantAISettings?.custom_instructions,
+      businessRules: restaurantAISettings?.business_rules,
+      faqResponses: restaurantAISettings?.faq_responses,
+      unavailableItemsHandling: restaurantAISettings?.unavailable_items_handling,
+      specialOffersInfo: restaurantAISettings?.special_offers_info
     });
     
     let conversationalSystemPrompt = buildSystemPromptFromBlocks(
@@ -375,71 +387,9 @@ serve(async (req) => {
         pending_items: formatted.pendingItems
       });
       
-      // ============================================================
-      // INJECT RESTAURANT-SPECIFIC AI SETTINGS
-      // ============================================================
-      
-      if (restaurantAISettings) {
-        console.log('[Main AI] Injecting restaurant-specific AI settings into prompt');
-        
-        const settingsSection = `
-
-# RESTAURANT-SPECIFIC AI SETTINGS
-
-You MUST adapt your behavior to these restaurant-specific settings:
-
-**Tone**: ${restaurantAISettings.tone}
-${restaurantAISettings.tone === 'friendly' ? '- Be warm, conversational, and use emojis occasionally' : ''}
-${restaurantAISettings.tone === 'formal' ? '- Be polite, professional, and avoid slang or emojis' : ''}
-${restaurantAISettings.tone === 'playful' ? '- Be fun, energetic, and use more emojis and casual language' : ''}
-${restaurantAISettings.tone === 'professional' ? '- Be courteous, clear, and business-like without being cold' : ''}
-
-**Greeting Message**: ${restaurantAISettings.greeting_message || 'Use default greeting based on tone'}
-
-**Closing Message**: ${restaurantAISettings.closing_message || 'Use default closing based on tone'}
-
-**Upsell Strategy**: ${restaurantAISettings.upsell_aggressiveness}
-${restaurantAISettings.upsell_aggressiveness === 'low' ? '- Only suggest items if directly relevant to the customer\'s request' : ''}
-${restaurantAISettings.upsell_aggressiveness === 'medium' ? '- Suggest complementary items when appropriate, but don\'t be pushy' : ''}
-${restaurantAISettings.upsell_aggressiveness === 'high' ? '- Actively suggest add-ons, sides, drinks, and upgrades to increase order value' : ''}
-
-**Max Additional Questions Before Checkout**: ${restaurantAISettings.max_additional_questions_before_checkout}
-- After customer has items in cart and seems ready, ask at most ${restaurantAISettings.max_additional_questions_before_checkout} additional questions before offering to finalize the order.
-
-**Language**: ${restaurantAISettings.language}
-
-${restaurantAISettings.custom_instructions ? `
-## CUSTOM INSTRUCTIONS
-${restaurantAISettings.custom_instructions}
-` : ''}
-
-${restaurantAISettings.business_rules ? `
-## BUSINESS RULES & POLICIES
-${restaurantAISettings.business_rules}
-` : ''}
-
-${restaurantAISettings.faq_responses ? `
-## FREQUENTLY ASKED QUESTIONS
-Use these responses for common questions:
-${restaurantAISettings.faq_responses}
-` : ''}
-
-${restaurantAISettings.unavailable_items_handling ? `
-## HANDLING UNAVAILABLE ITEMS
-${restaurantAISettings.unavailable_items_handling}
-` : ''}
-
-${restaurantAISettings.special_offers_info ? `
-## ACTIVE PROMOTIONS & SPECIAL OFFERS
-Mention these when relevant:
-${restaurantAISettings.special_offers_info}
-` : ''}
-
-CRITICAL: These settings override your default behavior. Adapt your responses accordingly.
-`;
-        
-        conversationalSystemPrompt += settingsSection;
-      }
+      // Restaurant AI settings are now injected directly into the prompt builder
+      // via the buildConversationalAIPrompt function parameters above
+      console.log('[Main AI] ✅ Restaurant AI settings integrated into prompt');
       
       // Apply prompt overrides if any
       if (promptOverrides && promptOverrides.length > 0) {
