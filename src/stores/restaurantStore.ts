@@ -35,11 +35,37 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
 
       console.log('[RestaurantStore] 🔍 Fetching restaurants for user:', user.id);
 
-      // Get all restaurants for this user via restaurant_owners
-      const { data: ownerships, error: ownershipError } = await supabase
-        .from('restaurant_owners')
-        .select('restaurant_id')
-        .eq('user_id', user.id);
+      // Check if user is a global admin
+      const { data: adminRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      let ownerships;
+      let ownershipError;
+
+      if (adminRole) {
+        // Admin can access any restaurant - get first restaurant
+        console.log('[RestaurantStore] 👑 User is admin - fetching first restaurant');
+        const { data: allRestaurants, error } = await supabase
+          .from('restaurants')
+          .select('id')
+          .limit(1);
+        
+        ownershipError = error;
+        ownerships = allRestaurants?.map(r => ({ restaurant_id: r.id }));
+      } else {
+        // Regular user - get their owned restaurants
+        const result = await supabase
+          .from('restaurant_owners')
+          .select('restaurant_id')
+          .eq('user_id', user.id);
+        
+        ownerships = result.data;
+        ownershipError = result.error;
+      }
 
       if (ownershipError) {
         console.error('[RestaurantStore] ❌ Ownership query error:', ownershipError);

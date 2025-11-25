@@ -11,7 +11,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Mail, UserPlus } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Trash2, Mail, UserPlus, Copy, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -24,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { InviteMemberDialog } from '@/components/team/InviteMemberDialog';
+import { useAuth } from '@/hooks/useAuth';
 
 interface TeamMember {
   id: string;
@@ -39,15 +41,18 @@ interface Invitation {
   email: string;
   role: string;
   status: string;
+  token: string;
   created_at: string;
   expires_at: string;
 }
 
 export default function TeamManagement() {
   const { restaurant } = useRestaurantStore();
+  const { user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
 
@@ -62,6 +67,7 @@ export default function TeamManagement() {
 
     try {
       setLoading(true);
+      setError(null);
 
       // Fetch team members with emails using RPC function
       const { data: membersData, error: membersError } = await supabase
@@ -69,26 +75,44 @@ export default function TeamManagement() {
           p_restaurant_id: restaurant.id 
         });
 
-      if (membersError) throw membersError;
+      if (membersError) {
+        console.error('Error fetching members:', membersError);
+        setError('Erro ao carregar membros da equipe');
+        throw membersError;
+      }
 
       setMembers(membersData || []);
 
       // Fetch pending invitations
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('team_invitations')
-        .select('*')
+        .select('id, email, role, status, token, created_at, expires_at')
         .eq('restaurant_id', restaurant.id)
         .eq('status', 'pending');
 
-      if (invitationsError) throw invitationsError;
+      if (invitationsError) {
+        console.error('Error fetching invitations:', invitationsError);
+        throw invitationsError;
+      }
 
       setInvitations(invitationsData || []);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching team data:', error);
-      toast.error('Erro ao carregar equipe');
+      toast.error(error.message || 'Erro ao carregar equipe');
+      setError(error.message || 'Erro ao carregar dados');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const copyInvitationLink = async (token: string) => {
+    const url = `${window.location.origin}/accept-invitation/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copiado para área de transferência!');
+    } catch (error) {
+      toast.error('Erro ao copiar link');
     }
   };
 
@@ -160,6 +184,13 @@ export default function TeamManagement() {
         </Button>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
+          {error}
+        </div>
+      )}
+
       {/* Team Members */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Membros Ativos</h2>
@@ -175,11 +206,16 @@ export default function TeamManagement() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">
-                    Carregando...
-                  </TableCell>
-                </TableRow>
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-[200px]" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-[40px] ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                </>
               ) : members.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
@@ -187,26 +223,36 @@ export default function TeamManagement() {
                   </TableCell>
                 </TableRow>
               ) : (
-                members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.user_email}</TableCell>
-                    <TableCell>{getRoleBadge(member.role)}</TableCell>
-                    <TableCell>
-                      {new Date(member.created_at).toLocaleDateString('pt-BR')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {member.role !== 'owner' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setMemberToDelete(member.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                members.map((member) => {
+                  const isCurrentUser = member.user_id === user?.id;
+                  return (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {member.user_email}
+                          {isCurrentUser && (
+                            <Badge variant="secondary" className="text-xs">Você</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getRoleBadge(member.role)}</TableCell>
+                      <TableCell>
+                        {new Date(member.created_at).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {member.role !== 'owner' && !isCurrentUser && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setMemberToDelete(member.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -247,13 +293,23 @@ export default function TeamManagement() {
                       {new Date(invitation.expires_at).toLocaleDateString('pt-BR')}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteInvitation(invitation.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyInvitationLink(invitation.token)}
+                          title="Copiar link do convite"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteInvitation(invitation.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
