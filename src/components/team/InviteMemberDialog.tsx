@@ -67,13 +67,15 @@ export function InviteMemberDialog({
 
       if (error) throw error;
 
-      toast.success(data.message || 'Convite enviado com sucesso!');
-      
-      // Show invitation URL in toast for development
+      // Copy invitation URL to clipboard
       if (data.invitationUrl) {
-        toast.info(`Link de convite: ${data.invitationUrl}`, {
-          duration: 10000,
+        await navigator.clipboard.writeText(data.invitationUrl);
+        toast.success('Link de convite copiado para a área de transferência!', {
+          description: 'Envie este link para o convidado por email ou WhatsApp',
+          duration: 8000,
         });
+      } else {
+        toast.success(data.message || 'Convite criado com sucesso!');
       }
 
       onSuccess();
