@@ -63,17 +63,17 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     }
   },
   
-  set_delivery_address: {
+  validate_and_set_delivery_address: {
     type: "function",
     function: {
-      name: "set_delivery_address",
-      description: "Set the delivery address for the order",
+      name: "validate_and_set_delivery_address",
+      description: "Validate and set the delivery address. First geocodes the address, then validates against delivery zones. Returns validation result with fee and estimated time. ALWAYS use this to set delivery address.",
       parameters: {
         type: "object",
         properties: {
           address: {
             type: "string",
-            description: "Full delivery address"
+            description: "Full delivery address (street, number, postal code, city)"
           }
         },
         required: ["address"]
