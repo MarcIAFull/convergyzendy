@@ -712,12 +712,115 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
           break;
         }
         
-        case 'set_delivery_address': {
+        case 'validate_and_set_delivery_address': {
           const { address } = args;
           
-          newMetadata.delivery_address = address;
-          newState = 'collecting_payment';
-          console.log(`[Tool] ✅ Set delivery address: ${address}`);
+          console.log(`[Tool] 🗺️ Validating address: ${address}`);
+          
+          try {
+            // Step 1: Geocode the address
+            console.log('[Tool] Step 1: Geocoding address...');
+            const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke(
+              'geocode-address-free',
+              { body: { address } }
+            );
+            
+            if (geocodeError || !geocodeData) {
+              console.error('[Tool] Geocoding failed:', geocodeError);
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: false,
+                  error: 'Não foi possível encontrar o endereço. Por favor, verifica se está correto.'
+                })
+              });
+              break;
+            }
+            
+            const { lat, lng, formatted_address } = geocodeData;
+            console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
+            
+            // Step 2: Validate against delivery zones
+            console.log('[Tool] Step 2: Validating delivery zones...');
+            const orderAmount = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+            
+            const { data: validationData, error: validationError } = await supabase.functions.invoke(
+              'validate-delivery-address',
+              { 
+                body: { 
+                  restaurant_id: restaurantId, 
+                  lat, 
+                  lng,
+                  order_amount: orderAmount
+                } 
+              }
+            );
+            
+            if (validationError || !validationData) {
+              console.error('[Tool] Validation failed:', validationError);
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: false,
+                  error: 'Erro ao validar endereço. Por favor, tenta novamente.'
+                })
+              });
+              break;
+            }
+            
+            // Step 3: Process validation result
+            if (validationData.valid) {
+              // Valid delivery zone
+              newMetadata.delivery_address = formatted_address;
+              newMetadata.delivery_coordinates = { lat, lng };
+              newMetadata.delivery_zone = validationData.zone?.name || 'Desconhecida';
+              newMetadata.delivery_fee = validationData.delivery_fee;
+              newMetadata.estimated_delivery_time = validationData.estimated_time_minutes;
+              newMetadata.distance_km = validationData.distance_km;
+              
+              newState = 'collecting_payment';
+              
+              console.log(`[Tool] ✅ Address validated successfully`);
+              console.log(`[Tool]    Zone: ${newMetadata.delivery_zone}`);
+              console.log(`[Tool]    Fee: €${validationData.delivery_fee.toFixed(2)}`);
+              console.log(`[Tool]    Time: ${validationData.estimated_time_minutes} min`);
+              
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: true,
+                  valid: true,
+                  address: formatted_address,
+                  zone: newMetadata.delivery_zone,
+                  delivery_fee: validationData.delivery_fee,
+                  estimated_time_minutes: validationData.estimated_time_minutes,
+                  distance_km: validationData.distance_km
+                })
+              });
+            } else {
+              // Invalid delivery zone
+              console.log(`[Tool] ❌ Address outside delivery zone: ${validationData.error}`);
+              
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: true,
+                  valid: false,
+                  error: validationData.error,
+                  address: formatted_address
+                })
+              });
+            }
+          } catch (error) {
+            console.error('[Tool] Unexpected error during address validation:', error);
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                success: false,
+                error: 'Erro inesperado ao validar endereço.'
+              })
+            });
+          }
           break;
         }
         
@@ -741,7 +844,15 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
             continue;
           }
           
-          const orderTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+          // Calculate order total with dynamic delivery fee
+          const subtotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+          const deliveryFeeToUse = newMetadata.delivery_fee ?? restaurant.delivery_fee ?? 0;
+          const orderTotal = subtotal + deliveryFeeToUse;
+          
+          console.log(`[Tool] 📊 Order calculation:`);
+          console.log(`[Tool]    Subtotal: €${subtotal.toFixed(2)}`);
+          console.log(`[Tool]    Delivery: €${deliveryFeeToUse.toFixed(2)} (${newMetadata.delivery_zone || 'default'})`);
+          console.log(`[Tool]    Total: €${orderTotal.toFixed(2)}`);
           
           const { data: order, error: orderError } = await supabase
             .from('orders')
@@ -762,10 +873,18 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
           } else {
             console.log(`[Tool] ✅ Order created: ${order.id}`);
             
-            // Mark cart as completed
+            // Update cart metadata with delivery details
             await supabase
               .from('carts')
-              .update({ status: 'completed' })
+              .update({ 
+                status: 'completed',
+                metadata: {
+                  ...newMetadata,
+                  delivery_fee: deliveryFeeToUse,
+                  subtotal: subtotal,
+                  total: orderTotal
+                }
+              })
               .eq('id', activeCart.id);
             
             // Update customer insights

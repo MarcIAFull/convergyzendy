@@ -160,10 +160,18 @@ AÇÃO ATUAL: O item está pronto para ser confirmado.
 
     case 'collecting_address':
       stateGuidance = `
-AÇÃO ATUAL: Precisas recolher a morada de entrega.
+AÇÃO ATUAL: Precisas recolher e VALIDAR a morada de entrega.
 - Pede a morada completa (rua, número, código postal, cidade).
-- Confirma a morada com o cliente.
-- Usa a ferramenta set_delivery_address.
+- Usa a ferramenta validate_and_set_delivery_address para validar.
+- Se o endereço for VÁLIDO:
+  - Confirma a morada, zona, taxa de entrega e tempo estimado.
+  - Avança para collecting_payment.
+- Se o endereço for INVÁLIDO:
+  - Explica ao cliente que o endereço está fora da área de entrega.
+  - Pergunta se quer fornecer outro endereço ou levantar no estabelecimento.
+- Se o pedido não atingir o mínimo da zona:
+  - Informa o valor mínimo necessário.
+  - Sugere adicionar mais itens ou alterar o endereço.
 `;
       break;
 
