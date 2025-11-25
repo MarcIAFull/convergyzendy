@@ -28,32 +28,54 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
         return;
       }
 
-      // Get all restaurant IDs the user has access to
-      const { data: ownerships, error: ownershipsError } = await supabase
-        .from('restaurant_owners')
-        .select('restaurant_id')
-        .eq('user_id', user.id);
+      // Check if user is admin
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
 
-      if (ownershipsError) throw ownershipsError;
+      const isAdmin = !!userRole;
 
-      if (!ownerships || ownerships.length === 0) {
-        set({ restaurants: [], loading: false });
-        return;
+      if (isAdmin) {
+        // Admins have access to ALL restaurants
+        const { data: restaurants, error: restaurantsError } = await supabase
+          .from('restaurants')
+          .select('*')
+          .order('name');
+
+        if (restaurantsError) throw restaurantsError;
+
+        console.log('[UserRestaurantsStore] Admin - Loaded ALL restaurants:', restaurants?.length || 0);
+        set({ restaurants: restaurants || [], loading: false });
+      } else {
+        // Regular users only see their assigned restaurants
+        const { data: ownerships, error: ownershipsError } = await supabase
+          .from('restaurant_owners')
+          .select('restaurant_id')
+          .eq('user_id', user.id);
+
+        if (ownershipsError) throw ownershipsError;
+
+        if (!ownerships || ownerships.length === 0) {
+          set({ restaurants: [], loading: false });
+          return;
+        }
+
+        const restaurantIds = ownerships.map(o => o.restaurant_id);
+
+        const { data: restaurants, error: restaurantsError } = await supabase
+          .from('restaurants')
+          .select('*')
+          .in('id', restaurantIds)
+          .order('name');
+
+        if (restaurantsError) throw restaurantsError;
+
+        console.log('[UserRestaurantsStore] User - Loaded restaurants:', restaurants?.length || 0);
+        set({ restaurants: restaurants || [], loading: false });
       }
-
-      const restaurantIds = ownerships.map(o => o.restaurant_id);
-
-      // Fetch all restaurants
-      const { data: restaurants, error: restaurantsError } = await supabase
-        .from('restaurants')
-        .select('*')
-        .in('id', restaurantIds)
-        .order('name');
-
-      if (restaurantsError) throw restaurantsError;
-
-      console.log('[UserRestaurantsStore] Loaded restaurants:', restaurants?.length || 0);
-      set({ restaurants: restaurants || [], loading: false });
 
     } catch (error) {
       console.error('[UserRestaurantsStore] Error fetching restaurants:', error);

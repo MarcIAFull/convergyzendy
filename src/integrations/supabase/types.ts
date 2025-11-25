@@ -1929,6 +1929,18 @@ export type Database = {
         Args: { instance_name: string }
         Returns: string
       }
+      get_team_members_with_email: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          permissions: Json
+          restaurant_id: string
+          role: string
+          user_email: string
+          user_id: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

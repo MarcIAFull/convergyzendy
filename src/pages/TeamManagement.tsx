@@ -63,26 +63,15 @@ export default function TeamManagement() {
     try {
       setLoading(true);
 
-      // Fetch team members
+      // Fetch team members with emails using RPC function
       const { data: membersData, error: membersError } = await supabase
-        .from('restaurant_owners')
-        .select('*')
-        .eq('restaurant_id', restaurant.id);
+        .rpc('get_team_members_with_email', { 
+          p_restaurant_id: restaurant.id 
+        });
 
       if (membersError) throw membersError;
 
-      // Get user emails for each member
-      const membersWithEmails = await Promise.all(
-        (membersData || []).map(async (member) => {
-          const { data: userData } = await supabase.auth.admin.getUserById(member.user_id);
-          return {
-            ...member,
-            user_email: userData.user?.email || 'N/A'
-          };
-        })
-      );
-
-      setMembers(membersWithEmails);
+      setMembers(membersData || []);
 
       // Fetch pending invitations
       const { data: invitationsData, error: invitationsError } = await supabase
