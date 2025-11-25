@@ -7,6 +7,11 @@ export interface RestaurantAISettings {
   upsell_aggressiveness: 'low' | 'medium' | 'high';
   max_additional_questions_before_checkout: number;
   language: string;
+  custom_instructions: string | null;
+  business_rules: string | null;
+  faq_responses: string | null;
+  unavailable_items_handling: string | null;
+  special_offers_info: string | null;
   created_at: string;
   updated_at: string;
 }
