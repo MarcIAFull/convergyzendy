@@ -18,9 +18,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  let interactionLog: any;
+  let supabase: any;
+
   try {
-    const startTime = Date.now();
-    
     const { messageBody: rawMessage, customerPhone, restaurantId } = await req.json();
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
@@ -37,7 +39,17 @@ serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
     
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Initialize interaction log
+    interactionLog = {
+      restaurant_id: restaurantId,
+      customer_phone: customerPhone,
+      user_message: rawMessage,
+      errors: [],
+      has_errors: false,
+      log_level: 'info'
+    };
 
     // ============================================================
     // CHECK IF CONVERSATION IS IN MANUAL MODE
@@ -170,6 +182,17 @@ serve(async (req) => {
       formatted
     } = context;
 
+    // Log context loaded
+    interactionLog.state_before = currentState;
+    interactionLog.context_loaded = {
+      menu_count: availableProducts.length,
+      cart_items: cartItems.length,
+      cart_total: cartTotal,
+      customer: customer ? { name: customer.name, phone: customer.phone, has_address: !!customer.default_address } : null,
+      pending_items: pendingItems.length,
+      conversation_history_length: conversationHistory.length
+    };
+
     // ============================================================
     // STEP 2: CALL ORDER ORCHESTRATOR
     // ============================================================
@@ -261,6 +284,12 @@ serve(async (req) => {
     console.log(`[Orchestrator] → Target State: ${decision.target_state}`);
     console.log(`[Orchestrator] → Confidence: ${decision.confidence}`);
     console.log(`[Orchestrator] → Reasoning: ${decision.reasoning}`);
+
+    // Log orchestrator results
+    interactionLog.orchestrator_intent = decision.intent;
+    interactionLog.orchestrator_confidence = decision.confidence;
+    interactionLog.orchestrator_target_state = decision.target_state;
+    interactionLog.orchestrator_reasoning = decision.reasoning;
 
     // ============================================================
     // STEP 3: CALL MAIN AI WITH TOOLS
@@ -445,6 +474,19 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
     console.log(`[Main AI] Prompt length: ${conversationalSystemPrompt.length} characters`);
     console.log(`[Main AI] Prompt blocks used: ${conversationalPromptBlocks.length}`);
 
+    // Log AI request details
+    interactionLog.system_prompt = conversationalSystemPrompt;
+    interactionLog.prompt_length = conversationalSystemPrompt.length;
+    interactionLog.ai_request = {
+      model: conversationalAgent?.model || 'gpt-4o',
+      tools_count: tools.length,
+      temperature: conversationalAgent?.temperature ?? 0.7,
+      max_tokens: conversationalAgent?.max_tokens || 1000,
+      top_p: conversationalAgent?.top_p,
+      frequency_penalty: conversationalAgent?.frequency_penalty,
+      presence_penalty: conversationalAgent?.presence_penalty
+    };
+
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -478,6 +520,11 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
     
     console.log(`[Main AI] Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
     console.log(`[Main AI] Tool calls received: ${toolCalls.length}`);
+    
+    // Log AI response
+    interactionLog.ai_response_raw = aiData;
+    interactionLog.ai_response_text = finalResponse;
+    interactionLog.tool_calls_requested = toolCalls;
     
     if (toolCalls.length > 0) {
       console.log('[Main AI] Tools to execute:');
@@ -575,6 +622,9 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
     }
     
     console.log(`[Tool Validation] Validated tool calls: ${validatedToolCalls.length} of ${toolCalls.length}`);
+    
+    // Log validated tools
+    interactionLog.tool_calls_validated = validatedToolCalls;
     
     // Fallback if ALL tool calls were rejected
     if (toolCalls.length > 0 && validatedToolCalls.length === 0) {
@@ -1019,17 +1069,36 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
             continue;
           }
           
-          // PHASE 5: Validate addon_ids belong to this product
-          if (addon_ids && addon_ids.length > 0) {
-            const validAddonIds = (product.addons || []).map((a: any) => a.id);
-            const invalidAddons = addon_ids.filter((id: string) => !validAddonIds.includes(id));
+          // ============================================================
+          // AUTO-CORRECTION: Detect mentioned addons and fix invalid IDs
+          // ============================================================
+          const availableAddons = product.addons || [];
+          let correctedAddonIds = addon_ids;
+          
+          // Check if addon_ids are invalid (not UUIDs or not in product)
+          const invalidAddons = addon_ids.filter((id: string) => 
+            !availableAddons.some((a: any) => a.id === id)
+          );
+          
+          if (invalidAddons.length > 0) {
+            console.warn(`[Tool] ⚠️ Invalid addon_ids detected: ${invalidAddons.join(', ')}`);
+            console.warn(`[Tool] Valid addons: ${availableAddons.map((a: any) => a.id).join(', ')}`);
             
-            if (invalidAddons.length > 0) {
-              console.error(`[Tool] ❌ Invalid addon_ids for product ${product.name}: ${invalidAddons.join(', ')}`);
-              console.error(`[Tool] Valid addons: ${validAddonIds.join(', ')}`);
-              continue;
+            // Try to find addons mentioned in the message
+            const mentionedAddons = availableAddons.filter((addon: any) =>
+              rawMessage.toLowerCase().includes(addon.name.toLowerCase())
+            );
+            
+            if (mentionedAddons.length > 0) {
+              correctedAddonIds = mentionedAddons.map((a: any) => a.id);
+              console.log(`[Tool] ✅ Auto-corrected addon_ids: ${correctedAddonIds.join(', ')}`);
+            } else {
+              // Remove invalid addons
+              correctedAddonIds = addon_ids.filter((id: string) => 
+                availableAddons.some((a: any) => a.id === id)
+              );
+              console.warn(`[Tool] ⚠️ Removed invalid addons, keeping: ${correctedAddonIds.join(', ')}`);
             }
-            console.log(`[Tool] ✅ Validated ${addon_ids.length} addon(s) for product ${product.name}`);
           }
           
           const { data: pendingItem, error: pendingError } = await supabase
@@ -1039,7 +1108,7 @@ CRITICAL: These settings override your default behavior. Adapt your responses ac
               restaurant_id: restaurantId,
               product_id,
               quantity,
-              addon_ids,
+              addon_ids: correctedAddonIds,
               notes,
               status: 'pending'
             })
@@ -1601,6 +1670,23 @@ ${validatedToolCalls.map((tc: any) => {
 
     console.log('[Metrics]', JSON.stringify(metrics));
     
+    // ============================================================
+    // SAVE INTERACTION LOG TO DATABASE
+    // ============================================================
+    
+    interactionLog.state_after = newState;
+    interactionLog.final_response = finalResponse;
+    interactionLog.processing_time_ms = Date.now() - startTime;
+    interactionLog.tool_execution_results = toolResults;
+    
+    try {
+      await supabase.from('ai_interaction_logs').insert(interactionLog);
+      console.log('[Logging] ✅ Interaction log saved to database');
+    } catch (logError) {
+      console.error('[Logging] ❌ Failed to save interaction log:', logError);
+      // Don't throw - processing succeeded
+    }
+    
     console.log('\n[Summary] ========== PROCESSING COMPLETE ==========');
     console.log(`[Summary] Intent classified: ${intent} (confidence: ${confidence})`);
     console.log(`[Summary] Tools called (raw): ${toolCalls.length}`);
@@ -1623,6 +1709,25 @@ ${validatedToolCalls.map((tc: any) => {
 
   } catch (error: any) {
     console.error('[WhatsApp AI] Error:', error);
+    
+    // Log error to database if we have the context
+    if (interactionLog && supabase) {
+      interactionLog.has_errors = true;
+      interactionLog.log_level = 'error';
+      interactionLog.errors = [{
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      }];
+      interactionLog.processing_time_ms = Date.now() - (startTime || Date.now());
+      
+      try {
+        await supabase.from('ai_interaction_logs').insert(interactionLog);
+      } catch (logError) {
+        console.error('[Logging] Failed to save error log:', logError);
+      }
+    }
+    
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
