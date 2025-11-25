@@ -116,7 +116,7 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     type: "function",
     function: {
       name: "clear_cart",
-      description: "Clear all items from the customer's cart",
+      description: "Clear all items from the customer's cart. USE APENAS se o usuário explicitamente pedir para 'cancelar tudo', 'limpar o carrinho', 'começar do zero' ou similar. Para mudanças de quantidade ou remoção de itens específicos, use remove_from_cart ou remove_pending_item.",
       parameters: {
         type: "object",
         properties: {}

@@ -135,7 +135,11 @@ Indicators:
 
 ## unclear
 User's intent cannot be confidently determined from the context.
-Use this sparingly - only when truly ambiguous.
+Indicators:
+- Message is too short or unintelligible (e.g., random letters like "iry", "asdf", typos without context)
+- Message is vague without sufficient context (e.g., "ok" with no pending items or recent offers)
+- Message doesn't relate to any known intent
+**CRITICAL:** When classifying as unclear, set confidence LOW (0.1-0.4). Do NOT force-fit unintelligible messages into other intents with high confidence.
 
 # CURRENT CONTEXT
 
@@ -224,6 +228,16 @@ Context: No pending items, no recent offer from agent
   "reasoning": "User reply is vague and no product was recently offered"
 }
 
+## Example 5b: Unintelligible message (typos/noise)
+User: "iry"
+Context: No clear relation to menu items, no pending items
+→ {
+  "intent": "unclear",
+  "target_state": "idle",
+  "confidence": 0.1,
+  "reasoning": "Message is unintelligible and does not match any product or intent context"
+}
+
 ## Example 6: Providing address
 State: collecting_address
 User: "Rua das Flores, 123, Lisboa"
@@ -243,7 +257,8 @@ User: "Rua das Flores, 123, Lisboa"
 5. **AGENT'S LAST MESSAGE MATTERS** - What did the agent just say? Is it an offer? A question? A summary?
 6. **STATE INFORMS INTENT** - If state is "collecting_address", address-like input → provide_address
 7. **CONFIDENCE MATTERS** - If you're not sure, lower the confidence or use "unclear"
-8. **OUTPUT ONLY JSON** - No explanations outside the JSON structure
+8. **UNINTELLIGIBLE = UNCLEAR WITH LOW CONFIDENCE** - Random letters, typos without context (e.g., "iry", "asdf") should be classified as unclear with confidence ≤0.2. Do NOT force them into other intents with high confidence.
+9. **OUTPUT ONLY JSON** - No explanations outside the JSON structure
 
 # YOUR TASK
 Analyze the current context and output ONLY the intent classification JSON.`;

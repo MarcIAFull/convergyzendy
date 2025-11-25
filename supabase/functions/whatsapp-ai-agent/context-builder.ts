@@ -310,7 +310,7 @@ export async function buildConversationContext(
 function formatMenuForPrompt(products: any[]): string {
   return products.map(p => {
     const addonsText = p.addons && p.addons.length > 0
-      ? `\n  Addons: ${p.addons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`
+      ? `\n  Addons: ${p.addons.map((a: any) => `${a.name} (ID: ${a.id}) - +€${a.price}`).join(', ')}`
       : '';
     return `• ${p.name} (ID: ${p.id}) - €${p.price}${p.description ? ` - ${p.description}` : ''}${addonsText}`;
   }).join('\n');
