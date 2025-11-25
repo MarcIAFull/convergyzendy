@@ -41,7 +41,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle } from "lucide-react";
+import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle, Download } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
@@ -133,6 +133,19 @@ export default function AILogs() {
     new Set(logs?.map((log) => log.orchestrator_intent).filter(Boolean))
   );
 
+  const exportLogsAsJson = () => {
+    if (!logs || logs.length === 0) return;
+    
+    const dataStr = JSON.stringify(logs, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ai-logs-${new Date().toISOString()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
       <div className="flex items-center justify-between">
@@ -142,10 +155,16 @@ export default function AILogs() {
             Comprehensive debugging logs for AI agent interactions
           </p>
         </div>
-        <Button onClick={() => refetch()} variant="outline" size="sm">
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={exportLogsAsJson} variant="outline" size="sm" disabled={!logs || logs.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export JSON
+          </Button>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
