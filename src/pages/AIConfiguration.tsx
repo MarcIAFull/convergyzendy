@@ -11,6 +11,7 @@ import { ModelParametersCard } from '@/components/ai-config/ModelParametersCard'
 import { BehaviorConfigCard } from '@/components/ai-config/BehaviorConfigCard';
 import { RecoveryMessagesCard } from '@/components/ai-config/RecoveryMessagesCard';
 import { OrchestrationRulesEditor } from '@/components/ai-config/OrchestrationRulesEditor';
+import { PromptTemplateGuide } from '@/components/ai-config/PromptTemplateGuide';
 
 export default function AIConfiguration() {
   const { toast } = useToast();
@@ -316,6 +317,9 @@ export default function AIConfiguration() {
         {/* Unified layout */}
         {selectedAgent && (
           <div className="space-y-6">
+            {/* Guide */}
+            <PromptTemplateGuide />
+
             {/* Model Parameters */}
             <ModelParametersCard 
               agent={selectedAgent}
