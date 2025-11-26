@@ -60,6 +60,9 @@ export function detectOfferedProduct(response: string, products: Product[]): Pro
   
   // Look for products mentioned with offering patterns
   for (const product of products) {
+    // Skip null/invalid products
+    if (!product || !product.name) continue;
+    
     const productName = product.name.toLowerCase();
     
     // Skip if product name not mentioned at all

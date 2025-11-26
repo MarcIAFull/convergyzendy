@@ -93,14 +93,16 @@ export async function buildConversationContext(
     .order('sort_order');
 
   const availableProducts = categories?.flatMap((cat: any) => 
-    cat.products?.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      price: p.price,
-      description: p.description,
-      category: cat.name,
-      addons: p.addons || []
-    })) || []
+    (cat.products || [])
+      .filter((p: any) => p && p.name && p.id) // Filter out null/invalid products
+      .map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        description: p.description,
+        category: cat.name,
+        addons: p.addons || []
+      }))
   ) || [];
 
   console.log(`[Context Builder] Menu: ${availableProducts.length} products`);
@@ -160,21 +162,23 @@ export async function buildConversationContext(
       `)
       .eq('cart_id', activeCart.id);
     
-    cartItems = (itemsWithAddons || []).map((item: any) => {
-      const addonsTotal = (item.cart_item_addons || []).reduce(
-        (sum: number, cia: any) => sum + (cia.addons?.price || 0), 
-        0
-      );
-      return {
-        product_id: item.product_id,
-        product_name: item.products.name,
-        quantity: item.quantity,
-        price: item.products.price,
-        total_price: item.quantity * (item.products.price + addonsTotal),
-        notes: item.notes,
-        addons: item.cart_item_addons?.map((cia: any) => cia.addons) || []
-      };
-    });
+    cartItems = (itemsWithAddons || [])
+      .filter((item: any) => item && item.products && item.products.name) // Filter out null/invalid items
+      .map((item: any) => {
+        const addonsTotal = (item.cart_item_addons || []).reduce(
+          (sum: number, cia: any) => sum + (cia.addons?.price || 0), 
+          0
+        );
+        return {
+          product_id: item.product_id,
+          product_name: item.products.name,
+          quantity: item.quantity,
+          price: item.products.price,
+          total_price: item.quantity * (item.products.price + addonsTotal),
+          notes: item.notes,
+          addons: item.cart_item_addons?.map((cia: any) => cia.addons) || []
+        };
+      });
   }
 
   const cartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
@@ -422,11 +426,13 @@ function formatHistoryForPrompt(history: any[]): string {
 function formatPendingItemsForPrompt(pendingItems: any[]): string {
   if (pendingItems.length === 0) return 'No pending items';
   
-  return pendingItems.map(item => {
-    const addonsText = item.addons && item.addons.length > 0
-      ? ` + ${item.addons.map((a: any) => a.name).join(', ')}`
-      : '';
-    const notesText = item.notes ? ` (${item.notes})` : '';
-    return `${item.quantity}x ${item.product.name}${addonsText}${notesText}`;
-  }).join(', ');
+  return pendingItems
+    .filter(item => item && item.product && item.product.name) // Filter out null/invalid items
+    .map(item => {
+      const addonsText = item.addons && item.addons.length > 0
+        ? ` + ${item.addons.map((a: any) => a.name).join(', ')}`
+        : '';
+      const notesText = item.notes ? ` (${item.notes})` : '';
+      return `${item.quantity}x ${item.product.name}${addonsText}${notesText}`;
+    }).join(', ');
 }
