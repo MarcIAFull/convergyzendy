@@ -40,10 +40,19 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle, Download } from "lucide-react";
+import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle, Download, Settings } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface AILog {
   id: string;
@@ -74,6 +83,35 @@ interface AILog {
   log_level: string;
 }
 
+const EXPORT_FIELDS = [
+  { key: "id", label: "ID" },
+  { key: "created_at", label: "Timestamp" },
+  { key: "restaurant_id", label: "Restaurant ID" },
+  { key: "customer_phone", label: "Phone" },
+  { key: "user_message", label: "User Message" },
+  { key: "state_before", label: "State Before" },
+  { key: "state_after", label: "State After" },
+  { key: "orchestrator_intent", label: "Intent" },
+  { key: "orchestrator_confidence", label: "Confidence" },
+  { key: "orchestrator_target_state", label: "Target State" },
+  { key: "orchestrator_reasoning", label: "Reasoning" },
+  { key: "context_loaded", label: "Context" },
+  { key: "system_prompt", label: "System Prompt" },
+  { key: "prompt_length", label: "Prompt Length" },
+  { key: "ai_request", label: "AI Request" },
+  { key: "ai_response_raw", label: "AI Response (Raw)" },
+  { key: "ai_response_text", label: "AI Response (Text)" },
+  { key: "tool_calls_requested", label: "Tools Requested" },
+  { key: "tool_calls_validated", label: "Tools Validated" },
+  { key: "tool_execution_results", label: "Tool Results" },
+  { key: "final_response", label: "Final Response" },
+  { key: "processing_time_ms", label: "Processing Time" },
+  { key: "tokens_used", label: "Tokens Used" },
+  { key: "errors", label: "Errors" },
+  { key: "has_errors", label: "Has Errors" },
+  { key: "log_level", label: "Log Level" },
+];
+
 export default function AILogs() {
   const [selectedLog, setSelectedLog] = useState<AILog | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -81,9 +119,27 @@ export default function AILogs() {
   const [intentFilter, setIntentFilter] = useState<string>("all");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [phoneFilter, setPhoneFilter] = useState("");
+  const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [selectedExportFields, setSelectedExportFields] = useState<string[]>(
+    EXPORT_FIELDS.map(f => f.key)
+  );
+
+  // Fetch restaurants
+  const { data: restaurants } = useQuery({
+    queryKey: ["restaurants-for-logs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("restaurants")
+        .select("id, name")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const { data: logs, isLoading, refetch } = useQuery({
-    queryKey: ["ai-logs", searchQuery, intentFilter, onlyErrors, phoneFilter],
+    queryKey: ["ai-logs", searchQuery, intentFilter, onlyErrors, phoneFilter, restaurantFilter],
     queryFn: async () => {
       let query = supabase
         .from("ai_interaction_logs")
@@ -101,6 +157,10 @@ export default function AILogs() {
 
       if (phoneFilter) {
         query = query.ilike("customer_phone", `%${phoneFilter}%`);
+      }
+
+      if (restaurantFilter && restaurantFilter !== "all") {
+        query = query.eq("restaurant_id", restaurantFilter);
       }
 
       if (searchQuery) {
@@ -133,10 +193,35 @@ export default function AILogs() {
     new Set(logs?.map((log) => log.orchestrator_intent).filter(Boolean))
   );
 
+  const toggleExportField = (fieldKey: string) => {
+    setSelectedExportFields(prev =>
+      prev.includes(fieldKey)
+        ? prev.filter(k => k !== fieldKey)
+        : [...prev, fieldKey]
+    );
+  };
+
+  const selectAllExportFields = () => {
+    setSelectedExportFields(EXPORT_FIELDS.map(f => f.key));
+  };
+
+  const deselectAllExportFields = () => {
+    setSelectedExportFields([]);
+  };
+
   const exportLogsAsJson = () => {
     if (!logs || logs.length === 0) return;
     
-    const dataStr = JSON.stringify(logs, null, 2);
+    // Filter logs to only include selected fields
+    const filteredLogs = logs.map(log => {
+      const filtered: any = {};
+      selectedExportFields.forEach(field => {
+        filtered[field] = (log as any)[field];
+      });
+      return filtered;
+    });
+    
+    const dataStr = JSON.stringify(filteredLogs, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
@@ -144,6 +229,7 @@ export default function AILogs() {
     link.download = `ai-logs-${new Date().toISOString()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    setExportDialogOpen(false);
   };
 
   return (
@@ -156,10 +242,76 @@ export default function AILogs() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={exportLogsAsJson} variant="outline" size="sm" disabled={!logs || logs.length === 0}>
-            <Download className="mr-2 h-4 w-4" />
-            Export JSON
-          </Button>
+          <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={!logs || logs.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Export JSON
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Selecionar Campos para Exportação</DialogTitle>
+                <DialogDescription>
+                  Escolha quais campos deseja incluir no arquivo JSON ({logs?.length || 0} logs)
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={selectAllExportFields} 
+                    variant="outline" 
+                    size="sm"
+                  >
+                    Selecionar Todos
+                  </Button>
+                  <Button 
+                    onClick={deselectAllExportFields} 
+                    variant="outline" 
+                    size="sm"
+                  >
+                    Desmarcar Todos
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {EXPORT_FIELDS.map(field => (
+                    <div key={field.key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`export-${field.key}`}
+                        checked={selectedExportFields.includes(field.key)}
+                        onCheckedChange={() => toggleExportField(field.key)}
+                      />
+                      <Label 
+                        htmlFor={`export-${field.key}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {field.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setExportDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={exportLogsAsJson}
+                    disabled={selectedExportFields.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Exportar ({selectedExportFields.length} campos)
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
           <Button onClick={() => refetch()} variant="outline" size="sm">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
@@ -176,7 +328,7 @@ export default function AILogs() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2">
               <Label htmlFor="search">Search Messages</Label>
               <div className="relative">
@@ -189,6 +341,23 @@ export default function AILogs() {
                   className="pl-8"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="restaurant">Restaurante</Label>
+              <Select value={restaurantFilter} onValueChange={setRestaurantFilter}>
+                <SelectTrigger id="restaurant">
+                  <SelectValue placeholder="Todos restaurantes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos restaurantes</SelectItem>
+                  {restaurants?.map((restaurant) => (
+                    <SelectItem key={restaurant.id} value={restaurant.id}>
+                      {restaurant.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
