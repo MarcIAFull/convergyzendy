@@ -54,15 +54,19 @@ export function buildConversationalAIPrompt(context: {
     specialOffersInfo
   } = context;
 
-  // Format menu with addon UUIDs prominently displayed
-  const productList = menuProducts
-    .filter(p => p && p.name) // Filter out null/invalid products
-    .map(p => {
-      const addonsText = p.addons && p.addons.length > 0
-        ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.filter((a: any) => a && a.name).map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
-        : '';
-      return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
-    }).join('\n');
+  // ============================================================
+  // RAG OPTIMIZATION: Only show categories, not full product list
+  // This reduces prompt from 56k to ~2k characters
+  // ============================================================
+  const categories = [...new Set(
+    menuProducts
+      .filter(p => p && p.category)
+      .map(p => p.category)
+  )].sort();
+  
+  const productList = categories.length > 0
+    ? `📋 CATEGORIAS DISPONÍVEIS:\n${categories.map(cat => `• ${cat}`).join('\n')}\n\n⚠️ IMPORTANTE: Para ver produtos específicos de uma categoria, você DEVE usar a tool search_menu.\nExemplo: search_menu(category: "Pizzas") para listar todas as pizzas.`
+    : 'Nenhuma categoria disponível';
 
   const cartSummary = cartItems.length > 0
     ? cartItems.map(item => `${item.quantity}x ${item.product_name} (€${item.total_price})`).join(', ')
@@ -144,8 +148,14 @@ To ensure users believe they are talking to a human, allow these rules to shape 
 **Cart:** ${cartSummary} (Total: €${cartTotal.toFixed(2)})
 **Pending Items:** ${pendingSummary}
 
-**Available Menu (OFFICIAL SOURCE OF TRUTH):**
+**Available Menu Categories:**
 ${productList}
+
+**CRITICAL WORKFLOW:**
+1. When customer asks about menu/products, show the categories listed above
+2. When customer chooses a category, call search_menu(category: "CategoryName") to get products
+3. The search_menu tool will return: product name, price, UUID, and addon IDs
+4. Only then you can offer specific products to the customer
 
 **Recent Conversation (Last 5 messages):**
 ${recentHistory}
