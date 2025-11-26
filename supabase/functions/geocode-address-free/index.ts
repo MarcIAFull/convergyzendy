@@ -32,51 +32,60 @@ function extractPostalCode(address: string): string | null {
 // Provider 1: Photon (Komoot) - More accurate, free
 async function tryPhoton(address: string): Promise<GeocodingResult | null> {
   try {
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=pt&bbox=-9.5,36.9,-6.2,42.2`;
+    // Photon works better with more complete addresses
+    // Try with Portugal bias first, then without
+    const urls = [
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ' Portugal')}&limit=1&lang=pt`,
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=pt`
+    ];
     
-    console.log('Photon: Trying address:', address);
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'ZendyDeliveryApp/1.0',
-        'Accept': 'application/json'
+    for (const url of urls) {
+      console.log('Photon: Trying URL:', url);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'ZendyDeliveryApp/1.0',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.log('Photon: API error:', response.status);
+        continue;
       }
-    });
 
-    if (!response.ok) {
-      console.log('Photon: API error:', response.status);
-      return null;
+      const data = await response.json();
+      
+      if (!data.features || data.features.length === 0) {
+        console.log('Photon: No results found');
+        continue;
+      }
+
+      const feature = data.features[0];
+      const props = feature.properties;
+      
+      const formattedAddress = [
+        props.name,
+        props.street,
+        props.housenumber,
+        props.postcode,
+        props.city,
+        props.state,
+        props.country
+      ].filter(Boolean).join(', ');
+
+      console.log('Photon: Success!', formattedAddress);
+
+      return {
+        lat: feature.geometry.coordinates[1],
+        lng: feature.geometry.coordinates[0],
+        formatted_address: formattedAddress,
+        place_id: props.osm_id?.toString(),
+        address_components: props,
+        source: 'photon'
+      };
     }
-
-    const data = await response.json();
     
-    if (!data.features || data.features.length === 0) {
-      console.log('Photon: No results found');
-      return null;
-    }
-
-    const feature = data.features[0];
-    const props = feature.properties;
-    
-    const formattedAddress = [
-      props.name,
-      props.street,
-      props.housenumber,
-      props.postcode,
-      props.city,
-      props.state,
-      props.country
-    ].filter(Boolean).join(', ');
-
-    console.log('Photon: Success!', formattedAddress);
-
-    return {
-      lat: feature.geometry.coordinates[1],
-      lng: feature.geometry.coordinates[0],
-      formatted_address: formattedAddress,
-      place_id: props.osm_id?.toString(),
-      address_components: props,
-      source: 'photon'
-    };
+    return null;
   } catch (error) {
     console.error('Photon error:', error);
     return null;
@@ -84,19 +93,20 @@ async function tryPhoton(address: string): Promise<GeocodingResult | null> {
 }
 
 // Provider 2: Nominatim (fallback)
-async function tryNominatim(address: string, countryCode: boolean = true): Promise<GeocodingResult | null> {
+async function tryNominatim(address: string, countryCode: boolean = true, addPortugal: boolean = false): Promise<GeocodingResult | null> {
   try {
+    const searchAddress = addPortugal ? `${address}, Portugal` : address;
     let url = `https://nominatim.openstreetmap.org/search?` +
-      `q=${encodeURIComponent(address)}&` +
+      `q=${encodeURIComponent(searchAddress)}&` +
       `format=json&` +
       `addressdetails=1&` +
-      `limit=1`;
+      `limit=3`;
     
     if (countryCode) {
       url += `&countrycodes=pt`;
     }
 
-    console.log(`Nominatim: Trying address (countryCode=${countryCode}):`, address);
+    console.log(`Nominatim: Trying "${searchAddress}" (countryCode=${countryCode})`);
 
     const response = await fetch(url, {
       headers: {
@@ -117,7 +127,8 @@ async function tryNominatim(address: string, countryCode: boolean = true): Promi
       return null;
     }
 
-    const result = data[0];
+    // Pick best result (prefer ones with street/housenumber)
+    const result = data.find((r: any) => r.address?.road || r.address?.street) || data[0];
     console.log('Nominatim: Success!', result.display_name);
 
     return {
@@ -201,31 +212,53 @@ serve(async (req) => {
       );
     }
 
-    // Try providers in order of accuracy
-    console.log('--- Trying Provider 1: Photon ---');
+    // Try providers in order of accuracy with multiple strategies
+    console.log('--- Strategy 1: Photon ---');
     let result = await tryPhoton(normalizedAddress);
     
     if (!result) {
-      console.log('--- Trying Provider 2: Nominatim with PT filter ---');
-      result = await tryNominatim(normalizedAddress, true);
+      console.log('--- Strategy 2: Nominatim PT + Portugal suffix ---');
+      result = await tryNominatim(normalizedAddress, true, true);
     }
     
     if (!result) {
-      console.log('--- Trying Provider 3: Nominatim without filter ---');
-      result = await tryNominatim(normalizedAddress, false);
+      console.log('--- Strategy 3: Nominatim PT only ---');
+      result = await tryNominatim(normalizedAddress, true, false);
+    }
+    
+    if (!result) {
+      console.log('--- Strategy 4: Nominatim no filter + Portugal ---');
+      result = await tryNominatim(normalizedAddress, false, true);
+    }
+    
+    if (!result) {
+      console.log('--- Strategy 5: Nominatim no filter ---');
+      result = await tryNominatim(normalizedAddress, false, false);
     }
     
     if (!result && address.includes(',')) {
-      console.log('--- Trying Provider 4: Postal code extraction ---');
+      console.log('--- Strategy 6: Postal code extraction ---');
       result = await tryNominatimPostalCode(address);
     }
 
     if (!result) {
       console.log('❌ All geocoding strategies failed');
+      
+      // Check if address is too incomplete
+      const hasPostalCode = /\d{4}-\d{3}/.test(address);
+      const hasComma = address.includes(',');
+      
+      let errorMsg = 'Endereço não encontrado. ';
+      if (!hasPostalCode && !hasComma) {
+        errorMsg += 'O endereço está incompleto. Inclua código postal e cidade (ex: Rua X, 8125-248 Quarteira)';
+      } else if (!hasPostalCode) {
+        errorMsg += 'Adicione o código postal para melhor precisão (ex: 8125-248)';
+      } else {
+        errorMsg += 'Verifique se o endereço está correto.';
+      }
+      
       return new Response(
-        JSON.stringify({ 
-          error: 'Endereço não encontrado. Tente: código postal + cidade (ex: 8125-248 Quarteira)' 
-        }),
+        JSON.stringify({ error: errorMsg }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
