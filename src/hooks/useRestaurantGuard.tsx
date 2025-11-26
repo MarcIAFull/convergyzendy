@@ -79,8 +79,14 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
       return;
     }
 
+    // Still loading restaurant - wait
+    if (restaurantLoading) {
+      console.log('[useRestaurantGuard] ⏳ NAVIGATION: Loading restaurant...');
+      return;
+    }
+
     // Restaurant loaded successfully - mark as ready
-    if (restaurant && !restaurantLoading) {
+    if (restaurant) {
       console.log('[useRestaurantGuard] ✅ NAVIGATION: Restaurant loaded, marking ready!', {
         restaurantId: restaurant.id,
         restaurantName: restaurant.name
@@ -90,8 +96,8 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
     }
 
     // No restaurant after fetch completed - needs onboarding
-    // Only redirect if NOT already on onboarding page
-    if (!restaurant && !restaurantLoading && hasFetchedRef.current && !restaurantError) {
+    // Only redirect if NOT already on onboarding page AND fetch has completed
+    if (!restaurant && hasFetchedRef.current && !restaurantError) {
       if (location.pathname !== '/onboarding') {
         console.log('[useRestaurantGuard] 🚪 NAVIGATION: No restaurant after fetch, redirecting to /onboarding');
         navigate('/onboarding', { replace: true });
