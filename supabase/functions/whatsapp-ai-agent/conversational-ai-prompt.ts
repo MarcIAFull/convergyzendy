@@ -55,12 +55,14 @@ export function buildConversationalAIPrompt(context: {
   } = context;
 
   // Format menu with addon UUIDs prominently displayed
-  const productList = menuProducts.map(p => {
-    const addonsText = p.addons && p.addons.length > 0
-      ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
-      : '';
-    return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
-  }).join('\n');
+  const productList = menuProducts
+    .filter(p => p && p.name) // Filter out null/invalid products
+    .map(p => {
+      const addonsText = p.addons && p.addons.length > 0
+        ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
+        : '';
+      return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
+    }).join('\n');
 
   const cartSummary = cartItems.length > 0
     ? cartItems.map(item => `${item.quantity}x ${item.product_name} (€${item.total_price})`).join(', ')
