@@ -26,68 +26,6 @@ const Onboarding = () => {
   const [currentStep, setCurrentStep] = useState<Step>('restaurant');
   const [completedSteps, setCompletedSteps] = useState<Step[]>([]);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
-  const [checkingExisting, setCheckingExisting] = useState(true);
-
-  // Check if user already has a restaurant on mount
-  useEffect(() => {
-    checkExistingRestaurant();
-  }, []);
-
-  const checkExistingRestaurant = async () => {
-    // Skip check if in create mode
-    if (isCreateMode) {
-      console.log('[Onboarding] Create mode - skipping restaurant check');
-      setCheckingExisting(false);
-      return;
-    }
-
-    if (!user) {
-      console.log('[Onboarding] Sem usuário autenticado, redirecionando...');
-      navigate('/login');
-      return;
-    }
-
-    try {
-      console.log('[Onboarding] Verificando restaurantes para user:', user.id);
-
-      const { data: ownership, error } = await supabase
-        .from('restaurant_owners')
-        .select(`
-          restaurant_id,
-          role,
-          restaurants (
-            id,
-            name,
-            phone
-          )
-        `)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error('[Onboarding] Erro ao verificar restaurante:', error);
-        setCheckingExisting(false);
-        return;
-      }
-
-      if (ownership?.restaurants) {
-        console.log('[Onboarding] ✅ Restaurante existente:', ownership.restaurants);
-        toast.info(`Bem-vindo de volta! Redirecionando para ${ownership.restaurants.name}...`);
-        
-        // Load restaurant data into store
-        await fetchRestaurant();
-        
-        navigate('/');
-        return;
-      }
-
-      console.log('[Onboarding] ✅ Nenhum restaurante encontrado. Iniciando setup...');
-    } catch (error) {
-      console.error('[Onboarding] Erro inesperado:', error);
-    } finally {
-      setCheckingExisting(false);
-    }
-  };
 
   const steps = [
     { id: 'restaurant' as Step, title: 'Restaurante', required: true },
@@ -312,27 +250,6 @@ const Onboarding = () => {
       if (productsError) throw productsError;
     }
   };
-
-  // Show loading while checking for existing restaurant
-  if (checkingExisting) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <div>
-                <h3 className="text-lg font-semibold">Verificando configuração...</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Aguarde um momento
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
