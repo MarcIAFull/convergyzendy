@@ -164,7 +164,7 @@ export function RestaurantTab() {
           console.log('[RestaurantTab] Geocoding successful:', { latitude, longitude });
           toast({
             title: "Endereço geocodificado!",
-            description: `Coordenadas: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+            description: `Localização encontrada com precisão: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
           });
         } else {
           console.warn('[RestaurantTab] Geocoding failed, saving without coordinates');
