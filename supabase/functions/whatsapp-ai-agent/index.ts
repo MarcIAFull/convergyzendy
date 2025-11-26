@@ -1720,6 +1720,50 @@ function searchProducts(
     ? products.filter(p => p.category.toLowerCase().includes(category.toLowerCase()))
     : products;
   
+  // ============================================================
+  // CRITICAL FIX: If category is provided and has products,
+  // return them ALL (category match is priority over text match)
+  // ============================================================
+  if (category && filtered.length > 0) {
+    console.log(`[Search] Category "${category}" specified - returning ${filtered.length} products from category`);
+    
+    // Still calculate similarity for ranking, but don't filter out low scores
+    const scored = filtered.map(product => {
+      let score = 0.5; // Default score for category match
+      const nameLower = product.name.toLowerCase();
+      const descLower = (product.description || '').toLowerCase();
+      
+      // Bonus points if query also matches name/description
+      if (nameLower.includes(queryLower)) {
+        score = 0.9;
+      } else if (descLower.includes(queryLower)) {
+        score = 0.7;
+      } else {
+        // Word-based matching
+        const queryWords = queryLower.split(/\s+/);
+        const nameWords = nameLower.split(/\s+/);
+        const matchingWords = queryWords.filter((qw: string) => 
+          nameWords.some((nw: string) => nw.includes(qw) || qw.includes(nw))
+        ).length;
+        
+        if (matchingWords > 0) {
+          score = 0.6;
+        }
+      }
+      
+      return { product, similarity: score };
+    });
+    
+    // Sort by score (higher first) and return top N
+    return scored
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, maxResults);
+  }
+  
+  // ============================================================
+  // Normal fuzzy search (when no category or category not found)
+  // ============================================================
+  
   // Calculate similarity for each product
   const scored = filtered.map(product => {
     let score = 0;
