@@ -29,6 +29,7 @@ import PublicCheckout from "@/pages/public/PublicCheckout";
 import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
 import TeamManagement from "@/pages/TeamManagement";
 import AcceptInvitation from "@/pages/AcceptInvitation";
+import ImportPizzariaFamilia from "@/pages/ImportPizzariaFamilia";
 import { AdminRoute } from "@/components/AdminRoute";
 import { HelmetProvider } from 'react-helmet-async';
 
@@ -51,6 +52,7 @@ const App = () => (
                 <Route path="/menu/:slug/checkout" element={<PublicCheckout />} />
                 <Route path="/menu/:slug/order-confirmed/:orderId" element={<PublicOrderConfirmed />} />
                 <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
+                <Route path="/import-pizzaria" element={<ProtectedRoute><ImportPizzariaFamilia /></ProtectedRoute>} />
                 
                 {/* Auth Routes */}
                 <Route path="/login" element={<Login />} />
