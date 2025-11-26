@@ -33,6 +33,8 @@ export default function ImportPizzariaFamilia() {
         address: 'Algarve, Portugal',
         delivery_fee: 3.00,
         is_open: true,
+        latitude: null,
+        longitude: null,
         opening_hours: {
           monday: { open: '', close: '', closed: true },
           tuesday: { open: '18:00', close: '23:00' },
