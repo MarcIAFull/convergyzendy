@@ -55,7 +55,7 @@ export async function buildConversationContext(
     .from('restaurants')
     .select('*')
     .eq('id', restaurantId)
-    .single();
+    .maybeSingle();
 
   if (!restaurant) throw new Error('Restaurant not found');
   console.log(`[Context Builder] Restaurant: ${restaurant.name}`);
