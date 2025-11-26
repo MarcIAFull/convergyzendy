@@ -1,10 +1,20 @@
 import { Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const clearRestaurant = useRestaurantStore(state => state.clearRestaurant);
+
+  // Clear restaurant when user logs out (useEffect to avoid setState during render)
+  useEffect(() => {
+    if (!loading && !user) {
+      console.log('[ProtectedRoute] No user, clearing restaurant store');
+      clearRestaurant();
+    }
+  }, [user, loading, clearRestaurant]);
 
   // Show loading spinner while checking auth
   if (loading) {
@@ -20,10 +30,6 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Redirect to login if not authenticated
   if (!user) {
-    // Clear restaurant store if not authenticated
-    console.log('[ProtectedRoute] No user, clearing restaurant store');
-    useRestaurantStore.getState().clearRestaurant();
-    
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

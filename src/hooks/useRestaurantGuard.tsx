@@ -89,15 +89,21 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
       return;
     }
 
-    // No restaurant after fetch completed - needs onboarding (unless already in create mode)
-    if (!restaurant && !restaurantLoading && hasFetchedRef.current && !restaurantError && !isOnboardingCreateMode) {
-      console.log('[useRestaurantGuard] 🚪 NAVIGATION: No restaurant after fetch, redirecting to /onboarding');
-      navigate('/onboarding', { replace: true });
+    // No restaurant after fetch completed - needs onboarding
+    // Only redirect if NOT already on onboarding page
+    if (!restaurant && !restaurantLoading && hasFetchedRef.current && !restaurantError) {
+      if (location.pathname !== '/onboarding') {
+        console.log('[useRestaurantGuard] 🚪 NAVIGATION: No restaurant after fetch, redirecting to /onboarding');
+        navigate('/onboarding', { replace: true });
+      } else {
+        console.log('[useRestaurantGuard] ✅ NAVIGATION: Already on onboarding, marking ready');
+        setIsReady(true);
+      }
       return;
     }
 
     console.log('[useRestaurantGuard] ⚙️ NAVIGATION: No action taken');
-  }, [authLoading, user, session, restaurant, restaurantLoading, restaurantError, navigate]);
+  }, [authLoading, user, session, restaurant, restaurantLoading, restaurantError, navigate, location.pathname]);
 
   // Effect 4: Safety timeout
   useEffect(() => {
