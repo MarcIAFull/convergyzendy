@@ -57,32 +57,82 @@ serve(async (req) => {
       );
     }
 
-    // Call Nominatim API
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?` +
+    // Try geocoding with multiple strategies
+    let data = [];
+    
+    // Strategy 1: With Portugal country code
+    const nominatimUrl1 = `https://nominatim.openstreetmap.org/search?` +
       `q=${encodeURIComponent(address)}&` +
       `format=json&` +
       `addressdetails=1&` +
       `limit=1&` +
       `countrycodes=pt`;
 
-    console.log('Calling Nominatim for:', address);
+    console.log('Strategy 1 - Calling Nominatim with PT filter for:', address);
 
-    const response = await fetch(nominatimUrl, {
+    let response = await fetch(nominatimUrl1, {
       headers: {
         'User-Agent': 'ZendyDeliveryApp/1.0',
         'Accept-Language': 'pt'
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`Nominatim API error: ${response.status}`);
+    if (response.ok) {
+      data = await response.json();
     }
 
-    const data = await response.json();
+    // Strategy 2: Without country filter if first attempt failed
+    if (!data || data.length === 0) {
+      console.log('Strategy 2 - Trying without country filter');
+      const nominatimUrl2 = `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(address)}&` +
+        `format=json&` +
+        `addressdetails=1&` +
+        `limit=1`;
+
+      response = await fetch(nominatimUrl2, {
+        headers: {
+          'User-Agent': 'ZendyDeliveryApp/1.0',
+          'Accept-Language': 'pt'
+        }
+      });
+
+      if (response.ok) {
+        data = await response.json();
+      }
+    }
+
+    // Strategy 3: Try with just postal code and city if address has them
+    if ((!data || data.length === 0) && address.includes(',')) {
+      const parts = address.split(',').map((p: string) => p.trim());
+      const postalAndCity = parts.slice(-2).join(', '); // Get last 2 parts (usually postal code and city)
+      
+      console.log('Strategy 3 - Trying with postal code and city:', postalAndCity);
+      const nominatimUrl3 = `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(postalAndCity)}&` +
+        `format=json&` +
+        `addressdetails=1&` +
+        `limit=1&` +
+        `countrycodes=pt`;
+
+      response = await fetch(nominatimUrl3, {
+        headers: {
+          'User-Agent': 'ZendyDeliveryApp/1.0',
+          'Accept-Language': 'pt'
+        }
+      });
+
+      if (response.ok) {
+        data = await response.json();
+      }
+    }
 
     if (!data || data.length === 0) {
+      console.log('All geocoding strategies failed for:', address);
       return new Response(
-        JSON.stringify({ error: 'Endereço não encontrado' }),
+        JSON.stringify({ 
+          error: 'Endereço não encontrado. Tente usar apenas o código postal e cidade (ex: 8125-248 Quarteira, Portugal)' 
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
