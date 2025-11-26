@@ -308,12 +308,81 @@ export async function buildConversationContext(
 // ============================================================
 
 function formatMenuForPrompt(products: any[]): string {
-  return products.map(p => {
-    const addonsText = p.addons && p.addons.length > 0
-      ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
-      : '';
-    return `• ${p.name} (ID: ${p.id}) - €${p.price}${p.description ? ` - ${p.description}` : ''}${addonsText}`;
-  }).join('\n');
+  // Group products by category
+  const byCategory: Record<string, any[]> = {};
+  products.forEach(p => {
+    if (!byCategory[p.category]) byCategory[p.category] = [];
+    byCategory[p.category].push(p);
+  });
+  
+  // Format each category
+  const sections = Object.entries(byCategory).map(([category, items]) => {
+    const itemsFormatted = items.map(p => {
+      // Extract structured metadata from description
+      const metadata = extractMetadata(p.description || '');
+      const cleanDesc = metadata.cleanDescription;
+      
+      // Build product line
+      let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
+      if (cleanDesc) line += `\n  📝 ${cleanDesc}`;
+      if (metadata.serves) line += `\n  👥 Serve: ${metadata.serves}`;
+      if (metadata.profile) line += ` | 🎯 Perfil: ${metadata.profile}`;
+      if (metadata.popularity) line += ` | 🔥 Popularidade: ${metadata.popularity}`;
+      
+      // Add addons
+      if (p.addons && p.addons.length > 0) {
+        line += `\n  ⭐ ADDONS:`;
+        p.addons.forEach((a: any) => {
+          line += `\n     → ${a.name} (ID: ${a.id}) - +€${a.price}`;
+        });
+      }
+      
+      return line;
+    }).join('\n\n');
+    
+    return `📦 CATEGORIA: ${category}\n\n${itemsFormatted}`;
+  }).join('\n\n');
+  
+  return sections;
+}
+
+// Extract structured metadata from product description
+function extractMetadata(description: string): {
+  cleanDescription: string;
+  serves: string | null;
+  profile: string | null;
+  popularity: string | null;
+} {
+  let cleanDesc = description;
+  let serves = null;
+  let profile = null;
+  let popularity = null;
+  
+  // Extract "Serve: X pessoas"
+  const servesMatch = description.match(/Serve:\s*([^|]+)/i);
+  if (servesMatch) {
+    serves = servesMatch[1].trim();
+    cleanDesc = cleanDesc.replace(/\|\s*Serve:[^|]+/gi, '');
+  }
+  
+  // Extract "Perfil: X"
+  const profileMatch = description.match(/Perfil:\s*([^|]+)/i);
+  if (profileMatch) {
+    profile = profileMatch[1].trim();
+    cleanDesc = cleanDesc.replace(/\|\s*Perfil:[^|]+/gi, '');
+  }
+  
+  // Extract "Popular: X" or "Popularidade: X"
+  const popularityMatch = description.match(/Popula(?:r|ridade):\s*([^|]+)/i);
+  if (popularityMatch) {
+    popularity = popularityMatch[1].trim();
+    cleanDesc = cleanDesc.replace(/\|\s*Popula(?:r|ridade):[^|]+/gi, '');
+  }
+  
+  // Clean up any trailing/leading pipes and whitespace
+  cleanDesc = cleanDesc.replace(/^\s*\|\s*|\s*\|\s*$/g, '').trim();
+  
+  return { cleanDescription: cleanDesc, serves, profile, popularity };
 }
 
 function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
