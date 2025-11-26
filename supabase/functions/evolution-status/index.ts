@@ -38,7 +38,7 @@ serve(async (req) => {
       .from('restaurant_owners')
       .select('restaurant_id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (restaurantOwner) {
       restaurantId = restaurantOwner.restaurant_id;
@@ -48,7 +48,7 @@ serve(async (req) => {
         .from('restaurants')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       
       if (restaurant) {
         restaurantId = restaurant.id;
