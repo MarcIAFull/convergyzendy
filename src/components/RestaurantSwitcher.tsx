@@ -1,5 +1,5 @@
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -20,12 +20,38 @@ import { useRestaurantStore } from "@/stores/restaurantStore";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
+const STORAGE_KEY = 'zendy_active_restaurant';
+
 export function RestaurantSwitcher() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   
   const { restaurants } = useUserRestaurantsStore();
   const { restaurant: currentRestaurant, setRestaurant } = useRestaurantStore();
+
+  // Persist selection to localStorage
+  useEffect(() => {
+    if (currentRestaurant?.id) {
+      localStorage.setItem(STORAGE_KEY, currentRestaurant.id);
+      console.log('[RestaurantSwitcher] Saved restaurant to localStorage:', currentRestaurant.id);
+    }
+  }, [currentRestaurant?.id]);
+
+  // Load saved selection on mount
+  useEffect(() => {
+    const savedId = localStorage.getItem(STORAGE_KEY);
+    if (savedId && restaurants.length > 0 && !currentRestaurant) {
+      const saved = restaurants.find(r => r.id === savedId);
+      if (saved) {
+        console.log('[RestaurantSwitcher] Restoring saved restaurant:', saved.name);
+        setRestaurant(saved as any);
+      } else if (restaurants.length > 0) {
+        // If saved restaurant not found, select first one
+        console.log('[RestaurantSwitcher] Saved restaurant not found, selecting first');
+        setRestaurant(restaurants[0] as any);
+      }
+    }
+  }, [restaurants, currentRestaurant, setRestaurant]);
 
   const handleSelect = (restaurantId: string) => {
     const selected = restaurants.find(r => r.id === restaurantId);
@@ -36,7 +62,7 @@ export function RestaurantSwitcher() {
   };
 
   const handleCreateNew = () => {
-    navigate('/onboarding');
+    navigate('/onboarding?mode=create');
     setOpen(false);
   };
 

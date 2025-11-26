@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { Restaurant } from '@/types/database';
 
+const STORAGE_KEY = 'zendy_active_restaurant';
+
 interface RestaurantState {
   restaurant: Restaurant | null;
   loading: boolean;
@@ -23,6 +25,32 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   fetchRestaurant: async () => {
     console.log('[RestaurantStore] 🔄 Starting fetchRestaurant...');
     set({ loading: true, error: null });
+    
+    // Try to load from localStorage first
+    const savedId = localStorage.getItem(STORAGE_KEY);
+    if (savedId) {
+      console.log('[RestaurantStore] 📦 Found saved restaurant ID:', savedId);
+      try {
+        const { data: savedRestaurant } = await supabase
+          .from('restaurants')
+          .select('*')
+          .eq('id', savedId)
+          .single();
+        
+        if (savedRestaurant) {
+          console.log('[RestaurantStore] ✅ Loaded saved restaurant:', savedRestaurant.name);
+          set({ restaurant: savedRestaurant as unknown as Restaurant, loading: false });
+          return;
+        } else {
+          console.log('[RestaurantStore] ⚠️ Saved restaurant not found, clearing localStorage');
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch (error) {
+        console.error('[RestaurantStore] ⚠️ Error loading saved restaurant:', error);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+    
     try {
       // Get authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -94,6 +122,7 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       }
 
       console.log('[RestaurantStore] ✅ Restaurant loaded:', restaurant.name);
+      localStorage.setItem(STORAGE_KEY, restaurant.id);
       set({ restaurant: restaurant as unknown as Restaurant, loading: false });
     } catch (error) {
       console.error('[RestaurantStore] ❌ Fetch failed:', error);
@@ -191,10 +220,16 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     }
   },
 
-  setRestaurant: (restaurant) => set({ restaurant }),
+  setRestaurant: (restaurant) => {
+    if (restaurant?.id) {
+      localStorage.setItem(STORAGE_KEY, restaurant.id);
+    }
+    set({ restaurant });
+  },
 
   clearRestaurant: () => {
     console.log('[RestaurantStore] 🧹 Clearing restaurant state');
+    localStorage.removeItem(STORAGE_KEY);
     set({ 
       restaurant: null, 
       loading: false, 

@@ -9,6 +9,7 @@ interface UserRestaurantsState {
   loading: boolean;
   error: string | null;
   fetchUserRestaurants: () => Promise<void>;
+  addRestaurant: (restaurant: Restaurant) => void;
   clearRestaurants: () => void;
 }
 
@@ -84,6 +85,13 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
         loading: false 
       });
     }
+  },
+
+  addRestaurant: (restaurant: Restaurant) => {
+    set(state => ({
+      restaurants: [...state.restaurants, restaurant]
+    }));
+    console.log('[UserRestaurantsStore] Added restaurant locally:', restaurant.name);
   },
 
   clearRestaurants: () => {
