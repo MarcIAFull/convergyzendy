@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Edit, Trash2, MapPin } from 'lucide-react';
+import { Plus, Edit, Trash2, MapPin, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { toast } from 'sonner';
 import { DeliveryZoneMap } from '@/components/delivery/DeliveryZoneMap';
+import { useGoogleMapsApiKey } from '@/hooks/useGoogleMapsApiKey';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ interface DeliveryZone {
 
 export default function DeliveryZones() {
   const { restaurant: currentRestaurant, loading: restaurantLoading } = useRestaurantGuard();
+  const { apiKey, loading: apiKeyLoading, error: apiKeyError } = useGoogleMapsApiKey();
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -177,11 +179,22 @@ export default function DeliveryZones() {
     setEditingZone(null);
   };
 
-  if (restaurantLoading || loading) {
+  if (restaurantLoading || loading || apiKeyLoading) {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  if (apiKeyError || !apiKey) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-center text-muted-foreground">
+          <p>Erro ao carregar Google Maps API Key</p>
+          <p className="text-sm">{apiKeyError}</p>
         </div>
       </div>
     );
@@ -319,7 +332,11 @@ export default function DeliveryZones() {
                 center={restaurantLocation}
                 zones={zones}
                 height="500px"
+                apiKey={apiKey}
               />
+              <p className="text-xs text-muted-foreground mt-2">
+                Centro: {restaurantLocation[0].toFixed(6)}, {restaurantLocation[1].toFixed(6)}
+              </p>
             </CardContent>
           </Card>
         )}

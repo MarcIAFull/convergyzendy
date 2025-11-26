@@ -29,3 +29,12 @@ verify_jwt = false
 
 [functions.process-debounced-messages]
 verify_jwt = false
+
+[functions.get-maps-api-key]
+verify_jwt = true
+
+[functions.geocode-address-free]
+verify_jwt = false
+
+[functions.validate-delivery-address]
+verify_jwt = false
