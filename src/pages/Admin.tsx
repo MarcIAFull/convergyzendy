@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, MessageSquare, ShoppingCart, Activity, Search, Shield, ArrowRight, Pizza, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Users, MessageSquare, ShoppingCart, Activity, Search, Shield, ArrowRight, Pizza, Loader2, CheckCircle, XCircle, Trash2, Upload, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Label } from '@/components/ui/label';
 
 interface Restaurant {
   id: string;
@@ -57,6 +59,16 @@ export default function Admin() {
   const [importStatus, setImportStatus] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
+  
+  // Delete state
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  
+  // PDF Upload state
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfRestaurantName, setPdfRestaurantName] = useState('');
+  const [pdfRestaurantPhone, setPdfRestaurantPhone] = useState('');
+  const [pdfRestaurantAddress, setPdfRestaurantAddress] = useState('');
 
   useEffect(() => {
     checkAdminAccess();
@@ -168,6 +180,105 @@ export default function Admin() {
     } catch (error) {
       console.error('[Admin] Error switching restaurant:', error);
       toast.error('Erro ao alternar restaurante');
+    }
+  };
+
+  const handleDeleteRestaurant = async (restaurantId: string) => {
+    setDeleting(true);
+    try {
+      // Deletar em ordem de dependências (25 tabelas)
+      const tables = [
+        'cart_item_addons',
+        'cart_items',
+        'addons',
+        'conversation_pending_items',
+        'conversation_mode',
+        'conversation_state',
+        'conversation_recovery_attempts',
+        'carts',
+        'products',
+        'categories',
+        'orders',
+        'web_orders',
+        'messages',
+        'ai_interaction_logs',
+        'customers',
+        'delivery_zones',
+        'whatsapp_instances',
+        'restaurant_ai_settings',
+        'restaurant_prompt_overrides',
+        'restaurant_settings',
+        'restaurant_owners',
+        'subscriptions',
+        'invoices',
+        'usage_logs',
+        'message_debounce_queue'
+      ];
+
+      // Deletar tabelas que têm restaurant_id diretamente
+      for (const table of tables) {
+        const { error } = await supabase
+          .from(table as any)
+          .delete()
+          .eq('restaurant_id', restaurantId);
+        
+        if (error && !error.message.includes('violates foreign key')) {
+          console.warn(`Aviso ao deletar ${table}:`, error);
+        }
+      }
+
+      // Finalmente deletar o restaurante
+      const { error: restaurantError } = await supabase
+        .from('restaurants')
+        .delete()
+        .eq('id', restaurantId);
+
+      if (restaurantError) throw restaurantError;
+
+      toast.success('Restaurante deletado com sucesso!');
+      setDeleteConfirm(null);
+      await loadAdminData();
+    } catch (error: any) {
+      console.error('[Admin] Error deleting restaurant:', error);
+      toast.error(`Erro ao deletar restaurante: ${error.message}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleImportFromPDF = async () => {
+    if (!pdfFile) {
+      toast.error('Selecione um arquivo PDF');
+      return;
+    }
+
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(false);
+    setImportProgress(0);
+
+    try {
+      setImportStatus('Lendo PDF...');
+      // TODO: Implementar parsing do PDF usando document--parse_document
+      // Por enquanto, mostrar mensagem de funcionalidade em desenvolvimento
+      
+      toast.info('Funcionalidade de upload de PDF em desenvolvimento. Use a importação da Pizzaria A Família como exemplo.');
+      
+      setImportProgress(100);
+      setImportStatus('Funcionalidade em desenvolvimento');
+      
+      setTimeout(() => {
+        setImporting(false);
+        setPdfFile(null);
+        setPdfRestaurantName('');
+        setPdfRestaurantPhone('');
+        setPdfRestaurantAddress('');
+      }, 2000);
+    } catch (err: any) {
+      console.error('Erro no upload do PDF:', err);
+      setImportError(err.message || 'Erro desconhecido');
+      setImporting(false);
+      toast.error('Erro ao processar PDF');
     }
   };
 
@@ -717,68 +828,163 @@ P: Hambúrguer vem com batatas? R: Sim! TODAS as batatas fritas estão INCLUÍDA
       </div>
 
       {/* Admin Tools */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <Pizza className="h-6 w-6 text-primary" />
-            <div>
-              <CardTitle>Admin Tools</CardTitle>
-              <CardDescription>Ferramentas de administração e importação de dados</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!importing && !importSuccess && !importError && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Importar dados de exemplo da Pizzaria A Família:
-              </p>
-              <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                <li>Restaurante "A Família"</li>
-                <li>8 categorias de produtos</li>
-                <li>10+ produtos (pizzas, hambúrgueres, açaí)</li>
-                <li>Addons (bordas para pizzas)</li>
-                <li>Configurações de IA personalizadas</li>
-              </ul>
-              <Button onClick={handleImportPizzaria} className="w-full">
-                <Pizza className="mr-2 h-4 w-4" />
-                Importar Pizzaria A Família
-              </Button>
-            </div>
-          )}
-
-          {importing && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="text-sm font-medium">{importStatus}</span>
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Importar Pizzaria A Família */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Pizza className="h-6 w-6 text-primary" />
+              <div>
+                <CardTitle>Importar Pizzaria A Família</CardTitle>
+                <CardDescription>Importar dados de exemplo completos</CardDescription>
               </div>
-              <Progress value={importProgress} className="w-full" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!importing && !importSuccess && !importError && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Importar dados de exemplo da Pizzaria A Família:
+                </p>
+                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                  <li>Restaurante "A Família"</li>
+                  <li>10 categorias de produtos</li>
+                  <li>30+ produtos (pizzas, hambúrgueres, açaí, bebidas)</li>
+                  <li>Addons (bordas + complementos açaí)</li>
+                  <li>5 zonas de entrega</li>
+                  <li>Configurações de IA personalizadas</li>
+                </ul>
+                <Button onClick={handleImportPizzaria} className="w-full">
+                  <Pizza className="mr-2 h-4 w-4" />
+                  Importar Pizzaria A Família
+                </Button>
+              </div>
+            )}
+
+            {importing && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-sm font-medium">{importStatus}</span>
+                </div>
+                <Progress value={importProgress} className="w-full" />
+                <p className="text-xs text-muted-foreground text-center">
+                  {importProgress}% concluído
+                </p>
+              </div>
+            )}
+
+            {importSuccess && (
+              <Alert className="border-green-500/50 bg-green-500/10">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <AlertDescription className="text-green-700 dark:text-green-400">
+                  {importStatus}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {importError && (
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Erro: {importError}
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upload de PDF Genérico */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <FileText className="h-6 w-6 text-primary" />
+              <div>
+                <CardTitle>Importar via PDF</CardTitle>
+                <CardDescription>Upload de cardápio em PDF para criar restaurante</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-4">
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pdf-name">Nome do Restaurante (opcional)</Label>
+                  <Input
+                    id="pdf-name"
+                    placeholder="Ex: Pizzaria Bella Italia"
+                    value={pdfRestaurantName}
+                    onChange={(e) => setPdfRestaurantName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pdf-phone">Telefone (opcional)</Label>
+                  <Input
+                    id="pdf-phone"
+                    placeholder="Ex: 912345678"
+                    value={pdfRestaurantPhone}
+                    onChange={(e) => setPdfRestaurantPhone(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pdf-address">Endereço (opcional)</Label>
+                  <Input
+                    id="pdf-address"
+                    placeholder="Ex: Lisboa, Portugal"
+                    value={pdfRestaurantAddress}
+                    onChange={(e) => setPdfRestaurantAddress(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="border-2 border-dashed rounded-lg p-6">
+                <div className="text-center space-y-2">
+                  <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <div>
+                    <Label htmlFor="pdf-file" className="cursor-pointer text-sm text-primary hover:underline">
+                      {pdfFile ? pdfFile.name : 'Clique para selecionar PDF'}
+                    </Label>
+                    <Input
+                      id="pdf-file"
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+                  {pdfFile && (
+                    <p className="text-xs text-muted-foreground">
+                      {(pdfFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleImportFromPDF}
+                disabled={!pdfFile || importing}
+                className="w-full"
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Importar do PDF
+                  </>
+                )}
+              </Button>
+
               <p className="text-xs text-muted-foreground text-center">
-                {importProgress}% concluído
+                O sistema tentará extrair automaticamente categorias, produtos e informações do PDF
               </p>
             </div>
-          )}
-
-          {importSuccess && (
-            <Alert className="border-green-500/50 bg-green-500/10">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <AlertDescription className="text-green-700 dark:text-green-400">
-                {importStatus}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {importError && (
-            <Alert variant="destructive">
-              <XCircle className="h-4 w-4" />
-              <AlertDescription>
-                Erro: {importError}
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Metrics */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -881,14 +1087,24 @@ P: Hambúrguer vem com batatas? R: Sim! TODAS as batatas fritas estão INCLUÍDA
                       {format(new Date(restaurant.created_at), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleSwitchToRestaurant(restaurant.id)}
-                      >
-                        Gerenciar
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleSwitchToRestaurant(restaurant.id)}
+                        >
+                          Gerenciar
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteConfirm(restaurant.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -897,6 +1113,43 @@ P: Hambúrguer vem com batatas? R: Sim! TODAS as batatas fritas estão INCLUÍDA
           </Table>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este restaurante? Esta ação irá deletar:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Todos os produtos e categorias</li>
+                <li>Todos os pedidos e mensagens</li>
+                <li>Todas as configurações e dados</li>
+              </ul>
+              <p className="mt-2 font-semibold text-destructive">
+                Esta ação não pode ser desfeita!
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirm && handleDeleteRestaurant(deleteConfirm)}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deletando...
+                </>
+              ) : (
+                'Confirmar Exclusão'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
