@@ -162,8 +162,17 @@ export function RestaurantTab() {
           latitude = geoResult.lat;
           longitude = geoResult.lng;
           console.log('[RestaurantTab] Geocoding successful:', { latitude, longitude });
+          toast({
+            title: "Endereço geocodificado!",
+            description: `Coordenadas: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          });
         } else {
           console.warn('[RestaurantTab] Geocoding failed, saving without coordinates');
+          toast({
+            title: "Aviso",
+            description: "Não foi possível geocodificar automaticamente. Use código postal + cidade para melhores resultados.",
+            variant: "destructive",
+          });
         }
       }
 
@@ -185,8 +194,9 @@ export function RestaurantTab() {
       } else {
         toast({
           title: "Configurações salvas",
-          description: "Endereço salvo, mas não foi possível obter as coordenadas.",
-          variant: "default",
+          description: values.address !== restaurant?.address 
+            ? "Não foi possível geocodificar o endereço automaticamente."
+            : "As informações foram atualizadas.",
         });
       }
     } catch (error) {
