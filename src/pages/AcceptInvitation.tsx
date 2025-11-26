@@ -105,9 +105,20 @@ export default function AcceptInvitation() {
       setSuccess(true);
       toast.success('Convite aceito com sucesso!');
       
-      // Redirect to dashboard after 2 seconds
+      // Check if user needs onboarding (no restaurant yet)
+      const { data: ownership } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      // Redirect to onboarding if no restaurant, otherwise to dashboard
       setTimeout(() => {
-        navigate('/');
+        if (!ownership?.restaurant_id) {
+          navigate('/onboarding');
+        } else {
+          navigate('/');
+        }
       }, 2000);
 
     } catch (error: any) {
