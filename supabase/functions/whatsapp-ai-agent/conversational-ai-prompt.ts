@@ -59,7 +59,7 @@ export function buildConversationalAIPrompt(context: {
     .filter(p => p && p.name) // Filter out null/invalid products
     .map(p => {
       const addonsText = p.addons && p.addons.length > 0
-        ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
+        ? `\n  ⭐ ADDONS DISPONÍVEIS PARA ${p.name.toUpperCase()}:\n${p.addons.filter((a: any) => a && a.name).map((a: any) => `     → ${a.name} (ID: ${a.id}) - +€${a.price}`).join('\n')}`
         : '';
       return `• ${p.name} (ID: ${p.id}) - €${p.price} - ${p.description || ''}${addonsText}`;
     }).join('\n');
@@ -73,7 +73,7 @@ export function buildConversationalAIPrompt(context: {
         const product = item.product || menuProducts.find((p: any) => p.id === item.product_id);
         const productName = product?.name || 'Unknown';
         const addonsText = item.addons && item.addons.length > 0
-          ? ` + ${item.addons.map((a: any) => a.name).join(', ')}`
+          ? ` + ${item.addons.filter((a: any) => a && a.name).map((a: any) => a.name).join(', ')}`
           : '';
         const notesText = item.notes ? ` (${item.notes})` : '';
         return `${item.quantity}x ${productName}${addonsText}${notesText}`;
