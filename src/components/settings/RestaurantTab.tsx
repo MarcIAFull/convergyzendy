@@ -24,9 +24,16 @@ import type { OpeningHours } from '@/types/database';
 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 const dayHoursSchema = z.object({
-  open: z.string().regex(timeRegex, 'Invalid time format (HH:MM)'),
-  close: z.string().regex(timeRegex, 'Invalid time format (HH:MM)'),
+  open: z.string(),
+  close: z.string(),
   closed: z.boolean().optional(),
+}).refine((data) => {
+  // If the day is closed, don't validate time formats
+  if (data.closed) return true;
+  // If not closed, validate HH:MM format
+  return timeRegex.test(data.open) && timeRegex.test(data.close);
+}, {
+  message: 'Invalid time format (HH:MM)',
 });
 
 const restaurantSettingsSchema = z.object({
@@ -82,17 +89,59 @@ export function RestaurantTab() {
 
   useEffect(() => {
     if (restaurant) {
+      const openingHours = restaurant.opening_hours as OpeningHours;
+      
+      // Normalize hours - ensure default values for closed days
+      const normalizedHours: OpeningHours = {
+        monday: {
+          open: openingHours.monday?.open || '09:00',
+          close: openingHours.monday?.close || '22:00',
+          closed: openingHours.monday?.closed || false,
+        },
+        tuesday: {
+          open: openingHours.tuesday?.open || '09:00',
+          close: openingHours.tuesday?.close || '22:00',
+          closed: openingHours.tuesday?.closed || false,
+        },
+        wednesday: {
+          open: openingHours.wednesday?.open || '09:00',
+          close: openingHours.wednesday?.close || '22:00',
+          closed: openingHours.wednesday?.closed || false,
+        },
+        thursday: {
+          open: openingHours.thursday?.open || '09:00',
+          close: openingHours.thursday?.close || '22:00',
+          closed: openingHours.thursday?.closed || false,
+        },
+        friday: {
+          open: openingHours.friday?.open || '09:00',
+          close: openingHours.friday?.close || '22:00',
+          closed: openingHours.friday?.closed || false,
+        },
+        saturday: {
+          open: openingHours.saturday?.open || '09:00',
+          close: openingHours.saturday?.close || '22:00',
+          closed: openingHours.saturday?.closed || false,
+        },
+        sunday: {
+          open: openingHours.sunday?.open || '09:00',
+          close: openingHours.sunday?.close || '22:00',
+          closed: openingHours.sunday?.closed || false,
+        },
+      };
+      
       form.reset({
         name: restaurant.name,
         phone: restaurant.phone,
         address: restaurant.address,
         delivery_fee: Number(restaurant.delivery_fee),
-        opening_hours: restaurant.opening_hours as OpeningHours,
+        opening_hours: normalizedHours,
       });
     }
   }, [restaurant, form]);
 
   const onSubmit = async (values: RestaurantSettingsFormValues) => {
+    console.log('[RestaurantTab] Submitting values:', values);
     try {
       await updateRestaurant({
         name: values.name,
@@ -130,7 +179,14 @@ export function RestaurantTab() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+        console.error('[RestaurantTab] Validation errors:', errors);
+        toast({
+          title: "Erro de validação",
+          description: "Verifique os campos do formulário",
+          variant: "destructive",
+        });
+      })} className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
