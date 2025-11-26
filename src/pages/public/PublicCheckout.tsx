@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { AddressInput } from '@/components/delivery/AddressInput';
 import { useGeocoding } from '@/hooks/useGeocoding';
+import { useGoogleMapsApiKey } from '@/hooks/useGoogleMapsApiKey';
 import { DeliveryZoneMap } from '@/components/delivery/DeliveryZoneMap';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -22,6 +23,7 @@ export default function PublicCheckout() {
   const { items, getSubtotal, clearCart } = usePublicCartStore();
   const { menuData } = usePublicMenuStore();
   const { toast } = useToast();
+  const { apiKey } = useGoogleMapsApiKey();
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -299,12 +301,13 @@ export default function PublicCheckout() {
               </Alert>
             )}
 
-            {addressCoords && menuData?.restaurant.latitude && menuData?.restaurant.longitude && (
+            {addressCoords && menuData?.restaurant.latitude && menuData?.restaurant.longitude && apiKey && (
               <div className="mt-4">
                 <DeliveryZoneMap
                   center={[menuData.restaurant.latitude, menuData.restaurant.longitude]}
                   deliveryAddress={addressCoords}
                   height="300px"
+                  apiKey={apiKey}
                 />
               </div>
             )}
