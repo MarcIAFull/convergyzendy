@@ -81,7 +81,7 @@ export function buildConversationalAIPrompt(context: {
     : 'Nenhum item pendente';
 
   const customerInfo = customer
-    ? `Nome: ${customer.name || 'Não fornecido'}, Endereço padrão: ${customer.default_address ? JSON.stringify(customer.default_address) : 'Não fornecido'}, Pagamento padrão: ${customer.default_payment_method || 'Não fornecido'}`
+    ? `Nome: ${customer?.name || 'Não fornecido'}, Endereço padrão: ${customer?.default_address ? JSON.stringify(customer.default_address) : 'Não fornecido'}, Pagamento padrão: ${customer?.default_payment_method || 'Não fornecido'}`
     : 'Cliente novo - sem dados salvos';
 
   const recentHistory = conversationHistory
