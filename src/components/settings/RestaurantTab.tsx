@@ -108,11 +108,23 @@ export function RestaurantTab() {
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
-      toast({
-        title: "Erro ao salvar",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive",
-      });
+      
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      
+      // Detect session expiration
+      if (errorMessage.includes('Sessão expirada') || errorMessage.includes('Invalid Refresh Token')) {
+        toast({
+          title: "Sessão expirada",
+          description: "Por favor, faça login novamente para continuar.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao salvar",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     }
   };
 

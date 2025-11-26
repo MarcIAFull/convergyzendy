@@ -6,6 +6,7 @@ import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useRestaurantGuard } from "@/hooks/useRestaurantGuard";
 import { useRestaurantStore } from "@/stores/restaurantStore";
+import { ensureValidSession } from "@/integrations/supabase/client";
 import {
   LogOut,
   Moon,
@@ -52,6 +53,25 @@ const DashboardLayout = () => {
       }
     }
   }, [restaurants, currentRestaurant, setRestaurant]);
+
+  // Periodic session check to prevent expiration
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        await ensureValidSession();
+      } catch (error) {
+        console.error('[DashboardLayout] Session check failed:', error);
+      }
+    };
+
+    // Check session on mount
+    checkSession();
+
+    // Check session every 5 minutes
+    const interval = setInterval(checkSession, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Loading state
   if (loading) {

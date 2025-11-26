@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, ensureValidSession, verifyAuthUid } from '@/integrations/supabase/client';
 import type { Restaurant } from '@/types/database';
 
 const STORAGE_KEY = 'zendy_active_restaurant';
@@ -138,6 +138,15 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     console.log('[RestaurantStore] Creating restaurant:', restaurantData);
     set({ loading: true, error: null });
     try {
+      // Ensure valid session before creating
+      const sessionValid = await ensureValidSession();
+      if (!sessionValid) {
+        const { valid } = await verifyAuthUid();
+        if (!valid) {
+          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+        }
+      }
+
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
@@ -195,7 +204,16 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
 
     console.log('[RestaurantStore] Updating restaurant:', restaurant.id, updates);
     set({ loading: true, error: null });
+    
     try {
+      // Ensure valid session before updating
+      const sessionValid = await ensureValidSession();
+      if (!sessionValid) {
+        const { valid } = await verifyAuthUid();
+        if (!valid) {
+          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+        }
+      }
       const { data, error } = await supabase
         .from('restaurants')
         .update(updates as any)
