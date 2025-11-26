@@ -124,6 +124,7 @@ export default function AILogs() {
   const [selectedExportFields, setSelectedExportFields] = useState<string[]>(
     EXPORT_FIELDS.map(f => f.key)
   );
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
 
   // Fetch restaurants
   const { data: restaurants } = useQuery({
@@ -193,6 +194,28 @@ export default function AILogs() {
     new Set(logs?.map((log) => log.orchestrator_intent).filter(Boolean))
   );
 
+  const toggleLogSelection = (logId: string) => {
+    setSelectedLogIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllLogs = () => {
+    if (logs) {
+      setSelectedLogIds(new Set(logs.map(log => log.id)));
+    }
+  };
+
+  const deselectAllLogs = () => {
+    setSelectedLogIds(new Set());
+  };
+
   const toggleExportField = (fieldKey: string) => {
     setSelectedExportFields(prev =>
       prev.includes(fieldKey)
@@ -212,8 +235,13 @@ export default function AILogs() {
   const exportLogsAsJson = () => {
     if (!logs || logs.length === 0) return;
     
+    // Filter logs to only include selected ones
+    const logsToExport = selectedLogIds.size > 0 
+      ? logs.filter(log => selectedLogIds.has(log.id))
+      : logs;
+    
     // Filter logs to only include selected fields
-    const filteredLogs = logs.map(log => {
+    const filteredLogs = logsToExport.map(log => {
       const filtered: any = {};
       selectedExportFields.forEach(field => {
         filtered[field] = (log as any)[field];
@@ -251,47 +279,68 @@ export default function AILogs() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Selecionar Campos para Exportação</DialogTitle>
+                <DialogTitle>Configurar Exportação</DialogTitle>
                 <DialogDescription>
-                  Escolha quais campos deseja incluir no arquivo JSON ({logs?.length || 0} logs)
+                  {selectedLogIds.size > 0 
+                    ? `Exportando ${selectedLogIds.size} de ${logs?.length || 0} logs selecionados`
+                    : `Exportando todos os ${logs?.length || 0} logs (nenhum selecionado especificamente)`
+                  }
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={selectAllExportFields} 
-                    variant="outline" 
-                    size="sm"
-                  >
-                    Selecionar Todos
-                  </Button>
-                  <Button 
-                    onClick={deselectAllExportFields} 
-                    variant="outline" 
-                    size="sm"
-                  >
-                    Desmarcar Todos
-                  </Button>
+              <div className="space-y-6">
+                {/* Seleção de Campos */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Campos a Exportar</Label>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={selectAllExportFields} 
+                        variant="outline" 
+                        size="sm"
+                      >
+                        Todos
+                      </Button>
+                      <Button 
+                        onClick={deselectAllExportFields} 
+                        variant="outline" 
+                        size="sm"
+                      >
+                        Nenhum
+                      </Button>
+                    </div>
+                  </div>
+
+                  <ScrollArea className="h-[200px] border rounded-md p-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      {EXPORT_FIELDS.map(field => (
+                        <div key={field.key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`export-${field.key}`}
+                            checked={selectedExportFields.includes(field.key)}
+                            onCheckedChange={() => toggleExportField(field.key)}
+                          />
+                          <Label 
+                            htmlFor={`export-${field.key}`}
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            {field.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {EXPORT_FIELDS.map(field => (
-                    <div key={field.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`export-${field.key}`}
-                        checked={selectedExportFields.includes(field.key)}
-                        onCheckedChange={() => toggleExportField(field.key)}
-                      />
-                      <Label 
-                        htmlFor={`export-${field.key}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {field.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
+                {/* Info sobre logs selecionados */}
+                {selectedLogIds.size > 0 && (
+                  <div className="bg-muted p-3 rounded-md">
+                    <p className="text-sm text-muted-foreground">
+                      💡 <strong>{selectedLogIds.size} logs</strong> selecionados na tabela serão exportados. 
+                      Para exportar todos, desmarque os logs na tabela.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-4 border-t">
                   <Button 
@@ -305,7 +354,7 @@ export default function AILogs() {
                     disabled={selectedExportFields.length === 0}
                   >
                     <Download className="mr-2 h-4 w-4" />
-                    Exportar ({selectedExportFields.length} campos)
+                    Exportar {selectedLogIds.size > 0 ? `(${selectedLogIds.size} logs)` : '(Todos)'}
                   </Button>
                 </div>
               </div>
@@ -402,10 +451,36 @@ export default function AILogs() {
       {/* Logs Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Interactions ({logs?.length || 0})</CardTitle>
-          <CardDescription>
-            Click on any row to view detailed information
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Interactions ({logs?.length || 0})</CardTitle>
+              <CardDescription>
+                {selectedLogIds.size > 0 
+                  ? `${selectedLogIds.size} logs selecionados para exportação`
+                  : "Selecione logs para exportar ou clique em uma linha para ver detalhes"
+                }
+              </CardDescription>
+            </div>
+            {logs && logs.length > 0 && (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={selectAllLogs} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  Selecionar Todos
+                </Button>
+                <Button 
+                  onClick={deselectAllLogs} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={selectedLogIds.size === 0}
+                >
+                  Desmarcar Todos
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -415,6 +490,18 @@ export default function AILogs() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Checkbox
+                        checked={selectedLogIds.size === logs.length}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            selectAllLogs();
+                          } else {
+                            deselectAllLogs();
+                          }
+                        }}
+                      />
+                    </TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead>Phone</TableHead>
@@ -429,32 +516,86 @@ export default function AILogs() {
                   {logs.map((log) => (
                     <TableRow
                       key={log.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => {
-                        setSelectedLog(log);
-                        setSheetOpen(true);
-                      }}
+                      className="hover:bg-muted/50"
                     >
-                      <TableCell>{getStatusIcon(log)}</TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedLogIds.has(log.id)}
+                          onCheckedChange={() => toggleLogSelection(log.id)}
+                        />
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
+                        {getStatusIcon(log)}
+                      </TableCell>
+                      <TableCell 
+                        className="text-sm cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         {format(new Date(log.created_at), "HH:mm:ss")}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">
+                      <TableCell 
+                        className="font-mono text-xs cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         {log.customer_phone.slice(-4)}
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
+                      <TableCell 
+                        className="max-w-[200px] truncate cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         {log.user_message}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         <Badge variant="outline">{log.orchestrator_intent}</Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         {log.tool_calls_validated?.length || 0}
                       </TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell 
+                        className="text-xs cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
                         {log.state_before} → {log.state_after}
                       </TableCell>
-                      <TableCell>{log.processing_time_ms}</TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setSheetOpen(true);
+                        }}
+                      >
+                        {log.processing_time_ms}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
