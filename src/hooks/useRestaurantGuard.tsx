@@ -95,16 +95,11 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
       return;
     }
 
-    // No restaurant after fetch completed - needs onboarding
-    // Only redirect if NOT already on onboarding page AND fetch has completed
+    // No restaurant after fetch - allow access to dashboard
+    // User can import restaurant via Admin panel
     if (!restaurant && hasFetchedRef.current && !restaurantError) {
-      if (location.pathname !== '/onboarding') {
-        console.log('[useRestaurantGuard] 🚪 NAVIGATION: No restaurant after fetch, redirecting to /onboarding');
-        navigate('/onboarding', { replace: true });
-      } else {
-        console.log('[useRestaurantGuard] ✅ NAVIGATION: Already on onboarding, marking ready');
-        setIsReady(true);
-      }
+      console.log('[useRestaurantGuard] ✅ NAVIGATION: No restaurant, but allowing dashboard access');
+      setIsReady(true);
       return;
     }
 

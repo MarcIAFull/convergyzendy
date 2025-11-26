@@ -18,8 +18,12 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RestaurantSwitcher } from "@/components/RestaurantSwitcher";
 import { useUserRestaurantsStore } from "@/stores/userRestaurantsStore";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const DashboardLayout = () => {
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const { signOut } = useAuth();
   const { loading, error, ready, retry } = useRestaurantGuard();
@@ -150,6 +154,22 @@ const DashboardLayout = () => {
 
           {/* Main Content */}
           <main className="flex-1">
+            {!currentRestaurant && restaurants.length === 0 && (
+              <Alert className="m-4 border-warning bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+                <AlertDescription className="flex items-center justify-between">
+                  <span>Nenhum restaurante encontrado. Importe os dados da Pizzaria A Família no painel Admin.</span>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => navigate('/admin')}
+                    className="ml-4"
+                  >
+                    Ir para Admin
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
             <Outlet />
           </main>
         </div>

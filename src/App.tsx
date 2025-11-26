@@ -21,7 +21,6 @@ import Admin from "@/pages/Admin";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
 import Login from "@/pages/Login";
-import Onboarding from "@/pages/Onboarding";
 import NotFound from "@/pages/NotFound";
 import PublicMenu from "@/pages/public/PublicMenu";
 import PublicCart from "@/pages/public/PublicCart";
@@ -54,11 +53,6 @@ const App = () => (
                 
                 {/* Auth Routes */}
                 <Route path="/login" element={<Login />} />
-                <Route path="/onboarding" element={
-                  <ProtectedRoute>
-                    <Onboarding />
-                  </ProtectedRoute>
-                } />
                 
                 {/* Protected Dashboard Routes */}
                 <Route
