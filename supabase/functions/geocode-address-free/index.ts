@@ -29,6 +29,48 @@ function extractPostalCode(address: string): string | null {
   return match ? match[0] : null;
 }
 
+// Provider 0: Google Geocoding API (maximum accuracy)
+async function tryGoogleGeocoding(address: string): Promise<GeocodingResult | null> {
+  const apiKey = Deno.env.get('GOOGLE_GEOCODING_API_KEY');
+  
+  if (!apiKey) {
+    console.log('Google: API key not configured, skipping...');
+    return null;
+  }
+  
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?` +
+      `address=${encodeURIComponent(address)}&` +
+      `region=pt&` +
+      `language=pt&` +
+      `key=${apiKey}`;
+    
+    console.log('Google: Trying geocoding...');
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.status !== 'OK' || !data.results?.length) {
+      console.log('Google: No results, status:', data.status);
+      return null;
+    }
+    
+    const result = data.results[0];
+    console.log('Google: Success!', result.formatted_address);
+    
+    return {
+      lat: result.geometry.location.lat,
+      lng: result.geometry.location.lng,
+      formatted_address: result.formatted_address,
+      place_id: result.place_id,
+      address_components: result.address_components,
+      source: 'google'
+    };
+  } catch (error) {
+    console.error('Google Geocoding error:', error);
+    return null;
+  }
+}
+
 // Provider 1: Photon (Komoot) - More accurate, free
 async function tryPhoton(address: string): Promise<GeocodingResult | null> {
   try {
@@ -213,8 +255,13 @@ serve(async (req) => {
     }
 
     // Try providers in order of accuracy with multiple strategies
-    console.log('--- Strategy 1: Photon ---');
-    let result = await tryPhoton(normalizedAddress);
+    console.log('--- Strategy 0: Google Geocoding API ---');
+    let result = await tryGoogleGeocoding(normalizedAddress);
+    
+    if (!result) {
+      console.log('--- Strategy 1: Photon ---');
+      result = await tryPhoton(normalizedAddress);
+    }
     
     if (!result) {
       console.log('--- Strategy 2: Nominatim PT + Portugal suffix ---');
