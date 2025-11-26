@@ -31,14 +31,40 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's restaurant
+    // Get user's restaurant - try restaurant_owners first, then restaurants table
+    let restaurantId: string | null = null;
+    
     const { data: restaurantOwner } = await supabase
       .from('restaurant_owners')
       .select('restaurant_id')
       .eq('user_id', user.id)
       .single();
 
-    if (!restaurantOwner) {
+    if (restaurantOwner) {
+      restaurantId = restaurantOwner.restaurant_id;
+    } else {
+      // Fallback: check restaurants table directly
+      const { data: restaurant } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (restaurant) {
+        restaurantId = restaurant.id;
+        
+        // Create missing restaurant_owners entry
+        await supabase
+          .from('restaurant_owners')
+          .insert({
+            user_id: user.id,
+            restaurant_id: restaurant.id,
+            role: 'owner'
+          });
+      }
+    }
+
+    if (!restaurantId) {
       throw new Error('No restaurant found for user');
     }
     
@@ -46,11 +72,11 @@ serve(async (req) => {
     const { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
       .select('*')
-      .eq('restaurant_id', restaurantOwner.restaurant_id)
+      .eq('restaurant_id', restaurantId)
       .single();
 
     if (instanceError || !instance) {
-      console.log(`[evolution-status] No instance found for restaurant ${restaurantOwner.restaurant_id}`);
+      console.log(`[evolution-status] No instance found for restaurant ${restaurantId}`);
       return new Response(
         JSON.stringify({
           status: 'disconnected',
