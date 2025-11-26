@@ -1,9 +1,11 @@
 import { Outlet } from "react-router-dom";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useRestaurantGuard } from "@/hooks/useRestaurantGuard";
+import { useRestaurantStore } from "@/stores/restaurantStore";
 import {
   LogOut,
   Moon,
@@ -22,12 +24,30 @@ const DashboardLayout = () => {
   const { signOut } = useAuth();
   const { loading, error, ready, retry } = useRestaurantGuard();
   const { soundEnabled, toggleSound } = useNotifications();
-  const { fetchUserRestaurants } = useUserRestaurantsStore();
+  const { restaurants, fetchUserRestaurants } = useUserRestaurantsStore();
+  const { restaurant: currentRestaurant, setRestaurant } = useRestaurantStore();
 
   // Fetch user restaurants on mount
   useEffect(() => {
     fetchUserRestaurants();
   }, [fetchUserRestaurants]);
+
+  // Sync localStorage selection with available restaurants
+  useEffect(() => {
+    if (restaurants.length > 0 && !currentRestaurant) {
+      const savedId = localStorage.getItem('zendy_active_restaurant');
+      const saved = savedId ? restaurants.find(r => r.id === savedId) : null;
+      
+      if (saved) {
+        console.log('[DashboardLayout] Restoring saved restaurant:', saved.name);
+        setRestaurant(saved as any);
+      } else if (restaurants.length > 0) {
+        console.log('[DashboardLayout] No saved restaurant, selecting first available');
+        setRestaurant(restaurants[0] as any);
+        toast.info(`Restaurante ativo: ${restaurants[0].name}`);
+      }
+    }
+  }, [restaurants, currentRestaurant, setRestaurant]);
 
   // Loading state
   if (loading) {

@@ -123,7 +123,7 @@ export function RestaurantTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Store className="h-5 w-5" />
-              Informações Básicas
+              Editando: {restaurant?.name || 'Carregando...'}
             </CardTitle>
             <CardDescription>
               Dados principais do seu restaurante

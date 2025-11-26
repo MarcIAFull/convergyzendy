@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useUserRestaurantsStore } from '@/stores/userRestaurantsStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -16,8 +17,11 @@ type Step = 'restaurant' | 'menu' | 'whatsapp';
 
 const Onboarding = () => {
   const { user, signOut } = useAuth();
-  const { fetchRestaurant } = useRestaurantStore();
+  const { fetchRestaurant, setRestaurant } = useRestaurantStore();
+  const { addRestaurant } = useUserRestaurantsStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isCreateMode = searchParams.get('mode') === 'create';
   
   const [currentStep, setCurrentStep] = useState<Step>('restaurant');
   const [completedSteps, setCompletedSteps] = useState<Step[]>([]);
@@ -30,6 +34,13 @@ const Onboarding = () => {
   }, []);
 
   const checkExistingRestaurant = async () => {
+    // Skip check if in create mode
+    if (isCreateMode) {
+      console.log('[Onboarding] Create mode - skipping restaurant check');
+      setCheckingExisting(false);
+      return;
+    }
+
     if (!user) {
       console.log('[Onboarding] Sem usuário autenticado, redirecionando...');
       navigate('/login');
@@ -190,7 +201,26 @@ const Onboarding = () => {
   };
 
   const finishOnboarding = async () => {
-    await fetchRestaurant();
+    console.log('[Onboarding] Finishing onboarding, fetching restaurant...');
+    
+    // If we have a restaurantId, fetch the newly created restaurant
+    if (restaurantId) {
+      const { data: newRestaurant } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', restaurantId)
+        .single();
+      
+      if (newRestaurant) {
+        // Add to restaurants list
+        addRestaurant(newRestaurant as any);
+        // Set as active restaurant
+        setRestaurant(newRestaurant as any);
+      }
+    } else {
+      await fetchRestaurant();
+    }
+    
     toast.success('Configuração concluída! Bem-vindo ao Zendy! 🎉');
     navigate('/');
   };

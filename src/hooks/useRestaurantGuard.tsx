@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from './useAuth';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 
@@ -17,6 +17,10 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
   const { user, session, loading: authLoading } = useAuth();
   const { restaurant, loading: restaurantLoading, error: restaurantError, fetchRestaurant } = useRestaurantStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  
+  const isOnboardingCreateMode = location.pathname === '/onboarding' && searchParams.get('mode') === 'create';
   
   const [localError, setLocalError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -85,8 +89,8 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
       return;
     }
 
-    // No restaurant after fetch completed - needs onboarding
-    if (!restaurant && !restaurantLoading && hasFetchedRef.current && !restaurantError) {
+    // No restaurant after fetch completed - needs onboarding (unless already in create mode)
+    if (!restaurant && !restaurantLoading && hasFetchedRef.current && !restaurantError && !isOnboardingCreateMode) {
       console.log('[useRestaurantGuard] 🚪 NAVIGATION: No restaurant after fetch, redirecting to /onboarding');
       navigate('/onboarding', { replace: true });
       return;
