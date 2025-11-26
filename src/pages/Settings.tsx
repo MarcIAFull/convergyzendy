@@ -130,6 +130,8 @@ const Settings = () => {
           address: values.address,
           delivery_fee: values.delivery_fee,
           is_open: values.is_open,
+          latitude: null,
+          longitude: null,
           opening_hours: values.opening_hours as any,
         });
         

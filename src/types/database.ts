@@ -8,6 +8,10 @@ export interface Restaurant {
   opening_hours: OpeningHours;
   delivery_fee: number;
   is_open: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  google_place_id?: string | null;
+  slug?: string | null;
   created_at: string;
   updated_at: string;
 }

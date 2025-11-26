@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useGeocoding } from '@/hooks/useGeocoding';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ import {
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Store, Clock, DollarSign, Loader2 } from 'lucide-react';
+import { Store, Clock, DollarSign, Loader2, MapPin } from 'lucide-react';
 import type { OpeningHours } from '@/types/database';
 
 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -66,6 +67,7 @@ const daysOfWeek = [
 
 export function RestaurantTab() {
   const { restaurant, loading, updateRestaurant } = useRestaurantStore();
+  const { geocodeAddress, loading: geocodingLoading } = useGeocoding();
   const { toast } = useToast();
 
   const form = useForm<RestaurantSettingsFormValues>({
@@ -143,18 +145,50 @@ export function RestaurantTab() {
   const onSubmit = async (values: RestaurantSettingsFormValues) => {
     console.log('[RestaurantTab] Submitting values:', values);
     try {
+      // Geocode address if it changed
+      let latitude = restaurant?.latitude;
+      let longitude = restaurant?.longitude;
+
+      if (values.address !== restaurant?.address) {
+        console.log('[RestaurantTab] Address changed, geocoding...');
+        toast({
+          title: "A geocodificar endereço...",
+          description: "Por favor aguarde.",
+        });
+
+        const geoResult = await geocodeAddress(values.address);
+        
+        if (geoResult) {
+          latitude = geoResult.lat;
+          longitude = geoResult.lng;
+          console.log('[RestaurantTab] Geocoding successful:', { latitude, longitude });
+        } else {
+          console.warn('[RestaurantTab] Geocoding failed, saving without coordinates');
+        }
+      }
+
       await updateRestaurant({
         name: values.name,
         phone: values.phone,
         address: values.address,
         delivery_fee: values.delivery_fee,
         opening_hours: values.opening_hours as any,
+        latitude,
+        longitude,
       });
 
-      toast({
-        title: "Configurações salvas",
-        description: "As informações do restaurante foram atualizadas.",
-      });
+      if (latitude && longitude) {
+        toast({
+          title: "Configurações salvas",
+          description: "Endereço geocodificado com sucesso! As zonas de entrega serão atualizadas.",
+        });
+      } else {
+        toast({
+          title: "Configurações salvas",
+          description: "Endereço salvo, mas não foi possível obter as coordenadas.",
+          variant: "default",
+        });
+      }
     } catch (error) {
       console.error('Failed to save settings:', error);
       
@@ -234,10 +268,16 @@ export function RestaurantTab() {
               name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Morada</FormLabel>
+                  <FormLabel className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Morada
+                  </FormLabel>
                   <FormControl>
                     <Input placeholder="Rua Example, 123, Lisboa" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    O endereço será automaticamente geocodificado para as zonas de entrega
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -336,8 +376,8 @@ export function RestaurantTab() {
           >
             Resetar
           </Button>
-          <Button type="submit" disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button type="submit" disabled={loading || geocodingLoading}>
+            {(loading || geocodingLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Guardar Alterações
           </Button>
         </div>
