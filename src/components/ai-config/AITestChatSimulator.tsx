@@ -165,12 +165,12 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
   };
 
   return (
-    <div className="grid grid-cols-3 gap-4">
-      {/* Chat Area - 2/3 width */}
-      <Card className="col-span-2 flex flex-col h-[600px]">
+    <div className="flex flex-col gap-4">
+      {/* Chat Area */}
+      <Card className="flex flex-col h-[700px]">
         <div className="p-4 border-b flex items-center justify-between">
           <div>
-            <h3 className="font-semibold">Simulador de Chat</h3>
+            <h3 className="font-semibold">Chat de Teste</h3>
             <p className="text-xs text-muted-foreground">Teste: {testPhone}</p>
           </div>
           <Button variant="outline" size="sm" onClick={clearTest}>
@@ -253,13 +253,13 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
         </div>
       </Card>
 
-      {/* State Monitor - 1/3 width */}
-      <Card className="flex flex-col h-[600px]">
+      {/* State Monitor */}
+      <Card>
         <div className="p-4 border-b">
-          <h3 className="font-semibold text-sm">Estado</h3>
+          <h3 className="font-semibold text-sm">Estado da Conversa</h3>
         </div>
 
-        <ScrollArea className="flex-1 p-4">
+        <div className="p-4">
           <div className="space-y-4">
             <div>
               <p className="text-xs text-muted-foreground mb-1">Estado Atual</p>
@@ -270,34 +270,30 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
 
             {cartItems.length > 0 && (
               <div>
-                <p className="text-xs text-muted-foreground mb-2">Carrinho</p>
+                <p className="text-xs text-muted-foreground mb-2">Carrinho ({cartItems.length} itens)</p>
                 <div className="space-y-2">
                   {cartItems.map((item, idx) => (
-                    <Card key={idx} className="p-2">
-                      <div className="flex justify-between text-xs">
+                    <div key={idx} className="flex justify-between text-sm border-b pb-2">
+                      <div>
                         <span className="font-medium">{item.product_name}</span>
-                        <span>x{item.quantity}</span>
+                        <span className="text-muted-foreground ml-2">x{item.quantity}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        €{item.price.toFixed(2)}
-                      </p>
-                    </Card>
-                  ))}
-                  <div className="pt-2 border-t">
-                    <div className="flex justify-between text-sm font-semibold">
-                      <span>Total</span>
-                      <span>
-                        €{cartItems.reduce((sum, item) => 
-                          sum + (item.price * item.quantity), 0
-                        ).toFixed(2)}
-                      </span>
+                      <span className="font-medium">€{(item.price * item.quantity).toFixed(2)}</span>
                     </div>
+                  ))}
+                  <div className="pt-2 flex justify-between font-semibold">
+                    <span>Total</span>
+                    <span>
+                      €{cartItems.reduce((sum, item) => 
+                        sum + (item.price * item.quantity), 0
+                      ).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </Card>
     </div>
   );
