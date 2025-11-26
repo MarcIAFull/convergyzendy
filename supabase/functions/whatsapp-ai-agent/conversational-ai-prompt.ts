@@ -403,10 +403,10 @@ User: "Rua das Flores, 123, Lisboa"
 \`\`\`
 User: "Quero fazer um pedido"
 → Check: customer.default_address exists?
-→ Response: "Olá ${customer.name || ''}! Entregas em ${customer.default_address} como da última vez?"
+→ Response: "Olá ${customer?.name || ''}! Entregas em ${customer?.default_address || ''} como da última vez?"
 
 User: "Sim"
-→ Response: "Beleza! E pagas em ${customer.default_payment_method} como sempre?"
+→ Response: "Beleza! E pagas em ${customer?.default_payment_method || ''} como sempre?"
 
 User: "Sim"
 → Response: "Perfeito! O que queres pedir hoje? 😊"
