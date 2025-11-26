@@ -207,6 +207,16 @@ export default function Admin() {
 
       if (restaurantError) throw restaurantError;
       const restaurantId = newRestaurant.id;
+      
+      // CRÍTICO: Criar entrada no restaurant_owners para evitar violação de RLS
+      const { error: ownerError } = await supabase.from('restaurant_owners').insert({
+        restaurant_id: restaurantId,
+        user_id: user.id,
+        role: 'owner',
+        permissions: { menu: true, orders: true, settings: true, analytics: true }
+      });
+      
+      if (ownerError) throw ownerError;
       setImportProgress(10);
 
       // 2. Criar settings do menu público
@@ -220,7 +230,7 @@ export default function Admin() {
       });
       setImportProgress(20);
 
-      // 3. Criar categorias
+      // 3. Criar categorias (baseado no PDF completo)
       setImportStatus('Criando categorias...');
       const categories = [
         { name: 'Entradas', sort_order: 10 },
@@ -231,6 +241,8 @@ export default function Admin() {
         { name: 'Hambúrgueres', sort_order: 60 },
         { name: 'Açaí', sort_order: 70 },
         { name: 'Bebidas', sort_order: 80 },
+        { name: 'Menu Kids', sort_order: 90 },
+        { name: 'Porções', sort_order: 100 },
       ];
 
       const { data: createdCategories } = await supabase
@@ -246,81 +258,257 @@ export default function Admin() {
       const categoryMap = Object.fromEntries(createdCategories.map(c => [c.name, c.id]));
 
       const products = [
-        // Entradas
+        // === ENTRADAS ===
         {
           category_id: categoryMap['Entradas'],
           name: 'Pão de Alho',
-          description: 'Pão tradicional com manteiga de alho, assado até ficar dourado e crocante | Serve: 2-3 pessoas | Perfil: Crocante, aromático | Popularidade: Alta',
+          description: 'Pão tradicional com manteiga de alho, assado até ficar dourado e crocante. Serve: 2-3 pessoas',
           price: 7.50,
           is_featured: false,
         },
-        // Pizzas 4 Pedaços
+        
+        // === SALGADOS BRASILEIROS ===
+        {
+          category_id: categoryMap['Salgados Brasileiros'],
+          name: 'Salgados - Porção Inteira',
+          description: '10 unidades: Kibe, Coxinha ou Bolinha de Queijo (pode escolher misto). Serve: 3-4 pessoas',
+          price: 11.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Salgados Brasileiros'],
+          name: 'Salgados - Meia Porção',
+          description: '5 unidades: Kibe, Coxinha ou Bolinha de Queijo (pode escolher misto). Serve: 1-2 pessoas',
+          price: 6.00,
+          is_featured: false,
+        },
+        
+        // === ENROLADOS ===
+        {
+          category_id: categoryMap['Enrolados'],
+          name: 'Enrolado de Queijo e Fiambre',
+          description: '12 unidades assadas ou fritas. Recheio: Mozzarella e fiambre. Serve: 2-3 pessoas',
+          price: 8.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Enrolados'],
+          name: 'Enrolado de Calabresa com Cebola',
+          description: '12 unidades assadas ou fritas. Recheio: Calabresa com cebola caramelizada. Serve: 2-3 pessoas',
+          price: 8.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Enrolados'],
+          name: 'Enrolado de Frango com Catupiry',
+          description: '12 unidades assadas ou fritas. Recheio: Frango desfiado com catupiry cremoso. Serve: 2-3 pessoas',
+          price: 8.00,
+          is_featured: false,
+        },
+
+        // === PIZZAS SALGADAS - 4 PEDAÇOS ===
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza A Família - 4 Pedaços',
-          description: 'Molho de tomate, mozzarella, calabresa, frango, barbecue, catupiry, azeitonas | Serve: 1 pessoa | Perfil: Completo, harmonioso | Popularidade: MÁXIMA',
+          description: '⭐ MAIS PEDIDA! Mozzarella, calabresa, frango, barbecue, catupiry, azeitonas. Serve: 1 pessoa',
           price: 11.00,
           is_featured: true,
         },
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza 4 Queijos - 4 Pedaços',
-          description: 'Molho de tomate, mozzarella, emmental, cheddar, catupiry | Serve: 1 pessoa | Perfil: Cremoso, forte | Popularidade: Muito Alta',
+          description: 'Mozzarella, emmental, cheddar, catupiry. Serve: 1 pessoa',
           price: 11.00,
           is_featured: true,
         },
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza Margherita - 4 Pedaços',
-          description: 'Molho de tomate, mozzarella e orégãos | Serve: 1 pessoa | Perfil: Simples e tradicional | Popularidade: Alta',
+          description: 'Clássica: mozzarella, molho de tomate, orégãos. Serve: 1 pessoa',
           price: 11.00,
           is_featured: false,
         },
-        // Pizzas 6 Pedaços
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Calabresa - 4 Pedaços',
+          description: 'Mozzarella, calabresa brasileira, cebola. Serve: 1 pessoa',
+          price: 11.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Frango com Catupiry - 4 Pedaços',
+          description: 'Frango desfiado, catupiry, milho, mozzarella. Serve: 1 pessoa',
+          price: 11.00,
+          is_featured: false,
+        },
+
+        // === PIZZAS SALGADAS - 6 PEDAÇOS (Até 2 sabores) ===
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza A Família - 6 Pedaços',
-          description: 'Molho de tomate, mozzarella, calabresa, frango, barbecue, catupiry, azeitonas | Serve: 1-2 pessoas | Nota: Aceita até 2 sabores | Perfil: Completo | Popularidade: MÁXIMA',
+          description: '⭐ MAIS PEDIDA! Até 2 sabores. Mozzarella, calabresa, frango, barbecue, catupiry. Serve: 1-2 pessoas',
           price: 15.90,
           is_featured: true,
         },
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza 4 Queijos - 6 Pedaços',
-          description: 'Molho de tomate, mozzarella, emmental, cheddar, catupiry | Serve: 1-2 pessoas | Nota: Aceita até 2 sabores | Perfil: Cremoso | Popularidade: Muito Alta',
+          description: 'Até 2 sabores. Mozzarella, emmental, cheddar, catupiry. Serve: 1-2 pessoas',
           price: 15.90,
           is_featured: true,
         },
-        // Pizzas 8 Pedaços
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Portuguesa - 6 Pedaços',
+          description: 'Até 2 sabores. Fiambre, ovo, cebola, azeitonas, mozzarella. Serve: 1-2 pessoas',
+          price: 15.90,
+          is_featured: false,
+        },
+
+        // === PIZZAS SALGADAS - 8 PEDAÇOS (Até 3 sabores) ===
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza A Família - 8 Pedaços',
-          description: 'Molho de tomate, mozzarella, calabresa, frango, barbecue, catupiry, azeitonas | Serve: 2-3 pessoas | Nota: Aceita até 3 sabores | Perfil: Completo | Popularidade: MÁXIMA',
+          description: '⭐ MAIS PEDIDA! Até 3 sabores. Mozzarella, calabresa, frango, barbecue, catupiry. Serve: 2-3 pessoas',
           price: 18.90,
           is_featured: true,
         },
         {
           category_id: categoryMap['Pizzas Salgadas'],
           name: 'Pizza 4 Queijos - 8 Pedaços',
-          description: 'Molho de tomate, mozzarella, emmental, cheddar, catupiry | Serve: 2-3 pessoas | Nota: Aceita até 3 sabores | Perfil: Cremoso | Popularidade: Muito Alta',
+          description: 'Até 3 sabores. Mozzarella, emmental, cheddar, catupiry. Serve: 2-3 pessoas',
           price: 18.90,
           is_featured: true,
         },
-        // Hambúrgueres
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Bacon - 8 Pedaços',
+          description: 'Até 3 sabores. Bacon crocante, mozzarella, cebola. Serve: 2-3 pessoas',
+          price: 18.90,
+          is_featured: false,
+        },
+
+        // === PIZZAS ESPECIAIS GRANDES ===
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Maracanã - 16 Pedaços (Borda Normal)',
+          description: '🎉 FESTA! Até 4 sabores (1 pode ser doce). Serve: 4-6 pessoas. Diâmetro: ~45cm',
+          price: 40.00,
+          is_featured: true,
+        },
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Maracanã - 16 Pedaços (Borda Recheada)',
+          description: '🎉 FESTA! Até 4 sabores (1 pode ser doce). Borda recheada. Serve: 4-6 pessoas',
+          price: 45.00,
+          is_featured: true,
+        },
+        {
+          category_id: categoryMap['Pizzas Salgadas'],
+          name: 'Pizza Golias - 38 Pedaços',
+          description: '🎊 GIGANTE! Até 6 sabores (1 pode ser doce). Serve: 10-15 pessoas. Diâmetro: ~60cm',
+          price: 55.00,
+          is_featured: true,
+        },
+
+        // === PIZZAS DOCES ===
+        {
+          category_id: categoryMap['Pizzas Doces'],
+          name: 'Pizza Nutella - 4 Pedaços',
+          description: 'Nutella derretida com morangos. Serve: 1 pessoa',
+          price: 11.00,
+          is_featured: true,
+        },
+        {
+          category_id: categoryMap['Pizzas Doces'],
+          name: 'Pizza Romeu e Julieta - 4 Pedaços',
+          description: 'Goiabada com queijo. Clássico brasileiro. Serve: 1 pessoa',
+          price: 11.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Pizzas Doces'],
+          name: 'Pizza Brigadeiro - 4 Pedaços',
+          description: 'Chocolate cremoso com granulado. Serve: 1 pessoa',
+          price: 11.00,
+          is_featured: false,
+        },
+
+        // === HAMBÚRGUERES (todos com batatas fritas INCLUÍDAS) ===
         {
           category_id: categoryMap['Hambúrgueres'],
           name: 'Hambúrguer Brasil',
-          description: 'Carne bovina (180g), catupiry, bacon, ovo, batata palha + Batatas Fritas INCLUÍDAS | Serve: 1 pessoa | Perfil: Brasileiro completo | Popularidade: Muito Alta',
+          description: '🇧🇷 Carne 180g, catupiry, bacon, ovo, batata palha + BATATAS INCLUÍDAS. Serve: 1 pessoa',
           price: 13.90,
           is_featured: true,
         },
-        // Açaí
+        {
+          category_id: categoryMap['Hambúrgueres'],
+          name: 'Hambúrguer A Família',
+          description: '⭐ Carne 180g, queijo, fiambre, ovo, alface, tomate + BATATAS INCLUÍDAS. Serve: 1 pessoa',
+          price: 14.90,
+          is_featured: true,
+        },
+        {
+          category_id: categoryMap['Hambúrgueres'],
+          name: 'Hambúrguer Bacon',
+          description: 'Carne 180g, queijo, bacon crocante, cebola caramelizada + BATATAS INCLUÍDAS. Serve: 1 pessoa',
+          price: 13.50,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Hambúrgueres'],
+          name: 'Hambúrguer Frango',
+          description: 'Frango grelhado 180g, queijo, alface, tomate, molho especial + BATATAS INCLUÍDAS. Serve: 1 pessoa',
+          price: 12.90,
+          is_featured: false,
+        },
+
+        // === AÇAÍ ===
         {
           category_id: categoryMap['Açaí'],
-          name: 'Açaí Médio',
-          description: 'Açaí cremoso 500ml - Escolha 7 complementos INCLUÍDOS | Serve: 1-2 pessoas | Perfil: Tropical | Popularidade: Muito Alta',
+          name: 'Açaí Pequeno (300ml)',
+          description: '🍓 Escolha 5 complementos INCLUÍDOS. Serve: 1 pessoa',
+          price: 8.00,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Açaí'],
+          name: 'Açaí Médio (500ml)',
+          description: '🍓 Escolha 7 complementos INCLUÍDOS. Serve: 1-2 pessoas',
           price: 11.00,
           is_featured: true,
+        },
+        {
+          category_id: categoryMap['Açaí'],
+          name: 'Açaí Grande (700ml)',
+          description: '🍓 Escolha 9 complementos INCLUÍDOS. Serve: 2-3 pessoas',
+          price: 14.00,
+          is_featured: false,
+        },
+
+        // === BEBIDAS ===
+        {
+          category_id: categoryMap['Bebidas'],
+          name: 'Coca-Cola 1L',
+          description: 'Refrigerante original',
+          price: 3.50,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Bebidas'],
+          name: 'Água 1.5L',
+          description: 'Água mineral natural',
+          price: 1.50,
+          is_featured: false,
+        },
+        {
+          category_id: categoryMap['Bebidas'],
+          name: 'Sumo Natural 500ml',
+          description: 'Laranja ou morango natural',
+          price: 4.00,
+          is_featured: false,
         },
       ];
 
@@ -332,29 +520,106 @@ export default function Admin() {
       if (!createdProducts) throw new Error('Falha ao criar produtos');
       setImportProgress(60);
 
-      // 5. Criar addons (bordas para pizzas)
-      setImportStatus('Criando addons (bordas)...');
-      const pizzaProducts = createdProducts.filter(p => p.name.startsWith('Pizza'));
+      // 5. Criar addons (bordas para pizzas + complementos açaí)
+      setImportStatus('Criando addons...');
+      const pizzaProducts = createdProducts.filter(p => p.name.startsWith('Pizza') && !p.name.includes('Doce'));
+      const acaiProducts = createdProducts.filter(p => p.name.startsWith('Açaí'));
+      
       const bordas = [
         { name: 'Borda Recheada (Mozzarella ou Catupiry)', price: 3.50 },
-        { name: 'Borda Vulcão (Queijo transbordando)', price: 5.00 },
-        { name: 'Borda 4 Queijos', price: 5.00 },
+        { name: 'Borda Vulcão (4 Queijos transbordando)', price: 5.00 },
         { name: 'Borda Suprema (Queijo + Proteína)', price: 6.00 },
         { name: 'Borda Apózinho (Mini pães recheados)', price: 5.00 },
       ];
 
-      const addons = pizzaProducts.flatMap(pizza =>
-        bordas.map(borda => ({
-          product_id: pizza.id,
-          name: borda.name,
-          price: borda.price,
-        }))
-      );
+      const complementosAcai = [
+        { name: 'Morango', price: 0 },
+        { name: 'Banana', price: 0 },
+        { name: 'Kiwi', price: 0 },
+        { name: 'Granola', price: 0 },
+        { name: 'Leite em Pó', price: 0 },
+        { name: 'Nutella', price: 0 },
+        { name: 'Paçoca', price: 0 },
+        { name: 'Amendoim', price: 0 },
+        { name: 'Coco Ralado', price: 0 },
+      ];
+
+      const addons = [
+        ...pizzaProducts.flatMap(pizza =>
+          bordas.map(borda => ({
+            product_id: pizza.id,
+            name: borda.name,
+            price: borda.price,
+          }))
+        ),
+        ...acaiProducts.flatMap(acai =>
+          complementosAcai.map(comp => ({
+            product_id: acai.id,
+            name: comp.name,
+            price: comp.price,
+          }))
+        ),
+      ];
 
       await supabase.from('addons').insert(addons);
-      setImportProgress(80);
+      setImportProgress(70);
 
-      // 6. Configurar AI Settings
+      // 6. Criar zonas de entrega (baseado no PDF)
+      setImportStatus('Configurando zonas de entrega...');
+      const deliveryZones = [
+        {
+          name: 'Zona 1 (Até 2km)',
+          coordinates: { type: 'circle', center: { lat: 37.0194, lng: -7.9304 }, radius: 2000 },
+          fee_amount: 3.00,
+          fee_type: 'fixed',
+          min_order_amount: 0,
+          is_active: true,
+          priority: 1,
+        },
+        {
+          name: 'Zona 2 (2,1-3,5km)',
+          coordinates: { type: 'circle', center: { lat: 37.0194, lng: -7.9304 }, radius: 3500 },
+          fee_amount: 3.50,
+          fee_type: 'fixed',
+          min_order_amount: 0,
+          is_active: true,
+          priority: 2,
+        },
+        {
+          name: 'Zona 3 (3,6-5km)',
+          coordinates: { type: 'circle', center: { lat: 37.0194, lng: -7.9304 }, radius: 5000 },
+          fee_amount: 5.00,
+          fee_type: 'fixed',
+          min_order_amount: 15,
+          is_active: true,
+          priority: 3,
+        },
+        {
+          name: 'Zona 4 (5,1-8km)',
+          coordinates: { type: 'circle', center: { lat: 37.0194, lng: -7.9304 }, radius: 8000 },
+          fee_amount: 8.00,
+          fee_type: 'fixed',
+          min_order_amount: 20,
+          is_active: true,
+          priority: 4,
+        },
+        {
+          name: 'Zona 5 (8,1-15km)',
+          coordinates: { type: 'circle', center: { lat: 37.0194, lng: -7.9304 }, radius: 15000 },
+          fee_amount: 15.00,
+          fee_type: 'fixed',
+          min_order_amount: 30,
+          is_active: true,
+          priority: 5,
+        },
+      ];
+
+      await supabase.from('delivery_zones').insert(
+        deliveryZones.map(z => ({ ...z, restaurant_id: restaurantId }))
+      );
+      setImportProgress(85);
+
+      // 7. Configurar AI Settings (baseado no FAQ do PDF)
       setImportStatus('Configurando IA...');
       await supabase.from('restaurant_ai_settings').insert({
         restaurant_id: restaurantId,
@@ -366,13 +631,25 @@ export default function Admin() {
         language: 'pt-PT',
         business_rules: `HORÁRIO: Terça a Domingo 18h-23h (Segunda FECHADO)
 PAGAMENTOS: MB Way 915817565, Multibanco, Cartão, Dinheiro
-ENTREGAS: €3-15 conforme distância + €0,34 embalagem
-TEMPO: Retirada 20-30min | Entrega 30-60min`,
-        faq_responses: `P: Pizza mais pedida? R: A Família! 🏆
-P: Meio a meio? R: Sim! 6 pedaços = 2 sabores, 8 pedaços = 3 sabores
-P: MB Way? R: Sim! 915817565`,
-        special_offers_info: '🎉 Pizza Maracanã (16 pedaços): €40-50 | Pizza Golias (38 pedaços): €55',
-        custom_instructions: 'Pizza "A Família" é a estrela | Perguntar borda em pizzas grandes | Açaí: complementos INCLUÍDOS',
+ENTREGAS: €3-15 conforme distância + €0,34 taxa embalagem
+TEMPO ESTIMADO: Retirada 20-30min | Entrega 30-60min
+PEDIDO MÍNIMO: Varia por zona (€15-30 conforme distância)`,
+        faq_responses: `P: Pizza mais pedida? R: Pizza A Família! 🏆 É a nossa estrela!
+P: Posso pedir meio a meio? R: Sim! 6 pedaços = até 2 sabores | 8 pedaços = até 3 sabores
+P: Aceita MB Way? R: Sim! Envie para 915817565
+P: Quanto tempo demora? R: Retirada 20-30min | Entrega 30-60min
+P: Taxa de entrega? R: €3 a €15 conforme distância + €0,34 embalagem
+P: Como funciona o açaí? R: Complementos INCLUÍDOS no preço (5, 7 ou 9 conforme tamanho)
+P: Posso mudar a borda? R: Sim! Temos 4 tipos (+€3,50 a €6,00)
+P: Hambúrguer vem com batatas? R: Sim! TODAS as batatas fritas estão INCLUÍDAS!`,
+        special_offers_info: '🎉 FESTAS: Pizza Maracanã (16 pedaços, 4-6 pessoas): €40-50 | Pizza Golias (38 pedaços, 10-15 pessoas): €55',
+        custom_instructions: `IMPORTANTE:
+- Pizza "A Família" é a MAIS PEDIDA - destacar sempre
+- Perguntar sobre borda em pizzas 8 pedaços ou maiores
+- Açaí: complementos JÁ INCLUÍDOS no preço
+- Hambúrgueres: batatas fritas JÁ INCLUÍDAS
+- Pizzas 6 pedaços = até 2 sabores | 8 pedaços = até 3 sabores
+- Sugerir Maracanã/Golias para grupos/festas`,
       });
       setImportProgress(100);
 
