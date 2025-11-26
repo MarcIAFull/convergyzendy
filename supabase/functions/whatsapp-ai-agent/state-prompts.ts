@@ -103,7 +103,7 @@ ${JSON.stringify(menuStructure, null, 2)}
 CARRINHO ATUAL:
 ${cart.length > 0 ? cart.map(item => 
   `• ${item.quantity}x ${item.product_name} (€${item.price.toFixed(2)})${
-    item.addons?.length > 0 ? ` + ${item.addons.map((a: any) => a.name).join(', ')}` : ''
+    item.addons?.length > 0 ? ` + ${item.addons.filter((a: any) => a && a.name).map((a: any) => a.name).join(', ')}` : ''
   }`
 ).join('\n') : 'Vazio'}
 

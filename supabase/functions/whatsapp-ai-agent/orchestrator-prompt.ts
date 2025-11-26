@@ -26,9 +26,11 @@ export function buildOrchestratorPrompt(context: {
     pendingItems = []
   } = context;
 
-  const productList = menuProducts.map(p => 
-    `- ${p.name} (ID: ${p.id}, €${p.price}, Category: ${p.category})`
-  ).join('\n');
+  const productList = menuProducts
+    .filter(p => p && p.name) // Filter out null/invalid products
+    .map(p => 
+      `- ${p.name} (ID: ${p.id}, €${p.price}, Category: ${p.category})`
+    ).join('\n');
 
   const cartSummary = cartItems.length > 0 
     ? cartItems.map(item => `${item.quantity}x ${item.product_name} (€${item.total_price})`).join(', ')
