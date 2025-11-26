@@ -23,7 +23,10 @@ interface ValidationResult {
 export const useGeocoding = () => {
   const [loading, setLoading] = useState(false);
 
-  const geocodeAddress = async (address: string): Promise<GeocodingResult | null> => {
+  const geocodeAddress = async (
+    address: string, 
+    forceRefresh: boolean = false
+  ): Promise<GeocodingResult | null> => {
     if (!address || address.trim().length < 3) {
       toast.error('Endereço muito curto');
       return null;
@@ -32,7 +35,7 @@ export const useGeocoding = () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('geocode-address-free', {
-        body: { address }
+        body: { address, force_refresh: forceRefresh }
       });
 
       if (error) throw error;

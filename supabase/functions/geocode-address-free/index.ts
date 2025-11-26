@@ -212,7 +212,7 @@ serve(async (req) => {
   }
 
   try {
-    const { address } = await req.json();
+    const { address, force_refresh } = await req.json();
 
     if (!address || address.trim().length < 3) {
       return new Response(
@@ -225,34 +225,55 @@ serve(async (req) => {
     console.log('=== Geocoding request ===');
     console.log('Original:', address);
     console.log('Normalized:', normalizedAddress);
+    console.log('Force refresh:', force_refresh);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Check cache first
-    const { data: cachedAddress } = await supabase
-      .from('address_cache')
-      .select('*')
-      .eq('address_query', address.toLowerCase().trim())
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (cachedAddress) {
-      console.log('Cache hit!');
-      return new Response(
-        JSON.stringify({
-          lat: parseFloat(cachedAddress.latitude),
-          lng: parseFloat(cachedAddress.longitude),
-          formatted_address: cachedAddress.formatted_address,
-          place_id: cachedAddress.google_place_id,
-          address_components: cachedAddress.address_components,
-          source: 'cache'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // If force_refresh, delete old cache first
+    if (force_refresh) {
+      console.log('Force refresh enabled, clearing cache...');
+      const { error: deleteError } = await supabase
+        .from('address_cache')
+        .delete()
+        .eq('address_query', address.toLowerCase().trim());
+      
+      if (deleteError) {
+        console.error('Error clearing cache:', deleteError);
+      } else {
+        console.log('Cache cleared successfully');
+      }
     }
+
+    // Check cache first (only if not forcing refresh)
+    if (!force_refresh) {
+      console.log('Checking cache...');
+      const { data: cachedAddress } = await supabase
+        .from('address_cache')
+        .select('*')
+        .eq('address_query', address.toLowerCase().trim())
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (cachedAddress) {
+        console.log('Cache hit! Source:', cachedAddress.google_place_id ? 'google' : 'nominatim');
+        return new Response(
+          JSON.stringify({
+            lat: parseFloat(cachedAddress.latitude),
+            lng: parseFloat(cachedAddress.longitude),
+            formatted_address: cachedAddress.formatted_address,
+            place_id: cachedAddress.google_place_id,
+            address_components: cachedAddress.address_components,
+            source: 'cache'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    console.log('Cache miss or force refresh, trying providers...');
 
     // Try providers in order of accuracy with multiple strategies
     console.log('--- Strategy 0: Google Geocoding API ---');

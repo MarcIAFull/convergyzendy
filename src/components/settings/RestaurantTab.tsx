@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useGeocoding } from '@/hooks/useGeocoding';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,8 +20,9 @@ import {
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Store, Clock, DollarSign, Loader2, MapPin } from 'lucide-react';
+import { Store, Clock, DollarSign, Loader2, MapPin, RefreshCw } from 'lucide-react';
 import type { OpeningHours } from '@/types/database';
+import { toast as sonnerToast } from 'sonner';
 
 const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -69,6 +71,7 @@ export function RestaurantTab() {
   const { restaurant, loading, updateRestaurant } = useRestaurantStore();
   const { geocodeAddress, loading: geocodingLoading } = useGeocoding();
   const { toast } = useToast();
+  const [forceGeocoding, setForceGeocoding] = useState(false);
 
   const form = useForm<RestaurantSettingsFormValues>({
     resolver: zodResolver(restaurantSettingsSchema),
@@ -221,6 +224,68 @@ export function RestaurantTab() {
     }
   };
 
+  const handleForceGeocode = async () => {
+    if (!restaurant) return;
+    
+    const address = form.getValues('address');
+    if (!address || address.trim().length < 5) {
+      sonnerToast.error('Endereço inválido');
+      return;
+    }
+
+    setForceGeocoding(true);
+    try {
+      sonnerToast.info('Geocodificando com Google Maps...', { duration: 2000 });
+      
+      // 1. Force re-geocode with Google API
+      const result = await geocodeAddress(address, true);
+      
+      if (!result) {
+        sonnerToast.error('Não foi possível geocodificar o endereço');
+        return;
+      }
+
+      // 2. Update restaurant coordinates
+      await updateRestaurant({
+        latitude: result.lat,
+        longitude: result.lng,
+      });
+
+      // 3. Update all delivery zones with new center
+      const { data: zones } = await supabase
+        .from('delivery_zones')
+        .select('id, coordinates')
+        .eq('restaurant_id', restaurant.id);
+
+      if (zones && zones.length > 0) {
+        for (const zone of zones) {
+          // Ensure coordinates is an object before spreading
+          const existingCoords = typeof zone.coordinates === 'object' ? zone.coordinates : {};
+          const updatedCoordinates = {
+            ...existingCoords,
+            center: { lat: result.lat, lng: result.lng }
+          };
+          
+          await supabase
+            .from('delivery_zones')
+            .update({ coordinates: updatedCoordinates })
+            .eq('id', zone.id);
+        }
+      }
+
+      sonnerToast.success(`Localização atualizada! ${zones?.length || 0} zonas atualizadas.`, {
+        description: `Coordenadas: ${result.lat.toFixed(6)}, ${result.lng.toFixed(6)}`
+      });
+    } catch (error: any) {
+      console.error('Error force geocoding:', error);
+      sonnerToast.error('Erro ao atualizar localização', {
+        description: error.message
+      });
+    } finally {
+      setForceGeocoding(false);
+    }
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
@@ -292,6 +357,27 @@ export function RestaurantTab() {
                       Exemplo: Rua das Flores 123, 8125-248 Quarteira
                     </span>
                   </FormDescription>
+                  {restaurant?.latitude && restaurant?.longitude && (
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                      <span className="text-xs text-muted-foreground">
+                        Coordenadas atuais: {restaurant.latitude.toFixed(6)}, {restaurant.longitude.toFixed(6)}
+                      </span>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleForceGeocode}
+                        disabled={forceGeocoding}
+                      >
+                        {forceGeocoding ? (
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3 w-3" />
+                        )}
+                        Atualizar Localização
+                      </Button>
+                    </div>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
