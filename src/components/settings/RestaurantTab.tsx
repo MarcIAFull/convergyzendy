@@ -283,10 +283,14 @@ export function RestaurantTab() {
                     Morada
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder="Rua Example, 123, Lisboa" {...field} />
+                    <Input placeholder="Rua das Flores 123, 8125-248 Quarteira" {...field} />
                   </FormControl>
                   <FormDescription>
-                    O endereço será automaticamente geocodificado para as zonas de entrega
+                    <span className="font-medium">Importante:</span> Para geocodificação precisa, inclua código postal e cidade
+                    <br />
+                    <span className="text-xs text-muted-foreground">
+                      Exemplo: Rua das Flores 123, 8125-248 Quarteira
+                    </span>
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
