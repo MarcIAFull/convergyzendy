@@ -335,10 +335,13 @@ function formatMenuForPrompt(products: any[]): string {
       
       // Add addons
       if (p.addons && p.addons.length > 0) {
-        line += `\n  ⭐ ADDONS:`;
-        p.addons.forEach((a: any) => {
-          line += `\n     → ${a.name} (ID: ${a.id}) - +€${a.price}`;
-        });
+        const validAddons = (p.addons || []).filter((a: any) => a && a.name);
+        if (validAddons.length > 0) {
+          line += `\n  ⭐ ADDONS:`;
+          validAddons.forEach((a: any) => {
+            line += `\n     → ${a.name} (ID: ${a.id}) - +€${a.price}`;
+          });
+        }
       }
       
       return line;
@@ -429,8 +432,9 @@ function formatPendingItemsForPrompt(pendingItems: any[]): string {
   return pendingItems
     .filter(item => item && item.product && item.product.name) // Filter out null/invalid items
     .map(item => {
-      const addonsText = item.addons && item.addons.length > 0
-        ? ` + ${item.addons.map((a: any) => a.name).join(', ')}`
+      const validAddons = (item.addons || []).filter((a: any) => a && a.name);
+      const addonsText = validAddons.length > 0
+        ? ` + ${validAddons.map((a: any) => a.name).join(', ')}`
         : '';
       const notesText = item.notes ? ` (${item.notes})` : '';
       return `${item.quantity}x ${item.product.name}${addonsText}${notesText}`;

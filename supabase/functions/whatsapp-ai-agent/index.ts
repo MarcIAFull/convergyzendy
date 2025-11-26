@@ -541,7 +541,7 @@ serve(async (req) => {
         // ============================================================
         // AUTO-CORRECTION: Detect mentioned addons and add them if missing
         // ============================================================
-        const availableAddons = product?.addons || [];
+        const availableAddons = (product?.addons || []).filter((addon: any) => addon && addon.name);
         const mentionedAddons = availableAddons.filter((addon: any) =>
           userMessage.includes(addon.name.toLowerCase())
         );
