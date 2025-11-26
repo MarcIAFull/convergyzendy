@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase, ensureValidSession, verifyAuthUid, forceTokenReload } from '@/integrations/supabase/client';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, LogOut } from 'lucide-react';
 import RestaurantInfoStep from '@/components/onboarding/RestaurantInfoStep';
 import MenuSetupStep from '@/components/onboarding/MenuSetupStep';
 import WhatsAppSetupStep from '@/components/onboarding/WhatsAppSetupStep';
@@ -15,7 +15,7 @@ import WhatsAppSetupStep from '@/components/onboarding/WhatsAppSetupStep';
 type Step = 'restaurant' | 'menu' | 'whatsapp';
 
 const Onboarding = () => {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { fetchRestaurant } = useRestaurantStore();
   const navigate = useNavigate();
   
@@ -195,6 +195,17 @@ const Onboarding = () => {
     navigate('/');
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success('Você saiu com sucesso');
+      navigate('/login');
+    } catch (error) {
+      console.error('Erro ao sair:', error);
+      toast.error('Erro ao sair');
+    }
+  };
+
   const applyMenuTemplate = async (restaurantId: string, templateId: string) => {
     // Simple hardcoded templates for MVP
     const templates: Record<string, { categories: { name: string; products: { name: string; price: number; description: string }[] }[] }> = {
@@ -304,8 +315,18 @@ const Onboarding = () => {
                 Vamos configurar seu restaurante em {steps.length} etapas simples
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              {steps.map((step, index) => (
+            <Button
+              onClick={handleSignOut}
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            {steps.map((step, index) => (
                 <div
                   key={step.id}
                   className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${
@@ -320,12 +341,11 @@ const Onboarding = () => {
                     <Check className="h-4 w-4" />
                   ) : (
                     <span className="text-sm font-semibold">{index + 1}</span>
-                  )}
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
-          <Progress value={progress} className="h-2" />
+          <Progress value={progress} className="h-2 mt-4" />
           <div className="flex justify-between text-xs text-muted-foreground mt-2">
             {steps.map((step) => (
               <span
