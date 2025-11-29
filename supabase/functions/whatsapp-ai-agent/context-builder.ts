@@ -1,12 +1,13 @@
 /**
  * Unified Context Builder for WhatsApp AI Agent
  * 
- * V2.0 - RAG ARCHITECTURE
- * - Optimized for token efficiency (menu = categories only)
- * - Full menu is fetched on-demand via search_menu tool
+ * V3.0 - RAG ARCHITECTURE (Menu + Customer)
+ * - Menu: categories only (search_menu for details)
+ * - Customer: minimal status (get_customer_history for details)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.83.0';
+import { getCustomerInsights } from '../_shared/customerInsights.ts';
 
 export interface ConversationContext {
   // Raw data
@@ -18,6 +19,7 @@ export interface ConversationContext {
   activeCart: any | null;
   cartItems: any[];
   customer: any | null;
+  customerInsights: any | null;  // RAG: minimal insights for prompt
   pendingItems: any[];
   conversationState: any;
   lastShownProducts: Array<{ id: string; name: string }>;
@@ -33,7 +35,7 @@ export interface ConversationContext {
     menu: string;        // RAG format: categories only
     menuFull: string;    // Full menu (for search_menu tool)
     cart: string;
-    customer: string;
+    customer: string;    // RAG format: minimal status
     history: string;
     pendingItems: string;
   };
@@ -234,6 +236,18 @@ export async function buildConversationContext(
   console.log(`[Context Builder] Customer: ${customer ? customer.name || 'Found (no name)' : 'Creation failed'}`);
 
   // ============================================================
+  // LOAD CUSTOMER INSIGHTS (RAG - minimal for prompt)
+  // ============================================================
+  
+  let customerInsights = null;
+  try {
+    customerInsights = await getCustomerInsights(supabase, customerPhone);
+    console.log(`[Context Builder] Customer Insights: ${customerInsights ? `Found (${customerInsights.order_count} orders)` : 'New customer'}`);
+  } catch (insightsError) {
+    console.warn(`[Context Builder] Failed to load customer insights:`, insightsError);
+  }
+
+  // ============================================================
   // LOAD PENDING ITEMS
   // ============================================================
   
@@ -310,12 +324,13 @@ export async function buildConversationContext(
     menu: formatMenuForRAG(availableProducts, menuUrl),           // OPTIMIZED: ~500 chars
     menuFull: formatMenuForPromptFull(availableProducts),         // FULL: for search_menu tool
     cart: formatCartForPrompt(cartItems, cartTotal),
-    customer: formatCustomerForPrompt(customer),
+    customer: formatCustomerForRAG(customer, customerInsights),   // RAG: minimal status
     history: formatHistoryForPrompt(conversationHistory),
     pendingItems: formatPendingItemsForPrompt(pendingItems)
   };
 
   console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
+  console.log(`[Context Builder] ✅ RAG Customer format: ${formatted.customer.length} chars`);
   console.log(`[Context Builder] 📉 Token reduction: ${Math.round((1 - formatted.menu.length / Math.max(formatted.menuFull.length, 1)) * 100)}%`);
   console.log('[Context Builder] =============================================\n');
 
@@ -329,6 +344,7 @@ export async function buildConversationContext(
     activeCart,
     cartItems,
     customer,
+    customerInsights,
     pendingItems,
     conversationState,
     lastShownProducts,
@@ -426,20 +442,53 @@ function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
   return `${itemsText} | Total: €${cartTotal.toFixed(2)}`;
 }
 
-function formatCustomerForPrompt(customer: any | null): string {
-  if (!customer) return 'Cliente novo - sem dados salvos';
+/**
+ * RAG-optimized customer format: minimal status
+ * Full history is fetched on-demand via get_customer_history tool
+ */
+function formatCustomerForRAG(customer: any | null, insights: any | null): string {
+  // New customer - no history
+  if (!customer && !insights) {
+    return '👋 Cliente NOVO - primeira interação';
+  }
   
   const parts = [];
-  if (customer.name) parts.push(`Nome: ${customer.name}`);
-  if (customer.default_address) {
+  
+  // Basic info
+  if (customer?.name) parts.push(`Nome: ${customer.name}`);
+  if (customer?.default_address) {
     const addr = typeof customer.default_address === 'string' 
       ? customer.default_address 
-      : JSON.stringify(customer.default_address);
-    parts.push(`Endereço: ${addr}`);
+      : (customer.default_address.formatted || JSON.stringify(customer.default_address));
+    parts.push(`📍 ${addr}`);
   }
-  if (customer.default_payment_method) parts.push(`Pagamento: ${customer.default_payment_method}`);
+  if (customer?.default_payment_method) parts.push(`💳 ${customer.default_payment_method}`);
   
-  return parts.length > 0 ? parts.join(' | ') : 'Cliente existe mas sem preferências salvas';
+  // Minimal insights (RAG mode)
+  if (insights && insights.order_count > 0) {
+    const status = insights.order_count >= 5 ? '🏆 VIP' : 
+                   insights.order_count >= 2 ? '↩️ Retornante' : '👤';
+    parts.push(`${status} (${insights.order_count} pedidos)`);
+    
+    if (insights.average_ticket) {
+      parts.push(`Ticket: €${insights.average_ticket.toFixed(2)}`);
+    }
+  }
+  
+  // RAG hint
+  const hasHistory = insights && insights.order_count > 0;
+  const ragHint = hasHistory 
+    ? '\n⚡ Para personalizar: get_customer_history()' 
+    : '';
+  
+  return parts.length > 0 
+    ? parts.join(' | ') + ragHint
+    : 'Cliente existe mas sem preferências salvas' + ragHint;
+}
+
+// Keep old function for backwards compatibility
+function formatCustomerForPrompt(customer: any | null): string {
+  return formatCustomerForRAG(customer, null);
 }
 
 function formatHistoryForPrompt(history: any[]): string {

@@ -5,7 +5,7 @@ import { buildOrchestratorPrompt } from './orchestrator-prompt.ts';
 import { buildConversationalAIPrompt } from './conversational-ai-prompt.ts';
 import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
-import { updateCustomerInsightsAfterOrder } from '../_shared/customerInsights.ts';
+import { updateCustomerInsightsAfterOrder, getCustomerInsights } from '../_shared/customerInsights.ts';
 import { buildConversationContext } from './context-builder.ts';
 
 const corsHeaders = {
@@ -173,6 +173,7 @@ serve(async (req) => {
       conversationHistory,
       cartItems,
       customer,
+      customerInsights,
       pendingItems,
       conversationState,
       lastShownProducts,
@@ -189,6 +190,7 @@ serve(async (req) => {
       cart_items: cartItems.length,
       cart_total: cartTotal,
       customer: customer ? { name: customer.name, phone: customer.phone, has_address: !!customer.default_address } : null,
+      customer_insights: customerInsights ? { order_count: customerInsights.order_count, average_ticket: customerInsights.average_ticket } : null,
       pending_items: pendingItems.length,
       conversation_history_length: conversationHistory.length
     };
@@ -983,6 +985,86 @@ serve(async (req) => {
             
             cartModified = true;
             console.log('[Tool] ✅ Cleared cart');
+          }
+          break;
+        }
+        
+        // ============================================================
+        // RAG: Customer History Tool Handler
+        // ============================================================
+        case 'get_customer_history': {
+          console.log(`[Tool] 📊 Fetching customer history for ${customerPhone}`);
+          
+          try {
+            const insights = await getCustomerInsights(supabase, customerPhone);
+            
+            if (!insights || insights.order_count === 0) {
+              console.log('[Tool] → Customer is new (no history)');
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: true,
+                  customer_status: 'new',
+                  message: 'Cliente novo - primeira interação. Não há histórico disponível.',
+                  order_count: 0,
+                  suggestions: ['Apresentar o cardápio', 'Perguntar se quer ver alguma categoria']
+                })
+              });
+            } else {
+              // Format rich customer profile
+              const topItems = (insights.preferred_items || []).slice(0, 3);
+              const topAddons = (insights.preferred_addons || []).slice(0, 3);
+              
+              const customerStatus = insights.order_count >= 5 ? 'vip' : 
+                                     insights.order_count >= 2 ? 'returning' : 'first_return';
+              
+              // Generate smart suggestions based on history
+              const suggestions: string[] = [];
+              if (topItems.length > 0) {
+                suggestions.push(`Sugerir: "Quer o ${topItems[0].name} de sempre?"`);
+              }
+              if (topAddons.length > 0) {
+                suggestions.push(`Cliente costuma pedir: ${topAddons[0].name}`);
+              }
+              if (customerStatus === 'vip') {
+                suggestions.push('Cliente VIP - tratamento especial!');
+              }
+              if (insights.order_frequency_days && insights.order_frequency_days <= 7) {
+                suggestions.push(`Cliente frequente (pede a cada ${insights.order_frequency_days} dias)`);
+              }
+              
+              const lastOrderDate = insights.last_interaction_at 
+                ? new Date(insights.last_interaction_at).toLocaleDateString('pt-BR')
+                : null;
+              
+              console.log(`[Tool] ✅ Found history: ${insights.order_count} orders, ticket €${insights.average_ticket?.toFixed(2)}`);
+              
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({
+                  success: true,
+                  customer_status: customerStatus,
+                  order_count: insights.order_count,
+                  average_ticket: insights.average_ticket ? `€${insights.average_ticket.toFixed(2)}` : null,
+                  order_frequency: insights.order_frequency_days 
+                    ? `a cada ${insights.order_frequency_days} dias` 
+                    : 'primeira vez',
+                  favorite_items: topItems.map((i: any) => `${i.name} (${i.count}x)`),
+                  favorite_addons: topAddons.map((a: any) => `${a.name} (${a.count}x)`),
+                  last_order_date: lastOrderDate,
+                  suggestions
+                })
+              });
+            }
+          } catch (historyError) {
+            console.error('[Tool] ❌ Error fetching customer history:', historyError);
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                success: false,
+                error: 'Erro ao carregar histórico do cliente'
+              })
+            });
           }
           break;
         }
