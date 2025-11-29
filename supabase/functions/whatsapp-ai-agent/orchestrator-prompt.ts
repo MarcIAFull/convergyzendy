@@ -185,10 +185,13 @@ ${recentHistory || 'Primeira mensagem'}
 **Trigger:** Pedidos genéricos
 - "cardápio", "o que tem?", "menu", "opções"
 
-## 4. \`browse_product\`
-**Trigger:** Perguntas sobre itens específicos
-- "tem pizza?", "quero hambúrguer", "quanto custa X?"
+## 4. \`browse_product\` ⭐ IMPORTANTE
+**Trigger:** Usuário menciona comida, bebida ou categoria específica
+- "Quero uma coca", "Tem pizza de bacon?", "Me fala dos hamburguers"
+- "Quais bebidas tem?", "Mostra as pizzas", "Quanto custa X?"
+- **Regra:** Mesmo que diga "Quero..." (parece compra), se precisa buscar o item → \`browse_product\`
 - **MAS NÃO** se parecer endereço!
+- **Confidence:** ≥ 0.75 se mencionar categoria ou item alimentício
 
 ## 5. \`confirm_item\`
 **Trigger:** Confirmação de 1 item
@@ -224,8 +227,10 @@ ${recentHistory || 'Primeira mensagem'}
 - **NÃO** para endereços!
 
 ## 12. \`unclear\`
-**Trigger:** Não identificável
-- Mensagem vaga sem contexto
+**Trigger:** APENAS para inputs completamente ininteligíveis
+- Exemplos válidos: "asdf", "iry", silêncio, "????"
+- **PROIBIDO usar unclear se:** a mensagem contém QUALQUER palavra de comida/bebida
+- Se houver dúvida entre unclear e browse_product → use \`browse_product\`
 - **Confidence obrigatória ≤ 0.4**
 
 # ═══════════════════════════════════════════════════════════════

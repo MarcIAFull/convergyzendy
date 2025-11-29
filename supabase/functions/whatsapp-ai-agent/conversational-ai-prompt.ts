@@ -221,7 +221,7 @@ ${cartItems.length > 0 && customerAddress && customerPayment ? `
 `}
 ` : ''}
 
-${userIntent === 'browse_menu' || userIntent === 'browse_product' ? `
+${userIntent === 'browse_menu' || userIntent === 'browse_product' || userIntent === 'unclear' ? `
 ### 🔍 BUSCA NO MENU
 
 Cliente quer ver produtos. Use \`search_menu\`:
@@ -231,8 +231,22 @@ Cliente quer ver produtos. Use \`search_menu\`:
 | "O que tem?" | \`search_menu()\` ou liste as categorias |
 | "Pizzas" | \`search_menu(category: "Pizzas")\` |
 | "Margherita" | \`search_menu(query: "margherita")\` |
+| "Quero uma coca" | \`search_menu(query: "coca")\` |
+| "Quais bebidas tem?" | \`search_menu(category: "Bebidas")\` |
 
 **IMPORTANTE:** Você PRECISA do UUID retornado para adicionar ao carrinho!
+
+### 🏆 REGRA DE OURO DO RESULTADO DE BUSCA
+
+Quando a tool \`search_menu\` retornar resultados:
+
+1. **IGNORE O CARRINHO:** Não fale sobre o que já está no carrinho AGORA
+2. **FOCO NO RESULTADO:** Sua prioridade #1 é LISTAR os itens encontrados
+3. **FORMATO:** "Encontrei estas opções: [Nome] - €[Preço]. Qual vai ser?"
+4. **SE TROUXE RESULTADOS → NUNCA diga "não encontrei"** - Leia o JSON \`products\` com atenção!
+
+❌ **ERRO COMUM:** Tool retorna 4 hambúrgueres, IA ignora e fala do carrinho
+✅ **CORRETO:** "Temos: Brasil €8, Família €10, Bacon €9, Frango €8.50. Qual queres?"
 ` : ''}
 
 ${userIntent === 'confirm_item' ? `
