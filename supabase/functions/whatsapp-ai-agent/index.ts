@@ -608,7 +608,8 @@ serve(async (req) => {
     
     console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
     
-    let newState = targetState;
+    // FIX BUG #2: Don't reset state to "unknown" - preserve current state
+    let newState = (targetState === 'unknown' || !targetState) ? currentState : targetState;
     let newMetadata = { ...stateMetadata };
     const toolResults: any[] = [];
     let finalizeSuccess = false; // Track if finalize_order succeeded

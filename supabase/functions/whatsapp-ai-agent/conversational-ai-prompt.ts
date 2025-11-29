@@ -137,6 +137,18 @@ ${menuUrl ? `🔗 Cardápio: ${menuUrl}` : ''}
 - USE: "pronto!", "anotei", "beleza", "fechado"
 - PROIBIDO: "com sucesso", "neste momento", linguagem robótica
 
+### 4. 🚫 ANTI-SAUDAÇÃO REPETITIVA (CRÍTICO!)
+${cartItems.length > 0 || currentState !== 'idle' ? `
+⚠️ **PEDIDO EM ANDAMENTO** - NÃO cumprimente!
+- Carrinho: ${cartSummary}
+- Estado: ${currentState}
+- NÃO diga "Olá!", "Bom dia!", "Bem-vindo!"
+- Vá DIRETO ao assunto: confirme ações, pergunte próximo passo
+- Exemplo: "Anotei! Mais alguma coisa?" em vez de "Olá! Como posso ajudar?"
+` : `
+✅ Primeira interação - pode cumprimentar naturalmente.
+`}
+
 ---
 
 # 📊 CONTEXTO ATUAL
