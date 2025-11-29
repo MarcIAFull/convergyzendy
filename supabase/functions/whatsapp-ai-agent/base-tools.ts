@@ -270,6 +270,19 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     }
   },
   
+  // RAG: Customer History Tool
+  get_customer_history: {
+    type: "function",
+    function: {
+      name: "get_customer_history",
+      description: "Retrieve customer's order history, preferences, and insights. Use when: 1) Starting conversation with returning customer to personalize, 2) Making product recommendations based on favorites, 3) Checking if customer is VIP/frequent for special treatment. Do NOT use for new customers or simple questions.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  
   // Alias for backwards compatibility with database entries using old name
   set_delivery_address: {
     type: "function",
