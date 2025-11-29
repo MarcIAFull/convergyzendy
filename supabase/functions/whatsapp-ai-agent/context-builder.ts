@@ -1,8 +1,9 @@
 /**
  * Unified Context Builder for WhatsApp AI Agent
  * 
- * Consolidates all context loading and formatting logic in one place.
- * Both orchestrator and conversational AI agents consume this shared context.
+ * V2.0 - RAG ARCHITECTURE
+ * - Optimized for token efficiency (menu = categories only)
+ * - Full menu is fetched on-demand via search_menu tool
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.83.0';
@@ -25,10 +26,12 @@ export interface ConversationContext {
   cartTotal: number;
   currentState: string;
   stateMetadata: any;
+  menuUrl: string;
   
   // Formatted strings (for template variables)
   formatted: {
-    menu: string;
+    menu: string;        // RAG format: categories only
+    menuFull: string;    // Full menu (for search_menu tool)
     cart: string;
     customer: string;
     history: string;
@@ -40,7 +43,7 @@ export interface ConversationContext {
  * Build complete conversation context from database
  */
 export async function buildConversationContext(
-  supabase: any, // Use 'any' to avoid complex Supabase type issues
+  supabase: any,
   restaurantId: string,
   customerPhone: string,
   rawMessage: string
@@ -59,6 +62,18 @@ export async function buildConversationContext(
 
   if (!restaurant) throw new Error('Restaurant not found');
   console.log(`[Context Builder] Restaurant: ${restaurant.name}`);
+
+  // Load restaurant settings for slug
+  const { data: restaurantSettings } = await supabase
+    .from('restaurant_settings')
+    .select('slug')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+  
+  const menuUrl = restaurantSettings?.slug 
+    ? `https://zendy.pt/menu/${restaurantSettings.slug}` 
+    : '';
+  console.log(`[Context Builder] Menu URL: ${menuUrl || 'Not configured'}`);
 
   const { data: restaurantAISettings } = await supabase
     .from('restaurant_ai_settings')
@@ -94,7 +109,7 @@ export async function buildConversationContext(
 
   const availableProducts = categories?.flatMap((cat: any) => 
     (cat.products || [])
-      .filter((p: any) => p && p.name && p.id) // Filter out null/invalid products
+      .filter((p: any) => p && p.name && p.id)
       .map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -163,7 +178,7 @@ export async function buildConversationContext(
       .eq('cart_id', activeCart.id);
     
     cartItems = (itemsWithAddons || [])
-      .filter((item: any) => item && item.products && item.products.name) // Filter out null/invalid items
+      .filter((item: any) => item && item.products && item.products.name)
       .map((item: any) => {
         const addonsTotal = (item.cart_item_addons || []).reduce(
           (sum: number, cia: any) => sum + (cia.addons?.price || 0), 
@@ -213,7 +228,6 @@ export async function buildConversationContext(
     .order('created_at', { ascending: true });
 
   const pendingItems = (pendingItemsData || []).map((item: any) => {
-    // Load addons for each pending item
     const addons = (item.addon_ids || [])
       .map((addonId: string) => {
         const product = availableProducts.find((p: any) => p.id === item.product_id);
@@ -265,22 +279,23 @@ export async function buildConversationContext(
   const lastShownProducts = (conversationState?.last_shown_products || []) as Array<{id: string; name: string}>;
 
   console.log(`[Context Builder] State: ${currentState}`);
-  console.log(`[Context Builder] Pending items: ${pendingItems.length}`);
   console.log(`[Context Builder] Last shown products: ${lastShownProducts.length}`);
 
   // ============================================================
-  // FORMAT ALL CONTEXT DATA
+  // FORMAT ALL CONTEXT DATA (RAG OPTIMIZED)
   // ============================================================
   
   const formatted = {
-    menu: formatMenuForPrompt(availableProducts),
+    menu: formatMenuForRAG(availableProducts, menuUrl),           // OPTIMIZED: ~500 chars
+    menuFull: formatMenuForPromptFull(availableProducts),         // FULL: for search_menu tool
     cart: formatCartForPrompt(cartItems, cartTotal),
     customer: formatCustomerForPrompt(customer),
     history: formatHistoryForPrompt(conversationHistory),
     pendingItems: formatPendingItemsForPrompt(pendingItems)
   };
 
-  console.log('[Context Builder] ✅ All context loaded and formatted');
+  console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
+  console.log(`[Context Builder] 📉 Token reduction: ${Math.round((1 - formatted.menu.length / Math.max(formatted.menuFull.length, 1)) * 100)}%`);
   console.log('[Context Builder] =============================================\n');
 
   return {
@@ -301,6 +316,7 @@ export async function buildConversationContext(
     cartTotal,
     currentState,
     stateMetadata,
+    menuUrl,
     
     // Formatted strings
     formatted
@@ -308,10 +324,43 @@ export async function buildConversationContext(
 }
 
 // ============================================================
-// FORMATTING HELPER FUNCTIONS
+// RAG FORMATTING FUNCTIONS
 // ============================================================
 
-function formatMenuForPrompt(products: any[]): string {
+/**
+ * RAG-optimized menu format: ONLY categories
+ * Reduces prompt from ~56k chars to ~500 chars
+ */
+function formatMenuForRAG(products: any[], menuUrl: string): string {
+  // Extract unique categories
+  const categories = [...new Set(
+    products
+      .filter(p => p && p.category)
+      .map(p => p.category)
+  )].sort();
+  
+  // Count products per category
+  const categoryCounts = categories.map(cat => {
+    const count = products.filter(p => p.category === cat).length;
+    return `${cat} (${count})`;
+  });
+  
+  return `📋 CATEGORIAS DISPONÍVEIS:
+${categoryCounts.join(' | ')}
+
+⚠️ IMPORTANTE - ARQUITETURA RAG:
+• Você NÃO tem o cardápio completo na memória
+• Para ver produtos de uma categoria: search_menu(category: "Nome")
+• Para buscar item específico: search_menu(query: "nome do produto")
+• NUNCA invente produtos ou preços!
+
+${menuUrl ? `🔗 Cardápio online: ${menuUrl}` : ''}`;
+}
+
+/**
+ * Full menu format (used internally by search_menu tool)
+ */
+function formatMenuForPromptFull(products: any[]): string {
   // Group products by category
   const byCategory: Record<string, any[]> = {};
   products.forEach(p => {
@@ -322,78 +371,32 @@ function formatMenuForPrompt(products: any[]): string {
   // Format each category
   const sections = Object.entries(byCategory).map(([category, items]) => {
     const itemsFormatted = items.map(p => {
-      // Extract structured metadata from description
-      const metadata = extractMetadata(p.description || '');
-      const cleanDesc = metadata.cleanDescription;
-      
-      // Build product line
       let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
-      if (cleanDesc) line += `\n  📝 ${cleanDesc}`;
-      if (metadata.serves) line += `\n  👥 Serve: ${metadata.serves}`;
-      if (metadata.profile) line += ` | 🎯 Perfil: ${metadata.profile}`;
-      if (metadata.popularity) line += ` | 🔥 Popularidade: ${metadata.popularity}`;
+      if (p.description) line += ` | ${p.description.substring(0, 50)}`;
       
       // Add addons
       if (p.addons && p.addons.length > 0) {
         const validAddons = (p.addons || []).filter((a: any) => a && a.name);
         if (validAddons.length > 0) {
-          line += `\n  ⭐ ADDONS:`;
-          validAddons.forEach((a: any) => {
-            line += `\n     → ${a.name} (ID: ${a.id}) - +€${a.price}`;
-          });
+          line += `\n  Addons: ${validAddons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
         }
       }
       
       return line;
-    }).join('\n\n');
+    }).join('\n');
     
-    return `📦 CATEGORIA: ${category}\n\n${itemsFormatted}`;
+    return `[${category}]\n${itemsFormatted}`;
   }).join('\n\n');
   
   return sections;
 }
 
-// Extract structured metadata from product description
-function extractMetadata(description: string): {
-  cleanDescription: string;
-  serves: string | null;
-  profile: string | null;
-  popularity: string | null;
-} {
-  let cleanDesc = description;
-  let serves = null;
-  let profile = null;
-  let popularity = null;
-  
-  // Extract "Serve: X pessoas"
-  const servesMatch = description.match(/Serve:\s*([^|]+)/i);
-  if (servesMatch) {
-    serves = servesMatch[1].trim();
-    cleanDesc = cleanDesc.replace(/\|\s*Serve:[^|]+/gi, '');
-  }
-  
-  // Extract "Perfil: X"
-  const profileMatch = description.match(/Perfil:\s*([^|]+)/i);
-  if (profileMatch) {
-    profile = profileMatch[1].trim();
-    cleanDesc = cleanDesc.replace(/\|\s*Perfil:[^|]+/gi, '');
-  }
-  
-  // Extract "Popular: X" or "Popularidade: X"
-  const popularityMatch = description.match(/Popula(?:r|ridade):\s*([^|]+)/i);
-  if (popularityMatch) {
-    popularity = popularityMatch[1].trim();
-    cleanDesc = cleanDesc.replace(/\|\s*Popula(?:r|ridade):[^|]+/gi, '');
-  }
-  
-  // Clean up any trailing/leading pipes and whitespace
-  cleanDesc = cleanDesc.replace(/^\s*\|\s*|\s*\|\s*$/g, '').trim();
-  
-  return { cleanDescription: cleanDesc, serves, profile, popularity };
-}
+// ============================================================
+// FORMATTING HELPER FUNCTIONS
+// ============================================================
 
 function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
-  if (cartItems.length === 0) return 'Empty cart';
+  if (cartItems.length === 0) return 'Carrinho vazio';
   
   const itemsText = cartItems.map(item => 
     `${item.quantity}x ${item.product_name} (€${item.total_price.toFixed(2)})`
@@ -403,34 +406,34 @@ function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
 }
 
 function formatCustomerForPrompt(customer: any | null): string {
-  if (!customer) return 'New customer - no saved data';
+  if (!customer) return 'Cliente novo - sem dados salvos';
   
   const parts = [];
-  if (customer.name) parts.push(`Name: ${customer.name}`);
+  if (customer.name) parts.push(`Nome: ${customer.name}`);
   if (customer.default_address) {
     const addr = typeof customer.default_address === 'string' 
       ? customer.default_address 
       : JSON.stringify(customer.default_address);
-    parts.push(`Address: ${addr}`);
+    parts.push(`Endereço: ${addr}`);
   }
-  if (customer.default_payment_method) parts.push(`Payment: ${customer.default_payment_method}`);
+  if (customer.default_payment_method) parts.push(`Pagamento: ${customer.default_payment_method}`);
   
-  return parts.length > 0 ? parts.join(', ') : 'Customer exists but no saved preferences';
+  return parts.length > 0 ? parts.join(' | ') : 'Cliente existe mas sem preferências salvas';
 }
 
 function formatHistoryForPrompt(history: any[]): string {
-  if (history.length === 0) return 'No previous conversation';
+  if (history.length === 0) return 'Sem conversa anterior';
   
   return history.map(msg => 
-    `${msg.role === 'user' ? 'Customer' : 'Agent'}: ${msg.content}`
+    `${msg.role === 'user' ? 'Cliente' : 'Agente'}: ${msg.content}`
   ).join('\n');
 }
 
 function formatPendingItemsForPrompt(pendingItems: any[]): string {
-  if (pendingItems.length === 0) return 'No pending items';
+  if (pendingItems.length === 0) return 'Nenhum item pendente';
   
   return pendingItems
-    .filter(item => item && item.product && item.product.name) // Filter out null/invalid items
+    .filter(item => item && item.product && item.product.name)
     .map(item => {
       const validAddons = (item.addons || []).filter((a: any) => a && a.name);
       const addonsText = validAddons.length > 0

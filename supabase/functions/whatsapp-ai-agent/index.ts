@@ -990,17 +990,45 @@ serve(async (req) => {
           const { query, category, max_results = 5 } = args;
           
           // ============================================================
-          // VALIDATION: Ensure at least query or category is provided
+          // CRITICAL: Block search_menu when intent is provide_address
+          // This prevents the AI from misusing search_menu for addresses
           // ============================================================
-          if (!query && !category) {
-            console.error('[Tool] ❌ search_menu requires query or category');
+          if (intent === 'provide_address') {
+            console.warn('[Tool] ⚠️ BLOCKED: search_menu called with provide_address intent');
+            console.warn('[Tool] → AI should use validate_and_set_delivery_address instead');
             toolResults.push({
               tool_call_id: toolCall.id,
               output: JSON.stringify({
                 found: false,
-                error: 'Precisa informar o que buscar ou qual categoria',
+                blocked: true,
+                reason: 'Intent é provide_address - use validate_and_set_delivery_address em vez de search_menu',
                 count: 0,
                 products: []
+              })
+            });
+            break;
+          }
+          
+          // ============================================================
+          // VALIDATION: Ensure at least query or category is provided
+          // Allow empty search to return categories
+          // ============================================================
+          if (!query && !category) {
+            console.log('[Tool] ℹ️ search_menu called without params - returning categories');
+            const categories = [...new Set(
+              availableProducts
+                .filter(p => p && p.category)
+                .map(p => p.category)
+            )].sort();
+            
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                found: true,
+                type: 'categories',
+                count: categories.length,
+                categories: categories,
+                message: `Categorias disponíveis: ${categories.join(', ')}. Para ver produtos, use search_menu(category: "Nome")`
               })
             });
             break;
