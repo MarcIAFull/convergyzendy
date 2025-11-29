@@ -1437,8 +1437,26 @@ serve(async (req) => {
             break;
           }
           
-          case 'set_delivery_address': {
-            confirmations.push(`📍 Endereço guardado: ${args.address}`);
+          case 'set_delivery_address':
+          case 'validate_and_set_delivery_address': {
+            // Check the tool result to see if validation succeeded
+            const toolResult = toolResults.find((tr: any) => tr.tool_call_id === toolCall.id);
+            if (toolResult) {
+              try {
+                const result = JSON.parse(toolResult.output);
+                if (result.valid === true) {
+                  confirmations.push(`📍 Endereço confirmado: ${result.address || args.address}. Taxa de entrega: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
+                } else if (result.valid === false) {
+                  confirmations.push(`❌ Infelizmente o endereço "${args.address}" está fora da nossa área de entrega. Por favor, indica outro endereço.`);
+                } else if (result.success === false) {
+                  confirmations.push(`⚠️ Não consegui validar o endereço. Por favor, tenta novamente com o endereço completo.`);
+                }
+              } catch {
+                confirmations.push(`📍 Endereço recebido: ${args.address}`);
+              }
+            } else {
+              confirmations.push(`📍 Endereço recebido: ${args.address}`);
+            }
             break;
           }
           
@@ -1526,9 +1544,19 @@ serve(async (req) => {
       
       const updatedCartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
       
+      // Build tool results summary for context
+      const toolResultsSummary = toolResults.map((tr: any) => {
+        try {
+          const parsed = JSON.parse(tr.output);
+          return `- Resultado: ${JSON.stringify(parsed)}`;
+        } catch {
+          return `- Resultado: ${tr.output}`;
+        }
+      }).join('\n');
+
       const secondMessagePrompt = `Tu és o assistente de pedidos do ${restaurant.name}.
 
-As tools foram executadas com sucesso. Agora preciso que escrevas uma mensagem natural e amigável em Português para o cliente.
+As tools foram executadas. Agora preciso que escrevas uma mensagem natural e amigável em Português para o cliente.
 
 **Estado atual do carrinho (ATUALIZADO):**
 ${updatedCartSummary}
@@ -1545,15 +1573,22 @@ ${validatedToolCalls.map((tc: any) => {
   return `- ${fn}: ${JSON.stringify(args)}`;
 }).join('\n')}
 
-**Instruções:**
-1. Confirma as ações executadas de forma natural e conversacional
-2. Mostra o estado atual do carrinho se relevante
-3. Sugere o próximo passo lógico no fluxo de pedido
-4. Mantém a mensagem curta (2-3 frases)
-5. Usa emojis apropriados 
-6. Se o pedido foi finalizado, congratula o cliente e dá detalhes do pedido
+**RESULTADOS DAS TOOLS (CRÍTICO - LEIA COM ATENÇÃO):**
+${toolResultsSummary}
 
-**IMPORTANTE:** NÃO chames tools novamente. Apenas escreve uma mensagem conversacional.`;
+**REGRAS CRÍTICAS:**
+1. **Se validate_and_set_delivery_address retornou "valid": false** → O endereço foi REJEITADO! Informa o cliente que está fora da área de entrega.
+2. **Se "valid": true** → O endereço foi aceite, confirma-o com a taxa e tempo de entrega.
+3. Se não há delivery_address mas a tool foi chamada → A validação FALHOU.
+
+**Instruções:**
+1. PRIMEIRO: Verifica se houve erros nos resultados das tools
+2. Se houve erro/rejeição → Informa o cliente do problema de forma simpática
+3. Se sucesso → Confirma as ações e sugere o próximo passo
+4. Mantém a mensagem curta (2-3 frases)
+5. Usa emojis apropriados
+
+**IMPORTANTE:** NÃO chames tools novamente. Apenas escreve uma mensagem conversacional baseada nos RESULTADOS acima.`;
 
       try {
         const secondAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
