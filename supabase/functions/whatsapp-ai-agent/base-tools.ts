@@ -268,12 +268,38 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
         properties: {}
       }
     }
+  },
+  
+  // Alias for backwards compatibility with database entries using old name
+  set_delivery_address: {
+    type: "function",
+    function: {
+      name: "validate_and_set_delivery_address",
+      description: "Alias for validate_and_set_delivery_address. Validate and set the delivery address. ALWAYS use this to set delivery address.",
+      parameters: {
+        type: "object",
+        properties: {
+          address: {
+            type: "string",
+            description: "Full delivery address (street, number, postal code, city)"
+          }
+        },
+        required: ["address"]
+      }
+    }
   }
 };
 
 /**
  * Get a tool definition by name, returning base definition if not found
+ * Handles alias mapping for backwards compatibility
  */
 export function getBaseToolDefinition(toolName: string): ToolDefinition | null {
-  return BASE_TOOLS[toolName] || null;
+  // Map old names to new names for backwards compatibility
+  const aliasMap: Record<string, string> = {
+    'set_delivery_address': 'validate_and_set_delivery_address'
+  };
+  
+  const resolvedName = aliasMap[toolName] || toolName;
+  return BASE_TOOLS[resolvedName] || BASE_TOOLS[toolName] || null;
 }
