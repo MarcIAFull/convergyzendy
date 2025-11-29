@@ -1,5 +1,10 @@
 /**
- * Order Orchestrator V3 - Intent & State Classification
+ * Order Orchestrator V4 - Intent & State Classification
+ * 
+ * CHANGELOG V4:
+ * - Integração RAG com customer_insights
+ * - Contexto de cliente para melhor classificação
+ * - Detecção inteligente de cliente retornante
  * 
  * CHANGELOG V3:
  * - PRIORIDADE MÁXIMA para detecção de endereços (regex patterns)
@@ -16,6 +21,8 @@ export function buildOrchestratorPrompt(context: {
   restaurantName: string;
   conversationHistory: any[];
   pendingItems?: any[];
+  customerInsights?: any | null;
+  customer?: any | null;
 }): string {
   const { 
     userMessage,
@@ -25,7 +32,9 @@ export function buildOrchestratorPrompt(context: {
     menuProducts, 
     restaurantName,
     conversationHistory,
-    pendingItems = []
+    pendingItems = [],
+    customerInsights = null,
+    customer = null
   } = context;
 
   // Extract categories only (RAG architecture)
@@ -48,6 +57,19 @@ export function buildOrchestratorPrompt(context: {
     .slice(-5)
     .map(m => `${m.role === 'user' ? 'C' : 'A'}: ${m.content}`)
     .join('\n');
+
+  // ============================================================
+  // CUSTOMER CONTEXT (RAG)
+  // ============================================================
+  const customerStatus = customerInsights && customerInsights.order_count > 0
+    ? (customerInsights.order_count >= 5 ? 'VIP' : 
+       customerInsights.order_count >= 2 ? 'Retornante' : 'Segundo pedido')
+    : 'Novo';
+  
+  const customerName = customer?.name || null;
+  const hasDefaultAddress = !!customer?.default_address;
+  const hasDefaultPayment = !!customer?.default_payment_method;
+  const favoriteItems = customerInsights?.preferred_items?.slice(0, 2).map((i: any) => i.name) || [];
 
   // ============================================================
   // ADDRESS DETECTION PATTERNS (Pre-processed)
@@ -86,8 +108,20 @@ export function buildOrchestratorPrompt(context: {
   ];
   const looksLikePayment = paymentPatterns.some(p => p.test(userMessage));
 
+  // ============================================================
+  // RETURNING CUSTOMER PATTERNS
+  // ============================================================
+  const returningPatterns = [
+    /\bo (de )?sempre\b/i,    // "o de sempre"
+    /\bmesmo (de )?sempre\b/i,
+    /\bcomo (da )?última (vez)?\b/i,
+    /\brepetir?\b/i,
+    /\bigual\b/i,
+  ];
+  const wantsUsualOrder = returningPatterns.some(p => p.test(userMessage)) && customerInsights?.order_count > 0;
+
   return `# ═══════════════════════════════════════════════════════════════
-# ORCHESTRATOR V3 - CLASSIFICADOR DE INTENÇÃO
+# ORCHESTRATOR V4 - CLASSIFICADOR DE INTENÇÃO (RAG + Customer History)
 # Restaurante: ${restaurantName}
 # ═══════════════════════════════════════════════════════════════
 
@@ -100,12 +134,41 @@ Você é um classificador puro. Analise a mensagem e retorne JSON.
 ## OUTPUT OBRIGATÓRIO (JSON único, sem markdown)
 \`\`\`json
 {
-  "intent": "<um dos 12 intents>",
+  "intent": "<um dos 13 intents>",
   "target_state": "<um dos 6 estados>",
   "confidence": 0.0-1.0,
   "reasoning": "<explicação breve>"
 }
 \`\`\`
+
+# ═══════════════════════════════════════════════════════════════
+# 👤 PERFIL DO CLIENTE (RAG)
+# ═══════════════════════════════════════════════════════════════
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | ${customerStatus} |
+| **Nome** | ${customerName || 'Não informado'} |
+| **Endereço salvo** | ${hasDefaultAddress ? '✅ Sim' : '❌ Não'} |
+| **Pagamento salvo** | ${hasDefaultPayment ? '✅ Sim' : '❌ Não'} |
+| **Favoritos** | ${favoriteItems.length > 0 ? favoriteItems.join(', ') : 'N/A'} |
+| **Pedidos anteriores** | ${customerInsights?.order_count || 0} |
+
+${wantsUsualOrder ? `
+### ⚠️ CLIENTE QUER REPETIR PEDIDO
+O cliente disse algo como "o de sempre" e TEM histórico.
+Favoritos: ${favoriteItems.join(', ') || 'verificar histórico'}
+
+**CLASSIFICAR COMO:**
+\`\`\`json
+{
+  "intent": "repeat_order",
+  "target_state": "confirming_item",
+  "confidence": 0.90,
+  "reasoning": "Cliente retornante quer repetir pedido anterior"
+}
+\`\`\`
+` : ''}
 
 # ═══════════════════════════════════════════════════════════════
 # 🚨 PRIORIDADE MÁXIMA: DETECÇÃO DE ENDEREÇO
@@ -168,7 +231,7 @@ A mensagem contém método de pagamento.
 ${recentHistory || 'Primeira mensagem'}
 
 # ═══════════════════════════════════════════════════════════════
-# INTENTS VÁLIDOS (12 Total)
+# INTENTS VÁLIDOS (13 Total)
 # ═══════════════════════════════════════════════════════════════
 
 ## 1. \`provide_address\` ⭐ PRIORIDADE MÁXIMA
@@ -181,11 +244,17 @@ ${recentHistory || 'Primeira mensagem'}
 **Trigger:** Método de pagamento mencionado
 - dinheiro, cash, cartão, mbway, multibanco, visa
 
-## 3. \`browse_menu\`
+## 3. \`repeat_order\` ⭐ CLIENTE RETORNANTE
+**Trigger:** Cliente quer o pedido habitual
+- "o de sempre", "igual última vez", "repetir pedido"
+- **PRÉ-REQUISITO:** customer tem histórico (order_count > 0)
+- Se não tem histórico → tratar como browse_menu
+
+## 4. \`browse_menu\`
 **Trigger:** Pedidos genéricos
 - "cardápio", "o que tem?", "menu", "opções"
 
-## 4. \`browse_product\` ⭐ IMPORTANTE
+## 5. \`browse_product\` ⭐ IMPORTANTE
 **Trigger:** Usuário menciona comida, bebida ou categoria específica
 - "Quero uma coca", "Tem pizza de bacon?", "Me fala dos hamburguers"
 - "Quais bebidas tem?", "Mostra as pizzas", "Quanto custa X?"
@@ -193,40 +262,40 @@ ${recentHistory || 'Primeira mensagem'}
 - **MAS NÃO** se parecer endereço!
 - **Confidence:** ≥ 0.75 se mencionar categoria ou item alimentício
 
-## 5. \`confirm_item\`
+## 6. \`confirm_item\`
 **Trigger:** Confirmação de 1 item
 - "sim", "quero", "pode ser" (após oferta do agente)
 - Apenas 1 item pendente
 
-## 6. \`manage_pending_items\`
+## 7. \`manage_pending_items\`
 **Trigger:** Múltiplos produtos mencionados
 - "pizza, coca e brigadeiro"
 - "mais uma água também"
 
-## 7. \`confirm_pending_items\`
+## 8. \`confirm_pending_items\`
 **Trigger:** Confirmar lista de pendentes
 - "confirmo tudo", "sim, esses"
 - Após agente listar 2+ itens
 
-## 8. \`modify_cart\`
+## 9. \`modify_cart\`
 **Trigger:** Remover itens
 - "tira", "remove", "cancela X"
 
-## 9. \`finalize\`
+## 10. \`finalize\`
 **Trigger:** Finalizar pedido
 - "confirmar pedido", "fechar", "pronto"
 - **PRÉ-REQUISITO:** carrinho > 0
 
-## 10. \`ask_question\`
+## 11. \`ask_question\`
 **Trigger:** Perguntas informativas
 - "fazem entregas?", "horário?", "taxa?"
 
-## 11. \`collect_customer_data\`
+## 12. \`collect_customer_data\`
 **Trigger:** Nome ou preferências
 - "sou o João", "meu nome é..."
 - **NÃO** para endereços!
 
-## 12. \`unclear\`
+## 13. \`unclear\`
 **Trigger:** APENAS para inputs completamente ininteligíveis
 - Exemplos válidos: "asdf", "iry", silêncio, "????"
 - **PROIBIDO usar unclear se:** a mensagem contém QUALQUER palavra de comida/bebida
@@ -248,6 +317,7 @@ ${recentHistory || 'Primeira mensagem'}
 - provide_address → collecting_payment
 - provide_payment → ready_to_order
 - finalize → idle (pedido fechado)
+- repeat_order → confirming_item
 
 # ═══════════════════════════════════════════════════════════════
 # EXEMPLOS DE CLASSIFICAÇÃO
@@ -313,15 +383,28 @@ Contexto: Agente ofereceu Pizza Margherita
 }
 \`\`\`
 
+### Exemplo 6: Repetir Pedido (Cliente Retornante)
+Mensagem: "O de sempre"
+Cliente: VIP (5 pedidos), favoritos: [Pizza Margherita, Coca-Cola]
+\`\`\`json
+{
+  "intent": "repeat_order",
+  "target_state": "confirming_item",
+  "confidence": 0.90,
+  "reasoning": "Cliente retornante quer repetir pedido habitual"
+}
+\`\`\`
+
 # ═══════════════════════════════════════════════════════════════
 # ⚠️ REGRAS CRÍTICAS
 # ═══════════════════════════════════════════════════════════════
 
 1. **Se parece endereço → provide_address** (ignore o resto)
 2. **Se parece pagamento → provide_payment**
-3. **unclear deve ter confidence ≤ 0.4**
-4. **finalize só se carrinho > 0**
-5. **Retorne APENAS o JSON, nada mais**
+3. **Se cliente retornante diz "o de sempre" → repeat_order**
+4. **unclear deve ter confidence ≤ 0.4**
+5. **finalize só se carrinho > 0**
+6. **Retorne APENAS o JSON, nada mais**
 
 Agora analise a mensagem e classifique:`;
 }
