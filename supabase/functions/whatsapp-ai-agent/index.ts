@@ -205,7 +205,6 @@ serve(async (req) => {
     console.log(`[Orchestrator]   - State: ${currentState}`);
     console.log(`[Orchestrator]   - Pending Items: ${pendingItems.length} items`);
     console.log(`[Orchestrator]   - Cart: ${cartItems.length} items`);
-    console.log(`[Orchestrator]   - Customer Insights: ${customerInsights ? `${customerInsights.order_count} orders` : 'New customer'}`);
     
     // Build orchestrator system prompt
     const orchestratorFallbackPrompt = buildOrchestratorPrompt({
@@ -216,9 +215,7 @@ serve(async (req) => {
       menuProducts: availableProducts,
       restaurantName: restaurant.name,
       conversationHistory,
-      pendingItems,
-      customerInsights,
-      customer
+      pendingItems
     });
     
     let orchestratorSystemPrompt = buildSystemPromptFromBlocks(

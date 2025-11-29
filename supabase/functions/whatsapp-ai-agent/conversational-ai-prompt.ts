@@ -284,20 +284,6 @@ Para cada produto mencionado:
 Depois pergunte: "Anotei! [lista]. Confirmas?"
 ` : ''}
 
-${userIntent === 'repeat_order' ? `
-### 🔄 CLIENTE QUER REPETIR PEDIDO
-
-O cliente é retornante e quer "o de sempre"!
-
-**AÇÃO OBRIGATÓRIA:**
-1. \`get_customer_history()\` → Ver favoritos do cliente
-2. Com os favoritos, usar \`add_pending_item()\` para cada item
-3. Confirmar: "Beleza! O de sempre: [itens]. Confirmas?"
-
-**Se não souber os favoritos:** Pergunte gentilmente:
-"Claro! Me lembra o que você costuma pedir? 😊"
-` : ''}
-
 ---
 
 # 👤 PERSONALIZAÇÃO (RAG MODE)
