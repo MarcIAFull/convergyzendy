@@ -200,17 +200,38 @@ export async function buildConversationContext(
   console.log(`[Context Builder] Cart: ${cartItems.length} items, Total: €${cartTotal.toFixed(2)}`);
 
   // ============================================================
-  // LOAD CUSTOMER PROFILE
+  // LOAD/CREATE CUSTOMER PROFILE (FIX BUG #5)
   // ============================================================
   
-  const { data: customer } = await supabase
+  let { data: customer } = await supabase
     .from('customers')
     .select('*')
     .eq('phone', customerPhone)
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
 
-  console.log(`[Context Builder] Customer: ${customer ? customer.name || 'Found (no name)' : 'New'}`);
+  // Auto-create customer profile if not exists
+  if (!customer) {
+    console.log(`[Context Builder] Creating new customer profile for ${customerPhone}`);
+    const { data: newCustomer, error: customerError } = await supabase
+      .from('customers')
+      .insert({
+        phone: customerPhone,
+        restaurant_id: restaurantId,
+        metadata: { created_by: 'ai_agent', first_contact: new Date().toISOString() }
+      })
+      .select()
+      .single();
+    
+    if (!customerError && newCustomer) {
+      customer = newCustomer;
+      console.log(`[Context Builder] Customer profile created: ${customer.id}`);
+    } else {
+      console.warn(`[Context Builder] Failed to create customer: ${customerError?.message}`);
+    }
+  }
+
+  console.log(`[Context Builder] Customer: ${customer ? customer.name || 'Found (no name)' : 'Creation failed'}`);
 
   // ============================================================
   // LOAD PENDING ITEMS

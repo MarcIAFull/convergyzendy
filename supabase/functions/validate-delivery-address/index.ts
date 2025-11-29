@@ -170,13 +170,14 @@ serve(async (req) => {
 
     console.log(`Distance from restaurant to delivery address: ${distance.toFixed(2)} km`);
 
-    // Get active delivery zones sorted by priority
+    // Get active delivery zones sorted by priority (ASCENDING = smaller zones first!)
+    // This ensures addresses close to the restaurant match Zone 1 before Zone 5
     const { data: zones, error: zonesError } = await supabase
       .from('delivery_zones')
       .select('*')
       .eq('restaurant_id', restaurant_id)
       .eq('is_active', true)
-      .order('priority', { ascending: false });
+      .order('priority', { ascending: true });
 
     if (zonesError) {
       throw new Error(`Error fetching zones: ${zonesError.message}`);
