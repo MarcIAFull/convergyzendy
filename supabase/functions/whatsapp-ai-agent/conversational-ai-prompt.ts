@@ -444,6 +444,43 @@ User confirms order
 
 Based on \`user_intent: ${userIntent}\`, follow these guidelines:
 
+## 🚨 CRITICAL INTENT ENFORCEMENT (HIGHEST PRIORITY)
+
+**MANDATORY RULES BASED ON ORCHESTRATOR INTENT:**
+
+${userIntent === 'provide_address' ? `
+### ⚠️ INTENT = provide_address (CURRENT)
+**O Orchestrator detectou que o usuário está FORNECENDO UM ENDEREÇO.**
+
+✅ VOCÊ DEVE CHAMAR: \`validate_and_set_delivery_address(address: "MENSAGEM DO USUÁRIO")\`
+✅ DEPOIS CHAMAR: \`update_customer_profile(default_address: "ENDEREÇO VALIDADO")\`
+
+❌ NÃO CHAME: \`search_menu\` - O usuário NÃO está pedindo comida agora
+❌ NÃO CHAME: \`update_customer_profile(name: ...)\` SOZINHO - Isso não salva endereço
+❌ NÃO INTERPRETE O TEXTO COMO NOME - É um endereço!
+
+**REGEX DE ENDEREÇO:** Se a mensagem contiver "rua", "avenida", "av.", "número", "n°", "nº", "apt", "apartamento", "bloco", ou números seguidos de vírgula/ponto, É UM ENDEREÇO.
+` : ''}
+
+${userIntent === 'provide_payment' ? `
+### ⚠️ INTENT = provide_payment (CURRENT)
+**O Orchestrator detectou que o usuário está INFORMANDO PAGAMENTO.**
+
+✅ VOCÊ DEVE CHAMAR: \`set_payment_method(method: "cash"|"card"|"mbway")\`
+✅ DEPOIS CHAMAR: \`update_customer_profile(default_payment_method: ...)\`
+
+❌ NÃO CHAME: \`search_menu\`
+❌ NÃO CHAME: \`add_to_cart\`
+` : ''}
+
+${userIntent === 'finalize' ? `
+### ⚠️ INTENT = finalize (CURRENT)
+**O Orchestrator detectou que o usuário quer FINALIZAR O PEDIDO.**
+
+✅ VOCÊ DEVE CHAMAR: \`finalize_order()\`
+❌ NÃO ADICIONE mais itens ao carrinho
+` : ''}
+
 ## collect_customer_data
 → Call \`update_customer_profile\` with provided data
 → Confirm warmly and continue ordering flow
@@ -467,6 +504,7 @@ Based on \`user_intent: ${userIntent}\`, follow these guidelines:
 → If SINGLE product → Call \`add_to_cart\` immediately
 
 ## browse_menu
+→ Call \`search_menu\` with category or query
 → Show products by category, highlight popular items
 → Don't force products, let user choose
 
@@ -474,9 +512,11 @@ Based on \`user_intent: ${userIntent}\`, follow these guidelines:
 → Answer helpfully, don't force products, be informative
 
 ## provide_address
-→ Call \`validate_and_set_delivery_address\`
-→ Call \`update_customer_profile\` to save it
+→ **OBRIGATÓRIO:** Call \`validate_and_set_delivery_address(address: "FULL USER MESSAGE")\`
+→ Wait for validation result
+→ If valid: Call \`update_customer_profile(default_address: ...)\`
 → Move to payment collection
+→ **NUNCA** interpretar como busca de produto ou nome do cliente
 
 ## provide_payment
 → Call \`set_payment_method\`

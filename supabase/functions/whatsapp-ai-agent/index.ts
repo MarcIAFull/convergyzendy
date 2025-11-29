@@ -932,19 +932,37 @@ serve(async (req) => {
         case 'update_customer_profile': {
           const { name, default_address, default_payment_method } = args;
           
-          const updateData: any = { phone: customerPhone };
+          // ============================================================
+          // FIX: Include restaurant_id (required by customers table)
+          // ============================================================
+          const updateData: any = { 
+            phone: customerPhone,
+            restaurant_id: restaurantId  // CRITICAL: Required field
+          };
           if (name !== undefined) updateData.name = name;
-          if (default_address !== undefined) updateData.default_address = default_address;
+          if (default_address !== undefined) {
+            // Handle both string and object addresses
+            updateData.default_address = typeof default_address === 'string' 
+              ? { formatted: default_address }
+              : default_address;
+          }
           if (default_payment_method !== undefined) updateData.default_payment_method = default_payment_method;
+          
+          console.log('[Tool] 📝 Updating customer profile:', JSON.stringify(updateData, null, 2));
           
           const { error: profileError } = await supabase
             .from('customers')
-            .upsert(updateData, { onConflict: 'phone' });
+            .upsert(updateData, { onConflict: 'phone,restaurant_id' });
           
           if (profileError) {
             console.error('[Tool] Update customer profile error:', profileError);
+            interactionLog.errors.push({
+              type: 'customer_profile_update_failed',
+              message: profileError.message,
+              details: profileError
+            });
           } else {
-            console.log('[Tool] ✅ Updated customer profile');
+            console.log('[Tool] ✅ Updated customer profile successfully');
           }
           break;
         }
@@ -970,7 +988,25 @@ serve(async (req) => {
         
         case 'search_menu': {
           const { query, category, max_results = 5 } = args;
-          console.log(`[Tool] 🔍 Searching menu for "${query}" (category: ${category || 'all'}, max: ${max_results})`);
+          
+          // ============================================================
+          // VALIDATION: Ensure at least query or category is provided
+          // ============================================================
+          if (!query && !category) {
+            console.error('[Tool] ❌ search_menu requires query or category');
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                found: false,
+                error: 'Precisa informar o que buscar ou qual categoria',
+                count: 0,
+                products: []
+              })
+            });
+            break;
+          }
+          
+          console.log(`[Tool] 🔍 Searching menu for "${query || '(category only)'}" (category: ${category || 'all'}, max: ${max_results})`);
           
           // Perform intelligent search with fuzzy matching
           const results = searchProducts(availableProducts, query, category, max_results);
@@ -991,7 +1027,22 @@ serve(async (req) => {
             console.log(`[Tool] 💾 Saved ${results.length} products to last_shown_products`);
           }
           
-          console.log(`[Tool] ✅ Found ${results.length} results for "${query}"`);
+          console.log(`[Tool] ✅ Found ${results.length} results for "${query || category}"`);
+          
+          // If no results, provide helpful fallback message
+          if (results.length === 0) {
+            console.log('[Tool] ⚠️ No results found, providing fallback');
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                found: false,
+                count: 0,
+                products: [],
+                message: `Não encontrei "${query || category}" no menu. Posso mostrar as categorias disponíveis?`
+              })
+            });
+            break;
+          }
           
           toolResults.push({
             tool_call_id: toolCall.id,
@@ -1709,28 +1760,37 @@ function buildSystemPromptFromBlocks(
  */
 function searchProducts(
   products: any[], 
-  query: string, 
+  query: string | undefined, 
   category?: string, 
   maxResults: number = 5
 ): Array<{ product: any; similarity: number }> {
-  const queryLower = query.toLowerCase().trim();
+  // ============================================================
+  // NULL SAFETY: Handle undefined/null query
+  // ============================================================
+  const queryLower = (query || '').toLowerCase().trim();
   
-  // Filter by category if specified
+  // Filter by category if specified (with null safety)
   let filtered = category
-    ? products.filter(p => p.category.toLowerCase().includes(category.toLowerCase()))
+    ? products.filter(p => (p.category || '').toLowerCase().includes(category.toLowerCase()))
     : products;
   
   // ============================================================
-  // CRITICAL FIX: If category is provided and has products,
-  // return them ALL (category match is priority over text match)
+  // CATEGORY-ONLY SEARCH: Return products from category
   // ============================================================
   if (category && filtered.length > 0) {
     console.log(`[Search] Category "${category}" specified - returning ${filtered.length} products from category`);
     
+    // If no query provided, return all products in category with default score
+    if (!queryLower) {
+      return filtered
+        .slice(0, maxResults)
+        .map(product => ({ product, similarity: 0.8 }));
+    }
+    
     // Still calculate similarity for ranking, but don't filter out low scores
     const scored = filtered.map(product => {
       let score = 0.5; // Default score for category match
-      const nameLower = product.name.toLowerCase();
+      const nameLower = (product.name || '').toLowerCase();
       const descLower = (product.description || '').toLowerCase();
       
       // Bonus points if query also matches name/description
@@ -1740,8 +1800,8 @@ function searchProducts(
         score = 0.7;
       } else {
         // Word-based matching
-        const queryWords = queryLower.split(/\s+/);
-        const nameWords = nameLower.split(/\s+/);
+        const queryWords = queryLower.split(/\s+/).filter(Boolean);
+        const nameWords = nameLower.split(/\s+/).filter(Boolean);
         const matchingWords = queryWords.filter((qw: string) => 
           nameWords.some((nw: string) => nw.includes(qw) || qw.includes(nw))
         ).length;
@@ -1761,13 +1821,23 @@ function searchProducts(
   }
   
   // ============================================================
+  // NO QUERY AND NO CATEGORY: Return top products
+  // ============================================================
+  if (!queryLower && !category) {
+    console.log('[Search] No query or category - returning top products');
+    return filtered
+      .slice(0, maxResults)
+      .map(product => ({ product, similarity: 0.5 }));
+  }
+  
+  // ============================================================
   // Normal fuzzy search (when no category or category not found)
   // ============================================================
   
-  // Calculate similarity for each product
+  // Calculate similarity for each product (with null safety)
   const scored = filtered.map(product => {
     let score = 0;
-    const nameLower = product.name.toLowerCase();
+    const nameLower = (product.name || '').toLowerCase();
     const descLower = (product.description || '').toLowerCase();
     
     // 1. Exact match (maximum score)
@@ -1785,12 +1855,12 @@ function searchProducts(
     else {
       const distance = levenshteinDistance(queryLower, nameLower);
       const maxLen = Math.max(queryLower.length, nameLower.length);
-      score = 1 - (distance / maxLen);
+      score = maxLen > 0 ? 1 - (distance / maxLen) : 0;
     }
     
     // 4. Word-based matching for multi-word queries
-    const queryWords = queryLower.split(/\s+/);
-    const nameWords = nameLower.split(/\s+/);
+    const queryWords = queryLower.split(/\s+/).filter(Boolean);
+    const nameWords = nameLower.split(/\s+/).filter(Boolean);
     const matchingWords = queryWords.filter((qw: string) => 
       nameWords.some((nw: string) => nw.includes(qw) || qw.includes(nw))
     ).length;
