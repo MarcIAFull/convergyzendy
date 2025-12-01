@@ -1,10 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard, Globe } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe, MessageSquare } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
 import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
 import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
+import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
 
 export default function SettingsUnified() {
   return (
@@ -17,7 +18,7 @@ export default function SettingsUnified() {
       </div>
 
       <Tabs defaultValue="restaurant" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
@@ -33,6 +34,10 @@ export default function SettingsUnified() {
           <TabsTrigger value="ai" className="flex items-center gap-2">
             <Brain className="h-4 w-4" />
             <span className="hidden sm:inline">IA & Automação</span>
+          </TabsTrigger>
+          <TabsTrigger value="chat-simulator" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            <span className="hidden sm:inline">Simulador</span>
           </TabsTrigger>
           <TabsTrigger value="subscription" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
@@ -54,6 +59,10 @@ export default function SettingsUnified() {
 
         <TabsContent value="ai">
           <AIPersonalizationTab />
+        </TabsContent>
+
+        <TabsContent value="chat-simulator">
+          <ChatSimulatorTab />
         </TabsContent>
 
         <TabsContent value="subscription">

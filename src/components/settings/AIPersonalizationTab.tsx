@@ -11,7 +11,6 @@ import { Slider } from '@/components/ui/slider';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Info } from 'lucide-react';
 import { RestaurantAISettings, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
-import { AITestChatSimulator } from '@/components/ai-config/AITestChatSimulator';
 
 export function AIPersonalizationTab() {
   const { restaurant } = useRestaurantStore();
@@ -128,10 +127,8 @@ export function AIPersonalizationTab() {
   if (!settings) return null;
 
   return (
-    <div className="grid lg:grid-cols-[1fr,450px] gap-6">
-      {/* Left Column - Settings */}
-      <div className="space-y-6 order-2 lg:order-1">
-        <Alert>
+    <div className="space-y-6">
+      <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
             Estas configurações personalizam como a IA interage com seus clientes. 
@@ -354,37 +351,21 @@ export function AIPersonalizationTab() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={loadSettings}
-            disabled={saving}
-          >
-            Reverter
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Guardar Alterações
-          </Button>
-        </div>
-      </div>
-
-      {/* Right Column - Chat Simulator (Sticky) */}
-      <div className="lg:sticky lg:top-6 h-fit order-1 lg:order-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Simulador de Chat</CardTitle>
-            <CardDescription>
-              Teste as configurações em tempo real
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {restaurant?.id && <AITestChatSimulator restaurantId={restaurant.id} />}
-          </CardContent>
-        </Card>
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={loadSettings}
+          disabled={saving}
+        >
+          Reverter
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Guardar Alterações
+        </Button>
       </div>
     </div>
   );
