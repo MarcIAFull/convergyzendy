@@ -175,7 +175,7 @@ export default function Admin() {
       if (restaurant) {
         setRestaurant(restaurant as any);
         toast.success(`Alternado para ${restaurant.name}`);
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('[Admin] Error switching restaurant:', error);

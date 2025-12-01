@@ -50,7 +50,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
