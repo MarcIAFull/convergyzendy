@@ -43,6 +43,12 @@ const Landing = () => {
       benefits: ["QR Code setup em 2 minutos", "Reconexão automática", "Múltiplas instâncias"]
     },
     {
+      icon: Menu,
+      title: "Menu Público Online",
+      description: "Cardápio digital completo com sua marca. Clientes fazem pedidos direto pelo navegador.",
+      benefits: ["Link personalizado (seurestaurante.zendy.ai)", "Checkout web completo", "SEO otimizado"]
+    },
+    {
       icon: MapPin,
       title: "Zonas de Entrega Inteligentes",
       description: "Defina áreas de entrega com taxas automáticas baseadas em geolocalização.",
@@ -185,7 +191,7 @@ const Landing = () => {
               </div>
               <div className="flex items-center gap-3">
                 <Link to="/login">
-                  <Button variant="ghost">Entrar</Button>
+                  <Button variant="outline">Área do Cliente</Button>
                 </Link>
                 <Link to="/login">
                   <Button className="gradient-primary text-white border-0 hover:opacity-90">

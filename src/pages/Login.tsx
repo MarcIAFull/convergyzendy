@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { Navigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 
 const Login = () => {
-  const { signIn, signUp, resetPassword } = useAuth();
+  const { signIn, signUp, resetPassword, user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -96,6 +97,11 @@ const Login = () => {
     }
   };
 
+  // Redirect to dashboard if already authenticated
+  if (!authLoading && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   if (showResetPassword) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -155,6 +161,12 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
+        {/* Back to Landing */}
+        <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar para o início
+        </Link>
+        
         {/* Logo/Header */}
         <div className="text-center space-y-2">
           <div className="flex justify-center">

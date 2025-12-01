@@ -160,7 +160,7 @@ const Onboarding = () => {
     }
     
     toast.success('Configuração concluída! Bem-vindo ao Zendy! 🎉');
-    navigate('/');
+    navigate('/dashboard');
   };
 
   const handleSignOut = async () => {

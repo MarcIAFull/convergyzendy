@@ -46,7 +46,7 @@ const App = () => (
               <NotificationProvider>
                 <Routes>
                 {/* Public Routes */}
-                <Route path="/landing" element={<Landing />} />
+                <Route path="/" element={<Landing />} />
                 <Route path="/menu/:slug" element={<PublicMenu />} />
                 <Route path="/menu/:slug/cart" element={<PublicCart />} />
                 <Route path="/menu/:slug/checkout" element={<PublicCheckout />} />
@@ -65,7 +65,7 @@ const App = () => (
                   }
                 >
                   {/* Operations */}
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/menu" element={<MenuManagement />} />
                   <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />

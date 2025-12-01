@@ -108,7 +108,7 @@ export default function AcceptInvitation() {
       // After accepting invitation, the user is already associated with a restaurant
       // Just redirect to dashboard
       setTimeout(() => {
-        navigate('/');
+        navigate('/dashboard');
       }, 2000);
 
     } catch (error: any) {
@@ -235,7 +235,7 @@ export default function AcceptInvitation() {
                   {user.email}
                 </p>
               </div>
-              <Button onClick={() => navigate('/')} variant="outline">
+              <Button onClick={() => navigate('/dashboard')} variant="outline">
                 Voltar ao Dashboard
               </Button>
             </div>

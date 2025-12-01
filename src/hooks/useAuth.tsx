@@ -73,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error) throw error;
 
       toast.success('Login realizado com sucesso!');
-      navigate('/');
+      navigate('/dashboard');
     } catch (error: any) {
       console.error('Sign in error:', error);
       if (error.message.includes('Invalid login credentials')) {
