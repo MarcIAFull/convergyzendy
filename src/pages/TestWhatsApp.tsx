@@ -193,15 +193,41 @@ export default function TestWhatsApp() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = inputMessage;
     setInputMessage("");
 
     try {
-      // Call the AI agent directly
+      // Get restaurant phone for proper message routing
+      const { data: restaurantData } = await supabase
+        .from('restaurants')
+        .select('phone')
+        .eq('id', restaurantId)
+        .single();
+
+      // Save inbound message to database BEFORE calling AI
+      // This ensures conversation_history includes the user message
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          restaurant_id: restaurantId,
+          from_number: testPhone,
+          to_number: restaurantData?.phone || 'restaurant',
+          body: messageToSend,
+          direction: 'inbound'
+        });
+
+      if (insertError) {
+        console.error('[TestWhatsApp] Error saving inbound message:', insertError);
+      } else {
+        console.log('[TestWhatsApp] ✅ Inbound message saved to database');
+      }
+
+      // Call the AI agent
       const { data, error } = await supabase.functions.invoke('whatsapp-ai-agent', {
         body: {
           restaurantId,
           customerPhone: testPhone,
-          messageBody: inputMessage
+          messageBody: messageToSend
         }
       });
 
