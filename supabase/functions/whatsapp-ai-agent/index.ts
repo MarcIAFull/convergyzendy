@@ -302,10 +302,10 @@ serve(async (req) => {
     interactionLog.orchestrator_reasoning = decision.reasoning;
 
     // ============================================================
-    // STEP 3: CALL MAIN AI WITH TOOLS
+    // STEP 3: ITERATIVE FUNCTION CALLING LOOP
     // ============================================================
     
-    console.log('\n[Main AI] ========== CALLING MAIN AI WITH TOOLS ==========');
+    console.log('\n[Main AI] ========== ITERATIVE FUNCTION CALLING ==========');
     
     const { intent, target_state: targetState, confidence } = decision;
     
@@ -476,969 +476,176 @@ serve(async (req) => {
       presence_penalty: conversationalAgent?.presence_penalty
     };
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: conversationalAgent?.model || 'gpt-4o',
-        messages: [
-          { role: 'system', content: conversationalSystemPrompt },
-          ...conversationHistory,
-          { role: 'user', content: rawMessage }
-        ],
-        ...(tools.length > 0 && { tools }),
-        max_tokens: conversationalAgent?.max_tokens || 500,
-        temperature: conversationalAgent?.temperature ?? 1.0,
-        ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
-        ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && { frequency_penalty: conversationalAgent.frequency_penalty }),
-        ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && { presence_penalty: conversationalAgent.presence_penalty })
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      throw new Error(`Main AI failed: ${aiResponse.status}`);
-    }
-
-    const aiData = await aiResponse.json();
-    const aiMessage = aiData.choices[0].message;
-    let finalResponse = aiMessage.content || '';
-    const toolCalls = aiMessage.tool_calls || [];
-    
-    console.log(`[Main AI] Response preview: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
-    console.log(`[Main AI] Tool calls received: ${toolCalls.length}`);
-    
-    // Log AI response
-    interactionLog.ai_response_raw = aiData;
-    interactionLog.ai_response_text = finalResponse;
-    interactionLog.tool_calls_requested = toolCalls;
-    
-    if (toolCalls.length > 0) {
-      console.log('[Main AI] Tools to execute:');
-      toolCalls.forEach((tc: any, idx: number) => {
-        console.log(`[Main AI]   ${idx + 1}. ${tc.function.name}(${tc.function.arguments})`);
-      });
-    }
-    
     // ============================================================
-    // STEP 4: VALIDATE AND EXECUTE TOOL CALLS
+    // ITERATIVE FUNCTION CALLING LOOP
+    // Build messages array and iterate until AI stops calling tools
     // ============================================================
     
-    console.log('\n[Tool Validation] ========== VALIDATING TOOL CALLS ==========');
-    console.log('[Tool Validation] Raw tool calls:', JSON.stringify(toolCalls, null, 2));
+    // Initialize messages array with system prompt, history, and user message
+    const messages: any[] = [
+      { role: 'system', content: conversationalSystemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: rawMessage }
+    ];
     
-    const validatedToolCalls: typeof toolCalls = [];
-    const userMessage = rawMessage.toLowerCase().trim();
+    let finalResponse = '';
+    let allToolCallsRaw: any[] = [];
+    let allToolCallsValidated: any[] = [];
+    let allToolResults: any[] = [];
+    const MAX_ITERATIONS = 5; // Prevent infinite loops
+    let iterations = 0;
     
-    for (const toolCall of toolCalls) {
-      const fn = toolCall.function?.name;
-      const args = toolCall.function?.arguments
-        ? JSON.parse(toolCall.function.arguments)
-        : {};
-
-      if (fn === 'add_to_cart') {
-        const product = availableProducts.find((p) => p.id === args.product_id);
-        const productName = product?.name?.toLowerCase() || '';
-
-        // PHASE 5: Simplified validation - focus on explicit product requests
-        // 1) explicit request for a product, by name, in the current user message
-        const mentionsProductByName =
-          !!productName && userMessage.includes(productName);
-
-        // 2) orchestrator intent clearly related to products
-        const isProductIntent =
-          intent === 'browse_product' ||
-          intent === 'confirm_item' ||
-          intent === 'collect_customer_data' || // Can include products during data collection
-          (confidence >= 0.8); // High confidence intent
-
-        // 3) Semantic analysis for explicit requests
-        const userLower = userMessage.toLowerCase();
-        const semanticMatch = 
-          userLower.includes('quero') || 
-          userLower.includes('adiciona') ||
-          userLower.includes('manda') ||
-          userLower.includes('também') ||
-          userLower.includes('mais') ||
-          userLower.includes('coloca');
-
-        const isExplicitRequest = 
-          mentionsProductByName || 
-          isProductIntent ||
-          (semanticMatch && confidence >= 0.7); // Semantic signals + reasonable confidence
-
-        if (!isExplicitRequest) {
-          console.log(
-            `[Tool Validation] ❌ Skipping add_to_cart: no explicit product request (intent=${intent}, confidence=${confidence}, semantic=${semanticMatch})`,
-          );
-          continue; // ❌ do not execute this add_to_cart
-        }
-
-        // ============================================================
-        // AUTO-CORRECTION: Detect mentioned addons and add them if missing
-        // ============================================================
-        const availableAddons = (product?.addons || []).filter((addon: any) => addon && addon.name);
-        const mentionedAddons = availableAddons.filter((addon: any) =>
-          userMessage.includes(addon.name.toLowerCase())
-        );
-        
-        if (mentionedAddons.length > 0 && (!args.addon_ids || args.addon_ids.length === 0)) {
-          console.warn(
-            `[Tool Validation] ⚠️ User mentioned addon(s) "${mentionedAddons.map((a: any) => a.name).join(', ')}" but AI didn't include addon_ids. Auto-correcting...`
-          );
-          
-          // Auto-correct by adding addon_ids
-          args.addon_ids = mentionedAddons.map((a: any) => a.id);
-          
-          // Update the tool call arguments
-          toolCall.function.arguments = JSON.stringify(args);
-          
-          console.log(`[Tool Validation] ✅ Auto-corrected addon_ids: ${args.addon_ids.join(', ')}`);
-        }
-
-        console.log(
-          `[Tool Validation] ✅ add_to_cart validated: ${product?.name} (${args.product_id})`,
-        );
-        validatedToolCalls.push(toolCall);
-        continue;
-      }
-
-      // For all other tools (set_delivery_address, set_payment_method, finalize_order, etc.)
-      // keep current behavior, just passing them through:
-      validatedToolCalls.push(toolCall);
-    }
-    
-    console.log(`[Tool Validation] Validated tool calls: ${validatedToolCalls.length} of ${toolCalls.length}`);
-    
-    // Log validated tools
-    interactionLog.tool_calls_validated = validatedToolCalls;
-    
-    // Fallback if ALL tool calls were rejected
-    if (toolCalls.length > 0 && validatedToolCalls.length === 0) {
-      console.error('[Tool Validation] ❌ ALL tools rejected. Generating fallback response...');
-      
-      const fallbackResponse = `Desculpa, não consegui processar o teu pedido corretamente. 😅 Podes tentar de novo mencionando o produto que queres? Por exemplo: "Quero uma Pizza Margherita".`;
-      
-      await supabase.from('messages').insert({
-        restaurant_id: restaurantId,
-        from_number: restaurant.phone,
-        to_number: customerPhone,
-        body: fallbackResponse,
-        direction: 'outbound',
-        timestamp: new Date().toISOString()
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: fallbackResponse,
-          warning: 'Tool validation failed, fallback response generated'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // ============================================================
-    // STEP 4: EXECUTE VALIDATED TOOL CALLS
-    // ============================================================
-    
-    console.log('\n[Tool Execution] ========== EXECUTING TOOL CALLS ==========');
-    
-    // FIX BUG #2: Don't reset state to "unknown" - preserve current state
+    // State management variables
     let newState = (targetState === 'unknown' || !targetState) ? currentState : targetState;
     let newMetadata = { ...stateMetadata };
-    const toolResults: any[] = [];
-    let finalizeSuccess = false; // Track if finalize_order succeeded
-    let cartModified = false; // Track if we need to re-fetch cart data
+    let finalizeSuccess = false;
+    let cartModified = false;
     
-    for (const toolCall of validatedToolCalls) {
-      const functionName = toolCall.function.name;
-      const args = JSON.parse(toolCall.function.arguments);
+    console.log('\n[Iterative Loop] Starting iterative function calling loop...');
+    console.log(`[Iterative Loop] Initial messages count: ${messages.length}`);
+    
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
+      console.log(`\n[Iteration ${iterations}] ========== CALLING AI ==========`);
       
-      console.log(`[Tool] ──────────────────────────────────────────────`);
-      console.log(`[Tool] Executing: ${functionName}`);
-      console.log(`[Tool] Arguments:`, JSON.stringify(args, null, 2));
-      
-      switch (functionName) {
-        case 'add_to_cart': {
-          const { product_id, quantity = 1, addon_ids = [], notes } = args;
-          
-          const product = availableProducts.find(p => p.id === product_id);
-          if (!product) {
-            console.error(`[Tool] Product not found: ${product_id}`);
-            continue;
-          }
-          
-          // Create cart if needed
-          if (!activeCart) {
-            const { data: newCart } = await supabase
-              .from('carts')
-              .insert({
-                restaurant_id: restaurantId,
-                user_phone: customerPhone,
-                status: 'active'
-              })
-              .select()
-              .single();
-            activeCart = newCart;
-          }
-          
-          // Add item to cart
-          const { data: cartItem, error: addError } = await supabase
-            .from('cart_items')
-            .insert({
-              cart_id: activeCart!.id,
-              product_id,
-              quantity,
-              notes
-            })
-            .select()
-            .single();
-          
-          if (addError) {
-            console.error('[Tool] Add to cart error:', addError);
-          } else {
-            console.log(`[Tool] ✅ Added ${quantity}x ${product.name}${notes ? ` (${notes})` : ''} to cart`);
-            
-            // Add addons if specified
-            if (addon_ids && addon_ids.length > 0) {
-              const addonInserts = addon_ids.map((addon_id: string) => ({
-                cart_item_id: cartItem.id,
-                addon_id
-              }));
-              
-              const { error: addonError } = await supabase
-                .from('cart_item_addons')
-                .insert(addonInserts);
-              
-              if (addonError) {
-                console.error('[Tool] Error adding addons:', addonError);
-              } else {
-                const addedAddons = (product.addons || [])
-                  .filter((a: any) => addon_ids.includes(a.id))
-                  .map((a: any) => a.name);
-                console.log(`[Tool] ✅ Added addons: ${addedAddons.join(', ')}`);
-              }
-            }
-            
-            newState = 'confirming_item';
-            cartModified = true; // Mark that cart needs re-fetch
-          }
-          break;
-        }
-        
-        case 'remove_from_cart': {
-          const { product_id } = args;
-          
-          if (!activeCart) {
-            console.error('[Tool] No active cart');
-            continue;
-          }
-          
-          const { error: removeError } = await supabase
-            .from('cart_items')
-            .delete()
-            .eq('cart_id', activeCart.id)
-            .eq('product_id', product_id);
-          
-          if (removeError) {
-            console.error('[Tool] Remove error:', removeError);
-          } else {
-            console.log(`[Tool] ✅ Removed product from cart`);
-            cartModified = true; // Mark that cart needs re-fetch
-          }
-          break;
-        }
-        
-        case 'validate_and_set_delivery_address': {
-          const { address } = args;
-          
-          console.log(`[Tool] 🗺️ Validating address: ${address}`);
-          
-          try {
-            // Step 1: Geocode the address
-            console.log('[Tool] Step 1: Geocoding address...');
-            const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke(
-              'geocode-address-free',
-              { body: { address } }
-            );
-            
-            if (geocodeError || !geocodeData) {
-              console.error('[Tool] Geocoding failed:', geocodeError);
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: false,
-                  error: 'Não foi possível encontrar o endereço. Por favor, verifica se está correto.'
-                })
-              });
-              break;
-            }
-            
-            const { lat, lng, formatted_address } = geocodeData;
-            console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
-            
-            // Step 2: Validate against delivery zones
-            console.log('[Tool] Step 2: Validating delivery zones...');
-            const orderAmount = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-            
-            const { data: validationData, error: validationError } = await supabase.functions.invoke(
-              'validate-delivery-address',
-              { 
-                body: { 
-                  restaurant_id: restaurantId, 
-                  lat, 
-                  lng,
-                  order_amount: orderAmount
-                } 
-              }
-            );
-            
-            if (validationError || !validationData) {
-              console.error('[Tool] Validation failed:', validationError);
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: false,
-                  error: 'Erro ao validar endereço. Por favor, tenta novamente.'
-                })
-              });
-              break;
-            }
-            
-            // Step 3: Process validation result
-            if (validationData.valid) {
-              // Valid delivery zone
-              newMetadata.delivery_address = formatted_address;
-              newMetadata.delivery_coordinates = { lat, lng };
-              newMetadata.delivery_zone = validationData.zone?.name || 'Desconhecida';
-              newMetadata.delivery_fee = validationData.delivery_fee;
-              newMetadata.estimated_delivery_time = validationData.estimated_time_minutes;
-              newMetadata.distance_km = validationData.distance_km;
-              
-              newState = 'collecting_payment';
-              
-              console.log(`[Tool] ✅ Address validated successfully`);
-              console.log(`[Tool]    Zone: ${newMetadata.delivery_zone}`);
-              console.log(`[Tool]    Fee: €${validationData.delivery_fee.toFixed(2)}`);
-              console.log(`[Tool]    Time: ${validationData.estimated_time_minutes} min`);
-              
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: true,
-                  valid: true,
-                  address: formatted_address,
-                  zone: newMetadata.delivery_zone,
-                  delivery_fee: validationData.delivery_fee,
-                  estimated_time_minutes: validationData.estimated_time_minutes,
-                  distance_km: validationData.distance_km
-                })
-              });
-            } else {
-              // Invalid delivery zone
-              console.log(`[Tool] ❌ Address outside delivery zone: ${validationData.error}`);
-              
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: true,
-                  valid: false,
-                  error: validationData.error,
-                  address: formatted_address
-                })
-              });
-            }
-          } catch (error) {
-            console.error('[Tool] Unexpected error during address validation:', error);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                success: false,
-                error: 'Erro inesperado ao validar endereço.'
-              })
-            });
-          }
-          break;
-        }
-        
-        case 'set_payment_method': {
-          const { method } = args;
-          
-          newMetadata.payment_method = method;
-          newState = 'ready_to_order';
-          console.log(`[Tool] ✅ Set payment method: ${method}`);
-          break;
-        }
-        
-        case 'finalize_order': {
-          if (!activeCart || cartItems.length === 0) {
-            console.error('[Tool] Cannot finalize: empty cart');
-            continue;
-          }
-          
-          if (!newMetadata.delivery_address || !newMetadata.payment_method) {
-            console.error('[Tool] Cannot finalize: missing address or payment');
-            continue;
-          }
-          
-          // Calculate order total with dynamic delivery fee
-          const subtotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-          const deliveryFeeToUse = newMetadata.delivery_fee ?? restaurant.delivery_fee ?? 0;
-          const orderTotal = subtotal + deliveryFeeToUse;
-          
-          console.log(`[Tool] 📊 Order calculation:`);
-          console.log(`[Tool]    Subtotal: €${subtotal.toFixed(2)}`);
-          console.log(`[Tool]    Delivery: €${deliveryFeeToUse.toFixed(2)} (${newMetadata.delivery_zone || 'default'})`);
-          console.log(`[Tool]    Total: €${orderTotal.toFixed(2)}`);
-          
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              restaurant_id: restaurantId,
-              user_phone: customerPhone,
-              cart_id: activeCart.id,
-              delivery_address: newMetadata.delivery_address,
-              payment_method: newMetadata.payment_method,
-              total_amount: orderTotal,
-              status: 'new'
-            })
-            .select()
-            .single();
-          
-          if (orderError) {
-            console.error('[Tool] Order creation error:', orderError);
-          } else {
-            console.log(`[Tool] ✅ Order created: ${order.id}`);
-            
-            // Update cart metadata with delivery details
-            await supabase
-              .from('carts')
-              .update({ 
-                status: 'completed',
-                metadata: {
-                  ...newMetadata,
-                  delivery_fee: deliveryFeeToUse,
-                  subtotal: subtotal,
-                  total: orderTotal
-                }
-              })
-              .eq('id', activeCart.id);
-            
-            // Update customer insights
-            try {
-              await updateCustomerInsightsAfterOrder(supabase as any, {
-                phone: customerPhone,
-                orderId: order.id,
-                total: orderTotal,
-                items: cartItems.map((item: any) => ({
-                  productId: item.product_id,
-                  productName: item.product_name,
-                  addons: (item.addons || []).map((a: any) => ({
-                    addonId: a.id,
-                    addonName: a.name
-                  }))
-                })),
-                status: 'confirmed'
-              });
-              console.log('[Tool] ✅ Customer insights updated');
-            } catch (insightError) {
-              console.error('[Tool] ⚠️ Customer insights update failed:', insightError);
-            }
-            
-            // PHASE 5: Cleanup pending items after order finalization
-            console.log('[Tool] 🧹 Cleaning up pending items after order finalization...');
-            await supabase
-              .from('conversation_pending_items')
-              .update({ status: 'discarded' })
-              .eq('user_phone', customerPhone)
-              .eq('restaurant_id', restaurantId)
-              .eq('status', 'pending');
-            console.log('[Tool] ✅ Pending items cleaned up');
-            
-            // Clear metadata and nullify cart for clean slate
-            newMetadata = {};
-            newState = 'idle';
-            activeCart = null;
-            cartModified = true;
-            finalizeSuccess = true;
-          }
-          break;
-        }
-        
-        case 'update_customer_profile': {
-          const { name, default_address, default_payment_method } = args;
-          
-          // ============================================================
-          // FIX: Include restaurant_id (required by customers table)
-          // ============================================================
-          const updateData: any = { 
-            phone: customerPhone,
-            restaurant_id: restaurantId  // CRITICAL: Required field
-          };
-          if (name !== undefined) updateData.name = name;
-          if (default_address !== undefined) {
-            // Handle both string and object addresses
-            updateData.default_address = typeof default_address === 'string' 
-              ? { formatted: default_address }
-              : default_address;
-          }
-          if (default_payment_method !== undefined) updateData.default_payment_method = default_payment_method;
-          
-          console.log('[Tool] 📝 Updating customer profile:', JSON.stringify(updateData, null, 2));
-          
-          const { error: profileError } = await supabase
-            .from('customers')
-            .upsert(updateData, { onConflict: 'phone,restaurant_id' });
-          
-          if (profileError) {
-            console.error('[Tool] Update customer profile error:', profileError);
-            interactionLog.errors.push({
-              type: 'customer_profile_update_failed',
-              message: profileError.message,
-              details: profileError
-            });
-          } else {
-            console.log('[Tool] ✅ Updated customer profile successfully');
-          }
-          break;
-        }
-        
-        case 'show_cart': {
-          // AI uses this to display cart contents - no action needed
-          console.log('[Tool] ✅ Showing cart');
-          break;
-        }
-        
-        case 'clear_cart': {
-          if (activeCart) {
-            await supabase
-              .from('cart_items')
-              .delete()
-              .eq('cart_id', activeCart.id);
-            
-            cartModified = true;
-            console.log('[Tool] ✅ Cleared cart');
-          }
-          break;
-        }
-        
-        // ============================================================
-        // RAG: Customer History Tool Handler
-        // ============================================================
-        case 'get_customer_history': {
-          console.log(`[Tool] 📊 Fetching customer history for ${customerPhone}`);
-          
-          try {
-            const insights = await getCustomerInsights(supabase, customerPhone);
-            
-            if (!insights || insights.order_count === 0) {
-              console.log('[Tool] → Customer is new (no history)');
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: true,
-                  customer_status: 'new',
-                  message: 'Cliente novo - primeira interação. Não há histórico disponível.',
-                  order_count: 0,
-                  suggestions: ['Apresentar o cardápio', 'Perguntar se quer ver alguma categoria']
-                })
-              });
-            } else {
-              // Format rich customer profile
-              const topItems = (insights.preferred_items || []).slice(0, 3);
-              const topAddons = (insights.preferred_addons || []).slice(0, 3);
-              
-              const customerStatus = insights.order_count >= 5 ? 'vip' : 
-                                     insights.order_count >= 2 ? 'returning' : 'first_return';
-              
-              // Generate smart suggestions based on history
-              const suggestions: string[] = [];
-              if (topItems.length > 0) {
-                suggestions.push(`Sugerir: "Quer o ${topItems[0].name} de sempre?"`);
-              }
-              if (topAddons.length > 0) {
-                suggestions.push(`Cliente costuma pedir: ${topAddons[0].name}`);
-              }
-              if (customerStatus === 'vip') {
-                suggestions.push('Cliente VIP - tratamento especial!');
-              }
-              if (insights.order_frequency_days && insights.order_frequency_days <= 7) {
-                suggestions.push(`Cliente frequente (pede a cada ${insights.order_frequency_days} dias)`);
-              }
-              
-              const lastOrderDate = insights.last_interaction_at 
-                ? new Date(insights.last_interaction_at).toLocaleDateString('pt-BR')
-                : null;
-              
-              console.log(`[Tool] ✅ Found history: ${insights.order_count} orders, ticket €${insights.average_ticket?.toFixed(2)}`);
-              
-              toolResults.push({
-                tool_call_id: toolCall.id,
-                output: JSON.stringify({
-                  success: true,
-                  customer_status: customerStatus,
-                  order_count: insights.order_count,
-                  average_ticket: insights.average_ticket ? `€${insights.average_ticket.toFixed(2)}` : null,
-                  order_frequency: insights.order_frequency_days 
-                    ? `a cada ${insights.order_frequency_days} dias` 
-                    : 'primeira vez',
-                  favorite_items: topItems.map((i: any) => `${i.name} (${i.count}x)`),
-                  favorite_addons: topAddons.map((a: any) => `${a.name} (${a.count}x)`),
-                  last_order_date: lastOrderDate,
-                  suggestions
-                })
-              });
-            }
-          } catch (historyError) {
-            console.error('[Tool] ❌ Error fetching customer history:', historyError);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                success: false,
-                error: 'Erro ao carregar histórico do cliente'
-              })
-            });
-          }
-          break;
-        }
-        
-        case 'search_menu': {
-          const { query, category, max_results = 5 } = args;
-          
-          // ============================================================
-          // V11: Todas as ferramentas disponíveis independente do intent
-          // Suporte multi-intent: "Rua X e quero pizza" processa ambos
-          // ============================================================
-          console.log('[Tool] ✅ search_menu - all tools available for multi-intent support');
-          
-          // ============================================================
-          // VALIDATION: Ensure at least query or category is provided
-          // Allow empty search to return categories
-          // ============================================================
-          if (!query && !category) {
-            console.log('[Tool] ℹ️ search_menu called without params - returning categories');
-            const categories = [...new Set(
-              availableProducts
-                .filter(p => p && p.category)
-                .map(p => p.category)
-            )].sort();
-            
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                found: true,
-                type: 'categories',
-                count: categories.length,
-                categories: categories,
-                message: `Categorias disponíveis: ${categories.join(', ')}. Para ver produtos, use search_menu(category: "Nome")`
-              })
-            });
-            break;
-          }
-          
-          console.log(`[Tool] 🔍 Searching menu for "${query || '(category only)'}" (category: ${category || 'all'}, max: ${max_results})`);
-          
-          // Perform intelligent search with fuzzy matching
-          const results = searchProducts(availableProducts, query, category, max_results);
-          
-          // Save results for positional selection (e.g., "a segunda", "número 3")
-          if (results.length > 0) {
-            await supabase
-              .from('conversation_state')
-              .update({ 
-                last_shown_products: results.map(r => ({
-                  id: r.product.id,
-                  name: r.product.name
-                }))
-              })
-              .eq('user_phone', customerPhone)
-              .eq('restaurant_id', restaurantId);
-            
-            console.log(`[Tool] 💾 Saved ${results.length} products to last_shown_products`);
-          }
-          
-          console.log(`[Tool] ✅ Found ${results.length} results for "${query || category}"`);
-          
-          // If no results, provide helpful fallback message
-          if (results.length === 0) {
-            console.log('[Tool] ⚠️ No results found, providing fallback');
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                found: false,
-                count: 0,
-                products: [],
-                message: `Não encontrei "${query || category}" no menu. Posso mostrar as categorias disponíveis?`
-              })
-            });
-            break;
-          }
-          
-          toolResults.push({
-            tool_call_id: toolCall.id,
-            output: JSON.stringify({
-              found: results.length > 0,
-              count: results.length,
-              products: results.map(r => ({
-                id: r.product.id,
-                name: r.product.name,
-                price: r.product.price,
-                category: r.product.category,
-                description: r.product.description,
-                similarity: r.similarity
-              }))
-            })
-          });
-          break;
-        }
-        
-        case 'add_pending_item': {
-          const { product_id, quantity = 1, addon_ids = [], notes } = args;
-          
-          const product = availableProducts.find(p => p.id === product_id);
-          if (!product) {
-            console.error(`[Tool] ❌ Product not found: ${product_id}`);
-            continue;
-          }
-          
-          // ============================================================
-          // AUTO-CORRECTION: Detect mentioned addons and fix invalid IDs
-          // ============================================================
-          const availableAddons = product.addons || [];
-          let correctedAddonIds = addon_ids;
-          
-          // Check if addon_ids are invalid (not UUIDs or not in product)
-          const invalidAddons = addon_ids.filter((id: string) => 
-            !availableAddons.some((a: any) => a.id === id)
-          );
-          
-          if (invalidAddons.length > 0) {
-            console.warn(`[Tool] ⚠️ Invalid addon_ids detected: ${invalidAddons.join(', ')}`);
-            console.warn(`[Tool] Valid addons: ${availableAddons.map((a: any) => a.id).join(', ')}`);
-            
-            // Try to find addons mentioned in the message
-            const mentionedAddons = availableAddons.filter((addon: any) =>
-              rawMessage.toLowerCase().includes(addon.name.toLowerCase())
-            );
-            
-            if (mentionedAddons.length > 0) {
-              correctedAddonIds = mentionedAddons.map((a: any) => a.id);
-              console.log(`[Tool] ✅ Auto-corrected addon_ids: ${correctedAddonIds.join(', ')}`);
-            } else {
-              // Remove invalid addons
-              correctedAddonIds = addon_ids.filter((id: string) => 
-                availableAddons.some((a: any) => a.id === id)
-              );
-              console.warn(`[Tool] ⚠️ Removed invalid addons, keeping: ${correctedAddonIds.join(', ')}`);
-            }
-          }
-          
-          const { data: pendingItem, error: pendingError } = await supabase
-            .from('conversation_pending_items')
-            .insert({
-              user_phone: customerPhone,
-              restaurant_id: restaurantId,
-              product_id,
-              quantity,
-              addon_ids: correctedAddonIds,
-              notes,
-              status: 'pending'
-            })
-            .select()
-            .single();
-          
-          if (pendingError) {
-            console.error('[Tool] ❌ Add pending item error:', pendingError);
-          } else {
-            console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to pending items`);
-          }
-          break;
-        }
-        
-        case 'confirm_pending_items': {
-          console.log('[Tool] ⚡ Confirming all pending items...');
-          
-          // Load all pending items
-          const { data: itemsToConfirm } = await supabase
-            .from('conversation_pending_items')
-            .select('*')
-            .eq('user_phone', customerPhone)
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'pending');
-          
-          if (!itemsToConfirm || itemsToConfirm.length === 0) {
-            console.log('[Tool] ⚠️ No pending items to confirm');
-            continue;
-          }
-          
-          // Create cart if needed
-          if (!activeCart) {
-            const { data: newCart } = await supabase
-              .from('carts')
-              .insert({
-                restaurant_id: restaurantId,
-                user_phone: customerPhone,
-                status: 'active'
-              })
-              .select()
-              .single();
-            activeCart = newCart;
-          }
-          
-          // PHASE 5: Improved merge logic - only merge if product_id + addons + notes match
-          for (const pendingItem of itemsToConfirm) {
-            const product = availableProducts.find(p => p.id === pendingItem.product_id);
-            const productName = product?.name || 'Unknown';
-            
-            // Helper to compare arrays (order-independent)
-            const arraysEqual = (a: string[] | null, b: any[] | null) => {
-              if (!a && !b) return true;
-              if (!a || !b) return false;
-              const sortedA = [...a].sort();
-              const sortedB = [...(b || [])].map((addon: any) => addon.id).sort();
-              return sortedA.length === sortedB.length && sortedA.every((val, idx) => val === sortedB[idx]);
-            };
-            
-            // Find matching cart item (same product + addons + notes)
-            const matchingCartItem = cartItems.find((ci: any) => 
-              ci.product_id === pendingItem.product_id &&
-              arraysEqual(pendingItem.addon_ids, ci.addons) &&
-              (ci.notes || '') === (pendingItem.notes || '')
-            );
-            
-            if (matchingCartItem) {
-              // Merge quantities only if customization matches
-              await supabase
-                .from('cart_items')
-                .update({ 
-                  quantity: matchingCartItem.quantity + pendingItem.quantity 
-                })
-                .eq('cart_id', activeCart!.id)
-                .eq('product_id', pendingItem.product_id)
-                .eq('notes', matchingCartItem.notes || '');
-              
-              console.log(`[Tool] ✅ Merged ${pendingItem.quantity}x ${productName} (identical customization)`);
-            } else {
-              // Create separate cart item for different customization
-              const { data: cartItem } = await supabase
-                .from('cart_items')
-                .insert({
-                  cart_id: activeCart!.id,
-                  product_id: pendingItem.product_id,
-                  quantity: pendingItem.quantity,
-                  notes: pendingItem.notes
-                })
-                .select()
-                .single();
-              
-              // Add addons if specified
-              if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
-                const addonInserts = pendingItem.addon_ids.map((addon_id: string) => ({
-                  cart_item_id: cartItem.id,
-                  addon_id
-                }));
-                
-                await supabase
-                  .from('cart_item_addons')
-                  .insert(addonInserts);
-              }
-              
-              console.log(`[Tool] ✅ Added ${pendingItem.quantity}x ${productName} as separate cart item (different customization)`);
-            }
-          }
-          
-          // Mark all pending items as confirmed
-          await supabase
-            .from('conversation_pending_items')
-            .update({ status: 'confirmed' })
-            .eq('user_phone', customerPhone)
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'pending');
-          
-          cartModified = true;
-          console.log(`[Tool] ✅ Confirmed ${itemsToConfirm.length} pending items to cart`);
-          break;
-        }
-        
-        case 'remove_pending_item': {
-          const { product_id, action, quantity_change = 1 } = args;
-          
-          const product = availableProducts.find(p => p.id === product_id);
-          const productName = product?.name || 'Unknown';
-          
-          // PHASE 5: Handle removal/modification of pending items
-          if (action === 'remove_all') {
-            // Delete all pending items for this product
-            await supabase
-              .from('conversation_pending_items')
-              .update({ status: 'discarded' })
-              .eq('user_phone', customerPhone)
-              .eq('restaurant_id', restaurantId)
-              .eq('product_id', product_id)
-              .eq('status', 'pending');
-            
-            console.log(`[Tool] ✅ Removed all pending items for ${productName}`);
-          } else if (action === 'decrease_quantity') {
-            // Get current pending item
-            const { data: pendingItem } = await supabase
-              .from('conversation_pending_items')
-              .select('*')
-              .eq('user_phone', customerPhone)
-              .eq('restaurant_id', restaurantId)
-              .eq('product_id', product_id)
-              .eq('status', 'pending')
-              .single();
-            
-            if (pendingItem) {
-              const newQuantity = pendingItem.quantity - quantity_change;
-              
-              if (newQuantity <= 0) {
-                // Remove item completely
-                await supabase
-                  .from('conversation_pending_items')
-                  .update({ status: 'discarded' })
-                  .eq('id', pendingItem.id);
-                
-                console.log(`[Tool] ✅ Removed pending item ${productName} (quantity reached 0)`);
-              } else {
-                // Decrease quantity
-                await supabase
-                  .from('conversation_pending_items')
-                  .update({ quantity: newQuantity })
-                  .eq('id', pendingItem.id);
-                
-                console.log(`[Tool] ✅ Decreased quantity for ${productName}: ${pendingItem.quantity} → ${newQuantity}`);
-              }
-            } else {
-              console.log(`[Tool] ⚠️ No pending item found for ${productName}`);
-            }
-          }
-          break;
-        }
-        
-        case 'clear_pending_items': {
-          await supabase
-            .from('conversation_pending_items')
-            .update({ status: 'discarded' })
-            .eq('user_phone', customerPhone)
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'pending');
-          
-          console.log('[Tool] ✅ Cleared all pending items');
-          break;
-        }
+      const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: conversationalAgent?.model || 'gpt-4o',
+          messages,
+          ...(tools.length > 0 && { tools }),
+          max_tokens: conversationalAgent?.max_tokens || 500,
+          temperature: conversationalAgent?.temperature ?? 1.0,
+          ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
+          ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && { frequency_penalty: conversationalAgent.frequency_penalty }),
+          ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && { presence_penalty: conversationalAgent.presence_penalty })
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        const errorText = await aiResponse.text();
+        console.error(`[Iteration ${iterations}] AI Error:`, errorText);
+        throw new Error(`Main AI failed: ${aiResponse.status}`);
       }
+
+      const aiData = await aiResponse.json();
+      const choice = aiData.choices[0];
+      const assistantMessage = choice.message;
+      const finishReason = choice.finish_reason;
+      
+      console.log(`[Iteration ${iterations}] Finish reason: ${finishReason}`);
+      console.log(`[Iteration ${iterations}] Has tool_calls: ${!!assistantMessage.tool_calls}`);
+      console.log(`[Iteration ${iterations}] Has content: ${!!assistantMessage.content}`);
+      
+      // Add assistant message to history (important for tool call cycle)
+      messages.push(assistantMessage);
+      
+      // If no tool calls, AI finished - extract final response
+      if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        finalResponse = assistantMessage.content || '';
+        console.log(`[Iteration ${iterations}] ✅ AI finished with final response`);
+        console.log(`[Iteration ${iterations}] Response preview: "${finalResponse.substring(0, 150)}..."`);
+        break;
+      }
+      
+      // Process tool calls
+      const toolCalls = assistantMessage.tool_calls;
+      allToolCallsRaw.push(...toolCalls);
+      
+      console.log(`[Iteration ${iterations}] Tool calls received: ${toolCalls.length}`);
+      toolCalls.forEach((tc: any, idx: number) => {
+        console.log(`[Iteration ${iterations}]   ${idx + 1}. ${tc.function.name}(${tc.function.arguments})`);
+      });
+      
+      // Validate and execute each tool call
+      for (const toolCall of toolCalls) {
+        const functionName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
+        
+        console.log(`\n[Tool Execution] ────────────────────────────────`);
+        console.log(`[Tool Execution] Executing: ${functionName}`);
+        console.log(`[Tool Execution] Arguments:`, JSON.stringify(args, null, 2));
+        
+        // Execute the tool and get result
+        const toolResult = await executeToolCall(
+          supabase,
+          functionName,
+          args,
+          {
+            restaurantId,
+            customerPhone,
+            availableProducts,
+            activeCart,
+            cartItems,
+            rawMessage,
+            intent,
+            confidence,
+            newState,
+            newMetadata,
+            pendingItems,
+            restaurant
+          }
+        );
+        
+        // Update state based on tool result
+        if (toolResult.stateUpdate) {
+          if (toolResult.stateUpdate.newState) newState = toolResult.stateUpdate.newState;
+          if (toolResult.stateUpdate.newMetadata) newMetadata = { ...newMetadata, ...toolResult.stateUpdate.newMetadata };
+          if (toolResult.stateUpdate.activeCart !== undefined) activeCart = toolResult.stateUpdate.activeCart;
+          if (toolResult.stateUpdate.cartModified) cartModified = true;
+          if (toolResult.stateUpdate.finalizeSuccess) finalizeSuccess = true;
+        }
+        
+        allToolCallsValidated.push(toolCall);
+        allToolResults.push({
+          tool_call_id: toolCall.id,
+          function_name: functionName,
+          result: toolResult.output
+        });
+        
+        // Add tool result to messages array - THIS IS THE KEY FIX!
+        // The AI will now SEE the results of its tool calls
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(toolResult.output)
+        });
+        
+        console.log(`[Tool Execution] ✅ Result added to messages with role: "tool"`);
+        console.log(`[Tool Execution] Result preview:`, JSON.stringify(toolResult.output).substring(0, 200));
+      }
+      
+      console.log(`\n[Iteration ${iterations}] Messages count after tools: ${messages.length}`);
+      console.log(`[Iteration ${iterations}] Continuing to next iteration to get AI response with tool results...`);
     }
+    
+    if (iterations >= MAX_ITERATIONS) {
+      console.warn(`[Iterative Loop] ⚠️ Max iterations (${MAX_ITERATIONS}) reached - stopping loop`);
+    }
+    
+    console.log(`\n[Iterative Loop] ========== LOOP COMPLETE ==========`);
+    console.log(`[Iterative Loop] Total iterations: ${iterations}`);
+    console.log(`[Iterative Loop] Total tool calls (raw): ${allToolCallsRaw.length}`);
+    console.log(`[Iterative Loop] Total tool calls (validated): ${allToolCallsValidated.length}`);
+    console.log(`[Iterative Loop] Final response length: ${finalResponse.length} chars`);
+    
+    // Log AI response
+    interactionLog.ai_response_raw = { iterations, messages_count: messages.length };
+    interactionLog.ai_response_text = finalResponse;
+    interactionLog.tool_calls_requested = allToolCallsRaw;
+    interactionLog.tool_calls_validated = allToolCallsValidated;
+    interactionLog.tool_execution_results = allToolResults;
     
     // ============================================================
     // RE-FETCH CART DATA AFTER MODIFICATIONS
     // ============================================================
     
     if (cartModified) {
-      console.log('[Cart Refresh] ========== RE-FETCHING CART DATA ==========');
+      console.log('\n[Cart Refresh] ========== RE-FETCHING CART DATA ==========');
       
       if (activeCart) {
         // Re-fetch cart items with updated data
@@ -1505,62 +712,49 @@ serve(async (req) => {
       }
     }
     
+    // ============================================================
+    // FALLBACK: Generate response if AI didn't provide one
+    // ============================================================
+    
     console.log(`\n[Response] ========== RESPONSE CONSTRUCTION ==========`);
-    console.log(`[Response] Tool calls validated and executed: ${validatedToolCalls.length}`);
+    console.log(`[Response] Tool calls executed: ${allToolCallsValidated.length}`);
     console.log(`[Response] AI-generated message: "${finalResponse || '(empty)'}"`);
     
-    // Fallback: If AI didn't provide a message after tool execution, construct one
-    if ((!finalResponse || finalResponse.trim() === '') && validatedToolCalls.length > 0) {
-      console.log('[Response] ⚠️ AI returned empty response, constructing fallback...');
+    // If AI didn't provide a message after tool execution, construct fallback
+    if ((!finalResponse || finalResponse.trim() === '') && allToolCallsValidated.length > 0) {
+      console.log('[Response] ⚠️ AI returned empty response after tools, constructing fallback...');
       
       const confirmations: string[] = [];
       
-      for (const toolCall of validatedToolCalls) {
-        const functionName = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
+      for (const toolResult of allToolResults) {
+        const { function_name, result } = toolResult;
         
-        switch (functionName) {
-          case 'add_to_cart': {
-            const product = availableProducts.find(p => p.id === args.product_id);
-            if (product) {
-              const qty = args.quantity || 1;
-              const addonNames = (args.addon_ids || [])
-                .map((id: string) => product.addons?.find((a: any) => a.id === id)?.name)
-                .filter(Boolean);
-              const addonText = addonNames.length > 0 ? ` com ${addonNames.join(', ')}` : '';
-              const notesText = args.notes ? ` (${args.notes})` : '';
-              confirmations.push(`✅ Adicionei ${qty}x ${product.name}${addonText}${notesText} ao teu carrinho!`);
-            }
-            break;
-          }
-          
-          case 'remove_from_cart': {
-            const product = availableProducts.find(p => p.id === args.product_id);
-            if (product) {
-              confirmations.push(`❌ Removi ${product.name} do carrinho.`);
-            }
-            break;
-          }
-          
-          case 'set_delivery_address':
-          case 'validate_and_set_delivery_address': {
-            // Check the tool result to see if validation succeeded
-            const toolResult = toolResults.find((tr: any) => tr.tool_call_id === toolCall.id);
-            if (toolResult) {
-              try {
-                const result = JSON.parse(toolResult.output);
-                if (result.valid === true) {
-                  confirmations.push(`📍 Endereço confirmado: ${result.address || args.address}. Taxa de entrega: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
-                } else if (result.valid === false) {
-                  confirmations.push(`❌ Infelizmente o endereço "${args.address}" está fora da nossa área de entrega. Por favor, indica outro endereço.`);
-                } else if (result.success === false) {
-                  confirmations.push(`⚠️ Não consegui validar o endereço. Por favor, tenta novamente com o endereço completo.`);
-                }
-              } catch {
-                confirmations.push(`📍 Endereço recebido: ${args.address}`);
-              }
+        switch (function_name) {
+          case 'search_menu': {
+            if (result.found && result.products && result.products.length > 0) {
+              const productList = result.products
+                .slice(0, 5)
+                .map((p: any) => `• ${p.name} - €${p.price.toFixed(2)}`)
+                .join('\n');
+              confirmations.push(`🔍 Encontrei estas opções:\n${productList}`);
             } else {
-              confirmations.push(`📍 Endereço recebido: ${args.address}`);
+              confirmations.push(`❌ Não encontrei produtos para essa busca.`);
+            }
+            break;
+          }
+          
+          case 'add_to_cart': {
+            if (result.success) {
+              confirmations.push(`✅ ${result.message || 'Produto adicionado ao carrinho!'}`);
+            }
+            break;
+          }
+          
+          case 'validate_and_set_delivery_address': {
+            if (result.valid === true) {
+              confirmations.push(`📍 Endereço confirmado! Taxa de entrega: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
+            } else if (result.valid === false) {
+              confirmations.push(`❌ ${result.message || 'Endereço fora da área de entrega.'}`);
             }
             break;
           }
@@ -1571,168 +765,38 @@ serve(async (req) => {
               card: 'Cartão',
               mbway: 'MBWay'
             };
-            confirmations.push(`💳 Pagamento: ${methodNames[args.method] || args.method}`);
+            confirmations.push(`💳 Pagamento: ${methodNames[result.method] || result.method}`);
             break;
           }
           
           case 'finalize_order': {
-            if (finalizeSuccess) {
-              // Use fresh cart data (re-fetched after tool execution)
-              const finalTotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
-              confirmations.push(`🎉 Pedido confirmado! Total: €${finalTotal.toFixed(2)}`);
-              confirmations.push(`O teu pedido chegará em breve!`);
+            if (result.success) {
+              confirmations.push(`🎉 ${result.message || 'Pedido confirmado!'}`);
             } else {
-              // Finalize failed - ask for missing info
-              if (!newMetadata.delivery_address && !newMetadata.payment_method) {
-                confirmations.push('Para finalizar, preciso do teu endereço de entrega e método de pagamento.');
-              } else if (!newMetadata.delivery_address) {
-                confirmations.push('Para finalizar, preciso do teu endereço de entrega.');
-              } else if (!newMetadata.payment_method) {
-                confirmations.push('Para finalizar, preciso do método de pagamento (dinheiro, cartão ou MBWay).');
-              }
+              confirmations.push(`⚠️ ${result.message || 'Não foi possível finalizar o pedido.'}`);
             }
             break;
           }
           
           default:
-            confirmations.push(`✅ Ação executada: ${functionName}`);
+            if (result.message) {
+              confirmations.push(result.message);
+            }
         }
       }
       
-      finalResponse = confirmations.join(' ');
-      console.log(`[Response] Fallback message constructed: "${finalResponse}"`);
+      finalResponse = confirmations.join('\n\n');
+      console.log(`[Response] Fallback message constructed: "${finalResponse.substring(0, 150)}..."`);
     }
     
     // CRITICAL CHECK: If we still have no response, something went wrong
     if (!finalResponse || finalResponse.trim() === '') {
-      console.error('[Response] ❌ CRITICAL: No response generated and no valid tools executed');
-      console.error('[Response] This should not happen - AI must either:');
-      console.error('  1. Generate a conversational message, OR');
-      console.error('  2. Execute validated tools with fallback confirmations');
-      
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'No response generated',
-          details: 'AI did not generate a message and no tools produced output',
-          state: currentState,
-          intent: decision?.intent
-        }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      console.error('[Response] ❌ CRITICAL: No response generated');
+      finalResponse = 'Desculpa, ocorreu um erro ao processar o teu pedido. Podes tentar novamente?';
     }
     
-    console.log(`[Response] Final message to send: "${finalResponse}"`);
+    console.log(`[Response] Final message to send: "${finalResponse.substring(0, 150)}..."`);
     console.log(`[Response] Message length: ${finalResponse.length} characters`);
-    
-    // ============================================================
-    // SECOND MESSAGE: Conversational follow-up after tool execution
-    // ============================================================
-    
-    let secondMessage = '';
-    
-    if (validatedToolCalls.length > 0) {
-      console.log('\n[Second Message] ========== GENERATING CONVERSATIONAL FOLLOW-UP ==========');
-      
-      // Build context for second message with UPDATED cart state
-      const updatedCartSummary = cartItems.length > 0
-        ? cartItems.map((item: any) => {
-            const addonText = item.addons && item.addons.length > 0
-              ? ` com ${item.addons.map((a: any) => a.name).join(', ')}`
-              : '';
-            return `${item.quantity}x ${item.product_name}${addonText} (€${item.total_price.toFixed(2)})`;
-          }).join(', ')
-        : 'Carrinho vazio';
-      
-      const updatedCartTotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
-      
-      // Build tool results summary for context
-      const toolResultsSummary = toolResults.map((tr: any) => {
-        try {
-          const parsed = JSON.parse(tr.output);
-          return `- Resultado: ${JSON.stringify(parsed)}`;
-        } catch {
-          return `- Resultado: ${tr.output}`;
-        }
-      }).join('\n');
-
-      const secondMessagePrompt = `Tu és o assistente de pedidos do ${restaurant.name}.
-
-As tools foram executadas. Agora preciso que escrevas uma mensagem natural e amigável em Português para o cliente.
-
-**Estado atual do carrinho (ATUALIZADO):**
-${updatedCartSummary}
-**Total: €${updatedCartTotal.toFixed(2)}**
-
-**Estado atual:** ${newState}
-**Endereço de entrega:** ${newMetadata.delivery_address || 'Não definido'}
-**Método de pagamento:** ${newMetadata.payment_method || 'Não definido'}
-
-**Tools que foram executadas:**
-${validatedToolCalls.map((tc: any) => {
-  const fn = tc.function.name;
-  const args = JSON.parse(tc.function.arguments);
-  return `- ${fn}: ${JSON.stringify(args)}`;
-}).join('\n')}
-
-**RESULTADOS DAS TOOLS (CRÍTICO - LEIA COM ATENÇÃO):**
-${toolResultsSummary}
-
-**REGRAS CRÍTICAS:**
-1. **Se validate_and_set_delivery_address retornou "valid": false** → O endereço foi REJEITADO! Informa o cliente que está fora da área de entrega.
-2. **Se "valid": true** → O endereço foi aceite, confirma-o com a taxa e tempo de entrega.
-3. Se não há delivery_address mas a tool foi chamada → A validação FALHOU.
-
-**Instruções:**
-1. PRIMEIRO: Verifica se houve erros nos resultados das tools
-2. Se houve erro/rejeição → Informa o cliente do problema de forma simpática
-3. Se sucesso → Confirma as ações e sugere o próximo passo
-4. Mantém a mensagem curta (2-3 frases)
-5. Usa emojis apropriados
-
-**IMPORTANTE:** NÃO chames tools novamente. Apenas escreve uma mensagem conversacional baseada nos RESULTADOS acima.`;
-
-      try {
-        const secondAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              { role: 'system', content: secondMessagePrompt },
-              { role: 'user', content: 'Gera a mensagem conversacional agora.' }
-            ],
-            max_tokens: 300
-          }),
-        });
-
-        if (secondAiResponse.ok) {
-          const secondAiData = await secondAiResponse.json();
-          secondMessage = secondAiData.choices[0].message.content || '';
-          
-          if (secondMessage && secondMessage.trim() !== '') {
-            console.log(`[Second Message] ✅ Generated: "${secondMessage}"`);
-            // Replace the first message with the second one (more contextual)
-            finalResponse = secondMessage;
-          } else {
-            console.log('[Second Message] ⚠️ Empty second message, keeping first message');
-          }
-        } else {
-          console.error('[Second Message] ❌ Failed to generate second message');
-        }
-      } catch (secondMsgError) {
-        console.error('[Second Message] ❌ Error generating second message:', secondMsgError);
-        // Keep first message as fallback
-      }
-    }
-    
-    // PHASE 5: Legacy product detection removed - now using Pending Items Engine only
 
     // ============================================================
     // STEP 5: UPDATE STATE & SEND RESPONSE
@@ -1760,8 +824,6 @@ ${toolResultsSummary}
     // ============================================================
     // SAVE AI RESPONSE TO DATABASE
     // ============================================================
-    // Note: User's message is already saved by webhook
-    // Here we only save the AI's outbound response
     
     console.log('\n[Messages] ========== SAVING AI RESPONSE ==========');
     
@@ -1792,16 +854,9 @@ ${toolResultsSummary}
       console.log('[Messages] ✅ AI response saved to database');
     } catch (saveError) {
       console.error('[Messages] ❌ Exception saving AI response:', saveError);
-      // Don't throw - processing succeeded, just log the error
     }
 
     console.log('\n[WhatsApp] ========== SENDING RESPONSE ==========');
-    
-    // Validate message before sending
-    if (!finalResponse || finalResponse.trim().length === 0) {
-      console.error('[WhatsApp] ❌ Cannot send empty message to WhatsApp');
-      throw new Error('Empty response after tool execution - this should never happen');
-    }
     
     console.log(`[WhatsApp] Message to send: "${finalResponse.substring(0, 150)}${finalResponse.length > 150 ? '...' : ''}"`);
     console.log(`[WhatsApp] Message length: ${finalResponse.length} characters`);
@@ -1815,84 +870,85 @@ ${toolResultsSummary}
 
     const instanceName = whatsappInstance?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
     
-    // Send WhatsApp response (non-blocking for test environments)
+    // Send WhatsApp response
     try {
       await sendWhatsAppMessage(instanceName, customerPhone, finalResponse);
-      console.log(`[WhatsApp] ✅ WhatsApp message sent successfully`);
+      console.log('[WhatsApp] ✅ Message sent successfully');
     } catch (whatsappError: any) {
-      console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?):`, whatsappError.message);
-      // Continue anyway - AI processing succeeded
+      console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
     }
-
+    
     // ============================================================
-    // METRICS LOGGING
+    // LOG INTERACTION & METRICS
     // ============================================================
     
-    const metrics = {
+    const processingTime = Date.now() - startTime;
+    
+    console.log(`[Metrics] ${JSON.stringify({
       orchestrator_intent: intent,
       target_state: targetState,
-      tools_called_raw: toolCalls.length,
-      tools_executed: validatedToolCalls.length,
-      ai_response_empty: !finalResponse || finalResponse.trim() === '',
-      processing_time_ms: Date.now() - startTime,
+      tools_called_raw: allToolCallsRaw.length,
+      tools_executed: allToolCallsValidated.length,
+      iterations: iterations,
+      ai_response_empty: !finalResponse,
+      processing_time_ms: processingTime,
       state_transition: `${currentState} → ${newState}`
-    };
-
-    console.log('[Metrics]', JSON.stringify(metrics));
+    })}`);
     
-    // ============================================================
-    // SAVE INTERACTION LOG TO DATABASE
-    // ============================================================
-    
-    interactionLog.state_after = newState;
-    interactionLog.final_response = finalResponse;
-    interactionLog.processing_time_ms = Date.now() - startTime;
-    interactionLog.tool_execution_results = toolResults;
-    
+    // Save interaction log
     try {
+      interactionLog.state_after = newState;
+      interactionLog.final_response = finalResponse;
+      interactionLog.processing_time_ms = processingTime;
+      interactionLog.tokens_used = null; // Not tracking tokens currently
+      interactionLog.has_errors = interactionLog.errors.length > 0;
+      
       await supabase.from('ai_interaction_logs').insert(interactionLog);
       console.log('[Logging] ✅ Interaction log saved to database');
     } catch (logError) {
       console.error('[Logging] ❌ Failed to save interaction log:', logError);
-      // Don't throw - processing succeeded
     }
-    
-    console.log('\n[Summary] ========== PROCESSING COMPLETE ==========');
+
+    console.log(`[Summary] Tools called (raw): ${allToolCallsRaw.length}`);
+    console.log(`[Summary] Tools executed (validated): ${allToolCallsValidated.length}`);
+    console.log(`[Summary] Iterations: ${iterations}`);
     console.log(`[Summary] Intent classified: ${intent} (confidence: ${confidence})`);
-    console.log(`[Summary] Tools called (raw): ${toolCalls.length}`);
-    console.log(`[Summary] Tools executed (validated): ${validatedToolCalls.length}`);
     console.log(`[Summary] State transition: ${currentState} → ${newState}`);
     console.log(`[Summary] Pending items: ${pendingItems.length} items`);
-    console.log(`[Summary] Processing time: ${Date.now() - startTime} ms`);
-    console.log('[Summary] ===============================================\n');
+    console.log(`[Summary] Processing time: ${processingTime} ms`);
+    console.log(`[Summary] ===============================================\n`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        response: finalResponse,
+      JSON.stringify({
+        success: true,
+        message: finalResponse,
         state: newState,
-        intent: decision.intent,
-        confidence: decision.confidence
+        intent,
+        confidence,
+        iterations,
+        tools_executed: allToolCallsValidated.length,
+        processing_time_ms: processingTime
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
-    console.error('[WhatsApp AI] Error:', error);
+    console.error('[CRITICAL ERROR]', error);
     
-    // Log error to database if we have the context
-    if (interactionLog && supabase) {
+    // Log error
+    if (interactionLog) {
+      interactionLog.errors.push({
+        type: 'critical',
+        message: error.message,
+        stack: error.stack
+      });
       interactionLog.has_errors = true;
       interactionLog.log_level = 'error';
-      interactionLog.errors = [{
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      }];
-      interactionLog.processing_time_ms = Date.now() - (startTime || Date.now());
       
       try {
-        await supabase.from('ai_interaction_logs').insert(interactionLog);
+        if (supabase) {
+          await supabase.from('ai_interaction_logs').insert(interactionLog);
+        }
       } catch (logError) {
         console.error('[Logging] Failed to save error log:', logError);
       }
@@ -1906,12 +962,747 @@ ${toolResultsSummary}
 });
 
 // ============================================================
-// HELPER FUNCTIONS FOR TEMPLATE VARIABLES AND FORMATTING
+// TOOL EXECUTION FUNCTION
+// Executes a single tool and returns the result
 // ============================================================
 
-/**
- * Build system prompt from agent_prompt_blocks or use fallback
- */
+interface ToolExecutionContext {
+  restaurantId: string;
+  customerPhone: string;
+  availableProducts: any[];
+  activeCart: any;
+  cartItems: any[];
+  rawMessage: string;
+  intent: string;
+  confidence: number;
+  newState: string;
+  newMetadata: any;
+  pendingItems: any[];
+  restaurant: any;
+}
+
+interface ToolExecutionResult {
+  output: any;
+  stateUpdate?: {
+    newState?: string;
+    newMetadata?: any;
+    activeCart?: any;
+    cartModified?: boolean;
+    finalizeSuccess?: boolean;
+  };
+}
+
+async function executeToolCall(
+  supabase: any,
+  functionName: string,
+  args: any,
+  ctx: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  
+  const { 
+    restaurantId, customerPhone, availableProducts, activeCart, 
+    cartItems, rawMessage, intent, confidence, newState, newMetadata, 
+    pendingItems, restaurant 
+  } = ctx;
+  
+  let currentActiveCart = activeCart;
+  let stateUpdate: ToolExecutionResult['stateUpdate'] = {};
+  
+  switch (functionName) {
+    case 'search_menu': {
+      const { query, category, max_results = 5 } = args;
+      
+      console.log(`[Tool] 🔍 Searching menu for "${query || '(category only)'}" (category: ${category || 'all'}, max: ${max_results})`);
+      
+      // Handle empty search - return categories
+      if (!query && !category) {
+        const categories = [...new Set(
+          availableProducts
+            .filter(p => p && p.category)
+            .map(p => p.category)
+        )].sort();
+        
+        return {
+          output: {
+            found: true,
+            type: 'categories',
+            count: categories.length,
+            categories: categories,
+            message: `Categorias disponíveis: ${categories.join(', ')}`
+          }
+        };
+      }
+      
+      // Perform search
+      const results = searchProducts(availableProducts, query, category, max_results);
+      
+      // Save results for positional selection
+      if (results.length > 0) {
+        await supabase
+          .from('conversation_state')
+          .update({ 
+            last_shown_products: results.map(r => ({
+              id: r.product.id,
+              name: r.product.name
+            }))
+          })
+          .eq('user_phone', customerPhone)
+          .eq('restaurant_id', restaurantId);
+        
+        console.log(`[Tool] 💾 Saved ${results.length} products to last_shown_products`);
+      }
+      
+      console.log(`[Tool] ✅ Found ${results.length} results`);
+      
+      if (results.length === 0) {
+        return {
+          output: {
+            found: false,
+            count: 0,
+            products: [],
+            message: `Não encontrei "${query || category}" no menu. Posso mostrar as categorias disponíveis?`
+          }
+        };
+      }
+      
+      return {
+        output: {
+          found: true,
+          count: results.length,
+          products: results.map(r => ({
+            id: r.product.id,
+            name: r.product.name,
+            price: r.product.price,
+            category: r.product.category,
+            description: r.product.description,
+            similarity: r.similarity
+          }))
+        }
+      };
+    }
+    
+    case 'add_to_cart': {
+      const { product_id, quantity = 1, addon_ids = [], notes } = args;
+      
+      const product = availableProducts.find(p => p.id === product_id);
+      if (!product) {
+        console.error(`[Tool] Product not found: ${product_id}`);
+        return { output: { success: false, error: 'Produto não encontrado' } };
+      }
+      
+      // Create cart if needed
+      if (!currentActiveCart) {
+        const { data: newCart } = await supabase
+          .from('carts')
+          .insert({
+            restaurant_id: restaurantId,
+            user_phone: customerPhone,
+            status: 'active'
+          })
+          .select()
+          .single();
+        currentActiveCart = newCart;
+        stateUpdate.activeCart = newCart;
+      }
+      
+      // Add item to cart
+      const { data: cartItem, error: addError } = await supabase
+        .from('cart_items')
+        .insert({
+          cart_id: currentActiveCart!.id,
+          product_id,
+          quantity,
+          notes
+        })
+        .select()
+        .single();
+      
+      if (addError) {
+        console.error('[Tool] Add to cart error:', addError);
+        return { output: { success: false, error: addError.message } };
+      }
+      
+      console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to cart`);
+      
+      // Add addons if specified
+      if (addon_ids && addon_ids.length > 0) {
+        const addonInserts = addon_ids.map((addon_id: string) => ({
+          cart_item_id: cartItem.id,
+          addon_id
+        }));
+        
+        await supabase.from('cart_item_addons').insert(addonInserts);
+        console.log(`[Tool] ✅ Added ${addon_ids.length} addons`);
+      }
+      
+      stateUpdate.newState = 'confirming_item';
+      stateUpdate.cartModified = true;
+      
+      return {
+        output: {
+          success: true,
+          message: `Adicionei ${quantity}x ${product.name} ao carrinho!`,
+          product_name: product.name,
+          quantity,
+          price: product.price
+        },
+        stateUpdate
+      };
+    }
+    
+    case 'remove_from_cart': {
+      const { product_id } = args;
+      
+      if (!currentActiveCart) {
+        return { output: { success: false, error: 'Carrinho vazio' } };
+      }
+      
+      const { error: removeError } = await supabase
+        .from('cart_items')
+        .delete()
+        .eq('cart_id', currentActiveCart.id)
+        .eq('product_id', product_id);
+      
+      if (removeError) {
+        return { output: { success: false, error: removeError.message } };
+      }
+      
+      console.log(`[Tool] ✅ Removed product from cart`);
+      stateUpdate.cartModified = true;
+      
+      return {
+        output: { success: true, message: 'Produto removido do carrinho' },
+        stateUpdate
+      };
+    }
+    
+    case 'clear_cart': {
+      if (currentActiveCart) {
+        await supabase
+          .from('cart_items')
+          .delete()
+          .eq('cart_id', currentActiveCart.id);
+        
+        stateUpdate.cartModified = true;
+        console.log('[Tool] ✅ Cleared cart');
+      }
+      
+      return {
+        output: { success: true, message: 'Carrinho limpo' },
+        stateUpdate
+      };
+    }
+    
+    case 'show_cart': {
+      const cartSummary = cartItems.map((item: any) => ({
+        name: item.product_name,
+        quantity: item.quantity,
+        price: item.total_price,
+        addons: item.addons?.map((a: any) => a.name) || []
+      }));
+      
+      const total = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
+      
+      return {
+        output: {
+          success: true,
+          items: cartSummary,
+          total,
+          message: cartItems.length > 0 
+            ? `Carrinho: ${cartItems.length} items, Total: €${total.toFixed(2)}`
+            : 'Carrinho vazio'
+        }
+      };
+    }
+    
+    case 'validate_and_set_delivery_address': {
+      const { address } = args;
+      
+      console.log(`[Tool] 🗺️ Validating address: ${address}`);
+      
+      try {
+        // Step 1: Geocode the address
+        const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke(
+          'geocode-address-free',
+          { body: { address } }
+        );
+        
+        if (geocodeError || !geocodeData) {
+          console.error('[Tool] Geocoding failed:', geocodeError);
+          return {
+            output: {
+              valid: false,
+              success: false,
+              error: 'Não foi possível encontrar o endereço. Por favor, verifica se está correto.'
+            }
+          };
+        }
+        
+        const { lat, lng, formatted_address } = geocodeData;
+        console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
+        
+        // Step 2: Validate against delivery zones
+        const orderAmount = cartItems.reduce((sum: any, item: any) => sum + item.total_price, 0);
+        
+        const { data: validationData, error: validationError } = await supabase.functions.invoke(
+          'validate-delivery-address',
+          { 
+            body: { 
+              restaurant_id: restaurantId, 
+              lat, 
+              lng,
+              order_amount: orderAmount
+            } 
+          }
+        );
+        
+        if (validationError || !validationData) {
+          console.error('[Tool] Validation failed:', validationError);
+          return {
+            output: {
+              valid: false,
+              success: false,
+              error: 'Erro ao validar endereço.'
+            }
+          };
+        }
+        
+        // Process validation result
+        if (validationData.valid) {
+          stateUpdate.newMetadata = {
+            delivery_address: formatted_address,
+            delivery_coordinates: { lat, lng },
+            delivery_zone: validationData.zone?.name || 'Desconhecida',
+            delivery_fee: validationData.delivery_fee,
+            estimated_delivery_time: validationData.estimated_time_minutes,
+            distance_km: validationData.distance_km
+          };
+          stateUpdate.newState = 'collecting_payment';
+          
+          console.log(`[Tool] ✅ Address validated: Zone ${validationData.zone?.name}, Fee €${validationData.delivery_fee}`);
+          
+          return {
+            output: {
+              valid: true,
+              success: true,
+              address: formatted_address,
+              zone: validationData.zone?.name,
+              delivery_fee: validationData.delivery_fee,
+              estimated_time_minutes: validationData.estimated_time_minutes,
+              message: `Endereço confirmado! Taxa de entrega: €${validationData.delivery_fee.toFixed(2)}. Tempo estimado: ${validationData.estimated_time_minutes} min.`
+            },
+            stateUpdate
+          };
+        } else {
+          console.log(`[Tool] ❌ Address outside delivery zone: ${validationData.reason}`);
+          return {
+            output: {
+              valid: false,
+              success: false,
+              address: formatted_address,
+              reason: validationData.reason,
+              message: `Infelizmente o endereço "${formatted_address}" está fora da nossa área de entrega.`
+            }
+          };
+        }
+      } catch (error: any) {
+        console.error('[Tool] Address validation error:', error);
+        return {
+          output: {
+            valid: false,
+            success: false,
+            error: error.message
+          }
+        };
+      }
+    }
+    
+    case 'set_payment_method': {
+      const { method } = args;
+      
+      const validMethods = ['cash', 'card', 'mbway'];
+      if (!validMethods.includes(method)) {
+        return {
+          output: {
+            success: false,
+            error: `Método de pagamento inválido. Opções: ${validMethods.join(', ')}`
+          }
+        };
+      }
+      
+      stateUpdate.newMetadata = { payment_method: method };
+      stateUpdate.newState = 'ready_to_order';
+      
+      console.log(`[Tool] ✅ Payment method set: ${method}`);
+      
+      return {
+        output: {
+          success: true,
+          method,
+          message: `Pagamento definido: ${method}`
+        },
+        stateUpdate
+      };
+    }
+    
+    case 'finalize_order': {
+      if (!currentActiveCart || cartItems.length === 0) {
+        return {
+          output: {
+            success: false,
+            error: 'Carrinho vazio - não é possível finalizar'
+          }
+        };
+      }
+      
+      if (!newMetadata.delivery_address) {
+        return {
+          output: {
+            success: false,
+            missing: 'delivery_address',
+            message: 'Preciso do teu endereço de entrega para finalizar o pedido.'
+          }
+        };
+      }
+      
+      if (!newMetadata.payment_method) {
+        return {
+          output: {
+            success: false,
+            missing: 'payment_method',
+            message: 'Qual vai ser o método de pagamento? Dinheiro, cartão ou MBWay?'
+          }
+        };
+      }
+      
+      // Calculate total
+      const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
+      const deliveryFee = newMetadata.delivery_fee || restaurant.delivery_fee || 0;
+      const orderTotal = subtotal + deliveryFee;
+      
+      // Create order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          restaurant_id: restaurantId,
+          user_phone: customerPhone,
+          cart_id: currentActiveCart.id,
+          delivery_address: newMetadata.delivery_address,
+          payment_method: newMetadata.payment_method,
+          total_amount: orderTotal,
+          status: 'new'
+        })
+        .select()
+        .single();
+      
+      if (orderError) {
+        console.error('[Tool] Order creation error:', orderError);
+        return {
+          output: {
+            success: false,
+            error: 'Erro ao criar pedido'
+          }
+        };
+      }
+      
+      console.log(`[Tool] ✅ Order created: ${order.id}`);
+      
+      // Update cart status
+      await supabase
+        .from('carts')
+        .update({ 
+          status: 'completed',
+          metadata: {
+            ...newMetadata,
+            delivery_fee: deliveryFee,
+            subtotal,
+            total: orderTotal
+          }
+        })
+        .eq('id', currentActiveCart.id);
+      
+      // Update customer insights
+      try {
+        await updateCustomerInsightsAfterOrder(supabase as any, {
+          phone: customerPhone,
+          orderId: order.id,
+          total: orderTotal,
+          items: cartItems.map((item: any) => ({
+            productId: item.product_id,
+            productName: item.product_name,
+            addons: (item.addons || []).map((a: any) => ({
+              addonId: a.id,
+              addonName: a.name
+            }))
+          })),
+          status: 'confirmed'
+        });
+        console.log('[Tool] ✅ Customer insights updated');
+      } catch (insightError) {
+        console.error('[Tool] ⚠️ Customer insights update failed:', insightError);
+      }
+      
+      // Cleanup pending items
+      await supabase
+        .from('conversation_pending_items')
+        .update({ status: 'discarded' })
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'pending');
+      
+      stateUpdate.newMetadata = {};
+      stateUpdate.newState = 'idle';
+      stateUpdate.activeCart = null;
+      stateUpdate.cartModified = true;
+      stateUpdate.finalizeSuccess = true;
+      
+      return {
+        output: {
+          success: true,
+          order_id: order.id,
+          total: orderTotal,
+          message: `🎉 Pedido confirmado! Total: €${orderTotal.toFixed(2)}. O teu pedido chegará em breve!`
+        },
+        stateUpdate
+      };
+    }
+    
+    case 'update_customer_profile': {
+      const { name, default_address, default_payment_method } = args;
+      
+      const updateData: any = { 
+        phone: customerPhone,
+        restaurant_id: restaurantId
+      };
+      if (name !== undefined) updateData.name = name;
+      if (default_address !== undefined) {
+        updateData.default_address = typeof default_address === 'string' 
+          ? { formatted: default_address }
+          : default_address;
+      }
+      if (default_payment_method !== undefined) updateData.default_payment_method = default_payment_method;
+      
+      const { error: profileError } = await supabase
+        .from('customers')
+        .upsert(updateData, { onConflict: 'phone,restaurant_id' });
+      
+      if (profileError) {
+        console.error('[Tool] Update customer profile error:', profileError);
+        return { output: { success: false, error: profileError.message } };
+      }
+      
+      console.log('[Tool] ✅ Updated customer profile');
+      return {
+        output: {
+          success: true,
+          message: 'Perfil atualizado'
+        }
+      };
+    }
+    
+    case 'get_customer_history': {
+      console.log(`[Tool] 📊 Fetching customer history for ${customerPhone}`);
+      
+      try {
+        const insights = await getCustomerInsights(supabase, customerPhone);
+        
+        if (!insights || insights.order_count === 0) {
+          console.log('[Tool] → Customer is new');
+          return {
+            output: {
+              success: true,
+              customer_status: 'new',
+              message: 'Cliente novo - primeira interação.',
+              order_count: 0,
+              suggestions: ['Apresentar o cardápio', 'Perguntar preferências']
+            }
+          };
+        }
+        
+        const topItems = (insights.preferred_items || []).slice(0, 3);
+        const topAddons = (insights.preferred_addons || []).slice(0, 3);
+        const customerStatus = insights.order_count >= 5 ? 'vip' : 
+                               insights.order_count >= 2 ? 'returning' : 'first_return';
+        
+        const suggestions: string[] = [];
+        if (topItems.length > 0) {
+          suggestions.push(`Sugerir: "${topItems[0].name}" (favorito)`);
+        }
+        if (customerStatus === 'vip') {
+          suggestions.push('Cliente VIP - tratamento especial!');
+        }
+        
+        console.log(`[Tool] ✅ Found history: ${insights.order_count} orders`);
+        
+        return {
+          output: {
+            success: true,
+            customer_status: customerStatus,
+            order_count: insights.order_count,
+            average_ticket: insights.average_ticket ? `€${insights.average_ticket.toFixed(2)}` : null,
+            favorite_items: topItems.map((i: any) => `${i.name} (${i.count}x)`),
+            favorite_addons: topAddons.map((a: any) => `${a.name} (${a.count}x)`),
+            suggestions
+          }
+        };
+      } catch (historyError: any) {
+        console.error('[Tool] ❌ Error fetching customer history:', historyError);
+        return {
+          output: {
+            success: false,
+            error: 'Erro ao carregar histórico'
+          }
+        };
+      }
+    }
+    
+    case 'add_pending_item': {
+      const { product_id, quantity = 1, addon_ids = [], notes } = args;
+      
+      const product = availableProducts.find(p => p.id === product_id);
+      if (!product) {
+        return { output: { success: false, error: 'Produto não encontrado' } };
+      }
+      
+      const { error: pendingError } = await supabase
+        .from('conversation_pending_items')
+        .insert({
+          user_phone: customerPhone,
+          restaurant_id: restaurantId,
+          product_id,
+          quantity,
+          addon_ids,
+          notes,
+          status: 'pending'
+        });
+      
+      if (pendingError) {
+        return { output: { success: false, error: pendingError.message } };
+      }
+      
+      console.log(`[Tool] ✅ Added pending item: ${product.name}`);
+      return {
+        output: {
+          success: true,
+          message: `${product.name} adicionado aos itens pendentes`
+        }
+      };
+    }
+    
+    case 'confirm_pending_items': {
+      const { data: itemsToConfirm } = await supabase
+        .from('conversation_pending_items')
+        .select('*')
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'pending');
+      
+      if (!itemsToConfirm || itemsToConfirm.length === 0) {
+        return { output: { success: false, message: 'Nenhum item pendente para confirmar' } };
+      }
+      
+      // Create cart if needed
+      if (!currentActiveCart) {
+        const { data: newCart } = await supabase
+          .from('carts')
+          .insert({
+            restaurant_id: restaurantId,
+            user_phone: customerPhone,
+            status: 'active'
+          })
+          .select()
+          .single();
+        currentActiveCart = newCart;
+        stateUpdate.activeCart = newCart;
+      }
+      
+      // Move pending items to cart
+      let addedCount = 0;
+      for (const pendingItem of itemsToConfirm) {
+        const { data: cartItem } = await supabase
+          .from('cart_items')
+          .insert({
+            cart_id: currentActiveCart!.id,
+            product_id: pendingItem.product_id,
+            quantity: pendingItem.quantity,
+            notes: pendingItem.notes
+          })
+          .select()
+          .single();
+        
+        if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
+          await supabase.from('cart_item_addons').insert(
+            pendingItem.addon_ids.map((addonId: string) => ({
+              cart_item_id: cartItem.id,
+              addon_id: addonId
+            }))
+          );
+        }
+        
+        await supabase
+          .from('conversation_pending_items')
+          .update({ status: 'confirmed' })
+          .eq('id', pendingItem.id);
+        
+        addedCount++;
+      }
+      
+      stateUpdate.cartModified = true;
+      console.log(`[Tool] ✅ Confirmed ${addedCount} pending items`);
+      
+      return {
+        output: {
+          success: true,
+          count: addedCount,
+          message: `${addedCount} item(s) adicionado(s) ao carrinho`
+        },
+        stateUpdate
+      };
+    }
+    
+    case 'remove_pending_item': {
+      const { product_id, quantity = 1 } = args;
+      
+      await supabase
+        .from('conversation_pending_items')
+        .update({ status: 'discarded' })
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('product_id', product_id)
+        .eq('status', 'pending');
+      
+      console.log(`[Tool] ✅ Removed pending item`);
+      return {
+        output: { success: true, message: 'Item pendente removido' }
+      };
+    }
+    
+    case 'clear_pending_items': {
+      await supabase
+        .from('conversation_pending_items')
+        .update({ status: 'discarded' })
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'pending');
+      
+      console.log('[Tool] ✅ Cleared all pending items');
+      return {
+        output: { success: true, message: 'Itens pendentes limpos' }
+      };
+    }
+    
+    default:
+      console.warn(`[Tool] ⚠️ Unknown tool: ${functionName}`);
+      return {
+        output: { success: false, error: `Unknown tool: ${functionName}` }
+      };
+  }
+}
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
 function buildSystemPromptFromBlocks(
   blocks: any[] | null | undefined,
   fallback: string
@@ -1923,9 +1714,6 @@ function buildSystemPromptFromBlocks(
   return blocks.map(block => block.content).join('\n\n');
 }
 
-// ============================================================
-// CATEGORY SYNONYMS - Expand search to related categories
-// ============================================================
 const CATEGORY_SYNONYMS: Record<string, string[]> = {
   'sobremesas': ['doces', 'açaí', 'pizzas doces', 'sobremesa'],
   'sobremesa': ['doces', 'açaí', 'pizzas doces', 'sobremesas'],
@@ -1946,23 +1734,14 @@ function expandCategorySynonyms(category: string): string[] {
   return synonyms ? [lower, ...synonyms] : [lower];
 }
 
-/**
- * Intelligent product search with fuzzy matching
- */
 function searchProducts(
   products: any[], 
   query: string | undefined, 
   category?: string, 
   maxResults: number = 5
 ): Array<{ product: any; similarity: number }> {
-  // ============================================================
-  // NULL SAFETY: Handle undefined/null query
-  // ============================================================
   const queryLower = (query || '').toLowerCase().trim();
   
-  // ============================================================
-  // CATEGORY SYNONYMS: Expand search to related categories
-  // ============================================================
   let filtered = products;
   if (category) {
     const categoriesToSearch = expandCategorySynonyms(category);
@@ -1976,32 +1755,23 @@ function searchProducts(
     console.log(`[Search] Found ${filtered.length} products in expanded categories`);
   }
   
-  // ============================================================
-  // CATEGORY-ONLY SEARCH: Return products from category
-  // ============================================================
   if (category && filtered.length > 0) {
-    console.log(`[Search] Category "${category}" specified - returning ${filtered.length} products from category`);
-    
-    // If no query provided, return all products in category with default score
     if (!queryLower) {
       return filtered
         .slice(0, maxResults)
         .map(product => ({ product, similarity: 0.8 }));
     }
     
-    // Still calculate similarity for ranking, but don't filter out low scores
     const scored = filtered.map(product => {
-      let score = 0.5; // Default score for category match
+      let score = 0.5;
       const nameLower = (product.name || '').toLowerCase();
       const descLower = (product.description || '').toLowerCase();
       
-      // Bonus points if query also matches name/description
       if (nameLower.includes(queryLower)) {
         score = 0.9;
       } else if (descLower.includes(queryLower)) {
         score = 0.7;
       } else {
-        // Word-based matching
         const queryWords = queryLower.split(/\s+/).filter(Boolean);
         const nameWords = nameLower.split(/\s+/).filter(Boolean);
         const matchingWords = queryWords.filter((qw: string) => 
@@ -2016,51 +1786,37 @@ function searchProducts(
       return { product, similarity: score };
     });
     
-    // Sort by score (higher first) and return top N
     return scored
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, maxResults);
   }
   
-  // ============================================================
-  // NO QUERY AND NO CATEGORY: Return top products
-  // ============================================================
   if (!queryLower && !category) {
-    console.log('[Search] No query or category - returning top products');
     return filtered
       .slice(0, maxResults)
       .map(product => ({ product, similarity: 0.5 }));
   }
   
-  // ============================================================
-  // Normal fuzzy search (when no category or category not found)
-  // ============================================================
-  
-  // Calculate similarity for each product (with null safety)
   const scored = filtered.map(product => {
     let score = 0;
     const nameLower = (product.name || '').toLowerCase();
     const descLower = (product.description || '').toLowerCase();
     
-    // 1. Exact match (maximum score)
     if (nameLower === queryLower) {
       score = 1.0;
     }
-    // 2. Contains full query
     else if (nameLower.includes(queryLower)) {
       score = 0.8;
     }
     else if (descLower.includes(queryLower)) {
       score = 0.6;
     }
-    // 3. Fuzzy matching (Levenshtein distance)
     else {
       const distance = levenshteinDistance(queryLower, nameLower);
       const maxLen = Math.max(queryLower.length, nameLower.length);
       score = maxLen > 0 ? 1 - (distance / maxLen) : 0;
     }
     
-    // 4. Word-based matching for multi-word queries
     const queryWords = queryLower.split(/\s+/).filter(Boolean);
     const nameWords = nameLower.split(/\s+/).filter(Boolean);
     const matchingWords = queryWords.filter((qw: string) => 
@@ -2074,16 +1830,12 @@ function searchProducts(
     return { product, similarity: score };
   });
   
-  // Sort by score and return top N (with minimum threshold)
   return scored
     .filter(s => s.similarity > 0.3)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, maxResults);
 }
 
-/**
- * Levenshtein distance for fuzzy string matching
- */
 function levenshteinDistance(a: string, b: string): number {
   const matrix = Array(b.length + 1).fill(null).map(() => 
     Array(a.length + 1).fill(null)
@@ -2096,9 +1848,9 @@ function levenshteinDistance(a: string, b: string): number {
     for (let i = 1; i <= a.length; i++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       matrix[j][i] = Math.min(
-        matrix[j][i - 1] + 1,      // insertion
-        matrix[j - 1][i] + 1,      // deletion
-        matrix[j - 1][i - 1] + cost // substitution
+        matrix[j][i - 1] + 1,
+        matrix[j - 1][i] + 1,
+        matrix[j - 1][i - 1] + cost
       );
     }
   }
@@ -2106,9 +1858,6 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-/**
- * Apply template variables to a prompt string
- */
 function applyTemplateVariables(prompt: string, variables: Record<string, string>): string {
   let result = prompt;
   
@@ -2120,9 +1869,6 @@ function applyTemplateVariables(prompt: string, variables: Record<string, string
   return result;
 }
 
-/**
- * Build orchestration rules section from config
- */
 function buildOrchestrationRulesSection(intents: Record<string, any>): string {
   let section = '\n\n# ORCHESTRATION RULES (FROM DATABASE CONFIG)\n\n';
   section += 'These rules guide intent classification and state transitions:\n\n';
@@ -2145,9 +1891,6 @@ function buildOrchestrationRulesSection(intents: Record<string, any>): string {
   return section;
 }
 
-/**
- * Build tool usage rules section from enabled tools config
- */
 function buildToolUsageRulesSection(enabledTools: any[]): string {
   const toolsWithRules = enabledTools.filter(t => t.usage_rules);
   
@@ -2165,9 +1908,6 @@ function buildToolUsageRulesSection(enabledTools: any[]): string {
   return section;
 }
 
-/**
- * Build behavior config section
- */
 function buildBehaviorConfigSection(behaviorConfig: any): string {
   let section = '\n\n# BEHAVIOR CONFIGURATION (FROM DATABASE)\n\n';
   let configCount = 0;
@@ -2176,27 +1916,18 @@ function buildBehaviorConfigSection(behaviorConfig: any): string {
     const cp = behaviorConfig.customer_profile;
     section += '## Customer Profile Behavior\n\n';
     section += 'Guidelines for managing customer profile data:\n\n';
-    section += `- **Auto-load profile**: ${cp.auto_load ? 'YES - Load customer data at conversation start' : 'NO - Only load when explicitly needed'}\n`;
-    section += `- **Update name from conversation**: ${cp.update_name_from_conversation ? 'YES - Extract and save customer name when mentioned' : 'NO - Do not update name automatically'}\n`;
-    section += `- **Update address on confirmation**: ${cp.update_address_on_confirmation ? 'YES - Save address when order is confirmed' : 'NO - Do not save address automatically'}\n`;
-    section += `- **Update payment on confirmation**: ${cp.update_payment_on_confirmation ? 'YES - Save payment method when order is confirmed' : 'NO - Do not save payment automatically'}\n\n`;
-    
-    if (cp.update_name_from_conversation || cp.update_address_on_confirmation || cp.update_payment_on_confirmation) {
-      section += `Use the \`update_customer_profile\` tool when these conditions are met.\n\n`;
-    }
+    section += `- **Auto-load profile**: ${cp.auto_load ? 'YES' : 'NO'}\n`;
+    section += `- **Update name from conversation**: ${cp.update_name_from_conversation ? 'YES' : 'NO'}\n`;
+    section += `- **Update address on confirmation**: ${cp.update_address_on_confirmation ? 'YES' : 'NO'}\n`;
+    section += `- **Update payment on confirmation**: ${cp.update_payment_on_confirmation ? 'YES' : 'NO'}\n\n`;
     configCount++;
   }
   
   if (behaviorConfig.pending_products) {
     const pp = behaviorConfig.pending_products;
     section += '## Pending Products Behavior\n\n';
-    section += 'Guidelines for handling product selection before adding to cart:\n\n';
-    section += `- **Multiple pending items**: ${pp.allow_multiple ? 'YES - Customer can have multiple products pending confirmation' : 'NO - Only one product can be pending at a time'}\n`;
-    section += `- **Expiration time**: Pending items expire after ${pp.expiration_minutes || 15} minutes\n\n`;
-    section += 'Expected flow:\n';
-    section += '1. Use `add_pending_item` when customer shows interest but hasn\'t confirmed\n';
-    section += '2. Use `confirm_pending_items` after explicit customer confirmation\n';
-    section += '3. Use `clear_pending_items` if customer wants to start over\n\n';
+    section += `- **Multiple pending items**: ${pp.allow_multiple ? 'YES' : 'NO'}\n`;
+    section += `- **Expiration time**: ${pp.expiration_minutes || 15} minutes\n\n`;
     configCount++;
   }
   
