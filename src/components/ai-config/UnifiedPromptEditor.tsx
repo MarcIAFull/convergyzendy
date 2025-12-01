@@ -15,35 +15,45 @@ interface UnifiedPromptEditorProps {
 }
 
 const TEMPLATE_VARIABLES = [
+  // === CONTEXTO BÁSICO ===
   { 
     name: '{{restaurant_name}}', 
     description: 'Nome do restaurante',
     example: 'Pizza da Casa'
   },
   { 
-    name: '{{menu_products}}', 
-    description: 'Lista completa de produtos disponíveis',
-    example: '• Pizza Margherita (ID: abc-123) - €9.98\n• Brigadeiro (ID: def-456) - €2.50'
+    name: '{{user_message}}', 
+    description: 'Mensagem atual do cliente',
+    example: 'Quero ver o cardápio de pizzas'
   },
+  
+  // === MENU (RAG) ===
+  { 
+    name: '{{menu_products}}', 
+    description: 'Lista de produtos (formato RAG - apenas categorias)',
+    example: '📋 CATEGORIAS: Pizzas Salgadas (12) | Bebidas (8) | Sobremesas (5)'
+  },
+  { 
+    name: '{{menu_categories}}', 
+    description: 'Lista de categorias disponíveis',
+    example: 'Pizzas Salgadas | Pizzas Doces | Bebidas | Sobremesas'
+  },
+  { 
+    name: '{{menu_url}}', 
+    description: 'URL do menu público online',
+    example: 'https://zendy.pt/menu/meu-restaurante'
+  },
+  
+  // === CARRINHO & ESTADO ===
   { 
     name: '{{cart_summary}}', 
     description: 'Resumo do carrinho atual',
-    example: '2x Pizza Margherita (€19.96), 1x Água (€1.50) | Total: €21.46'
-  },
-  { 
-    name: '{{customer_info}}', 
-    description: 'Perfil do cliente salvo',
-    example: 'Name: João Silva, Address: Rua X, Payment: card'
-  },
-  { 
-    name: '{{conversation_history}}', 
-    description: 'Últimas mensagens da conversa',
-    example: 'Customer: Quero uma pizza\nAgent: Temos Margherita e Pepperoni...'
+    example: '2x Pizza Margherita (€19.96) | Total: €19.96'
   },
   { 
     name: '{{current_state}}', 
     description: 'Estado atual da conversa',
-    example: 'browsing_menu, confirming_item, providing_address'
+    example: 'browsing_menu, confirming_item, collecting_address'
   },
   { 
     name: '{{user_intent}}', 
@@ -57,8 +67,67 @@ const TEMPLATE_VARIABLES = [
   },
   { 
     name: '{{pending_items}}', 
-    description: 'Itens aguardando confirmação (pedidos múltiplos)',
+    description: 'Itens aguardando confirmação',
     example: '2x Pizza Margherita, 1x Coca-Cola'
+  },
+  
+  // === CLIENTE ===
+  { 
+    name: '{{customer_info}}', 
+    description: 'Perfil do cliente (RAG - status mínimo)',
+    example: 'Name: João | 📍 Rua Augusta 123 | 🏆 VIP (5 pedidos)'
+  },
+  { 
+    name: '{{conversation_history}}', 
+    description: 'Últimas mensagens da conversa',
+    example: 'Cliente: Olá\nAgente: Bem-vindo! Como posso ajudar?'
+  },
+  
+  // === PERSONALIZAÇÃO DO RESTAURANTE ===
+  { 
+    name: '{{tone}}', 
+    description: 'Tom de comunicação configurado',
+    example: 'friendly, formal, playful, professional'
+  },
+  { 
+    name: '{{greeting_message}}', 
+    description: 'Mensagem de saudação personalizada',
+    example: 'Olá! 👋 Bem-vindo ao Pizza da Casa!'
+  },
+  { 
+    name: '{{closing_message}}', 
+    description: 'Mensagem de despedida personalizada',
+    example: 'Obrigado pela preferência! 🙏'
+  },
+  { 
+    name: '{{upsell_aggressiveness}}', 
+    description: 'Nível de upsell (low, medium, high)',
+    example: 'medium'
+  },
+  { 
+    name: '{{custom_instructions}}', 
+    description: 'Instruções personalizadas do restaurante',
+    example: 'Sempre ofereça bebidas com pizzas'
+  },
+  { 
+    name: '{{business_rules}}', 
+    description: 'Regras de negócio específicas',
+    example: 'Pedido mínimo €10 para delivery'
+  },
+  { 
+    name: '{{faq_responses}}', 
+    description: 'Respostas para perguntas frequentes',
+    example: 'Aceitamos PIX, cartão e dinheiro'
+  },
+  { 
+    name: '{{special_offers_info}}', 
+    description: 'Promoções e ofertas especiais',
+    example: 'Promoção: 2 pizzas por €25!'
+  },
+  { 
+    name: '{{unavailable_items_handling}}', 
+    description: 'Como lidar com itens indisponíveis',
+    example: 'Sugira alternativas similares'
   }
 ];
 

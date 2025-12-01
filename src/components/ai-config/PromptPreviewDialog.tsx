@@ -49,19 +49,40 @@ export function PromptPreviewDialog({ prompt, agentId, open, onOpenChange }: Pro
         .eq('is_available', true)
         .limit(3);
 
-      // Build example data
-      const exampleData = {
+      // Build example data with ALL template variables
+      const exampleData: Record<string, string> = {
+        // Basic context
         restaurant_name: restaurant.name,
+        user_message: 'Quero ver o cardápio de pizzas',
+        
+        // Menu (RAG)
         menu_products: products?.map(p => 
           `• ${p.name} (ID: ${p.id}) - €${p.price}${p.description ? ` - ${p.description}` : ''}`
         ).join('\n') || 'No products available',
+        menu_categories: 'Pizzas Salgadas | Pizzas Doces | Bebidas | Sobremesas',
+        menu_url: 'https://zendy.pt/menu/meu-restaurante',
+        
+        // Cart & state
         cart_summary: '2x Pizza Margherita (€19.96) | Total: €19.96',
-        customer_info: 'Name: João Silva, Address: Rua Augusta 123, Payment: card',
-        conversation_history: 'Customer: Olá\nAgent: Olá! Bem-vindo ao ' + restaurant.name,
         current_state: 'browsing_menu',
         user_intent: 'browse_product',
         target_state: 'confirming_item',
-        pending_items: 'No pending items'
+        pending_items: 'No pending items',
+        
+        // Customer
+        customer_info: 'Name: João Silva | 📍 Rua Augusta 123 | 💳 card | 🏆 VIP (5 pedidos)',
+        conversation_history: 'Cliente: Olá\nAgente: Olá! Bem-vindo ao ' + restaurant.name,
+        
+        // Restaurant AI Settings (personalization)
+        tone: 'friendly',
+        greeting_message: 'Olá! 👋 Bem-vindo ao ' + restaurant.name + '! Como posso ajudar?',
+        closing_message: 'Obrigado pela preferência! 🙏',
+        upsell_aggressiveness: 'medium',
+        custom_instructions: 'Sempre ofereça bebidas quando o cliente pedir pizza.',
+        business_rules: 'Pedido mínimo de €10 para delivery.',
+        faq_responses: 'Aceitamos PIX, cartão e dinheiro.',
+        special_offers_info: 'Promoção: 2 pizzas por €25!',
+        unavailable_items_handling: 'Sugira alternativas similares quando item estiver indisponível.'
       };
 
       // Replace all variables

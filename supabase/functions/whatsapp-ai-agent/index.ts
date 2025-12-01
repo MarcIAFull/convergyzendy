@@ -224,12 +224,16 @@ serve(async (req) => {
     );
     
     if (useOrchestratorDB && orchestratorPromptBlocks.length > 0) {
+      // Build menu categories string for RAG
+      const menuCategories = [...new Set(availableProducts.map((p: any) => p.category).filter(Boolean))].join(' | ');
+      
       // Apply template variables using unified formatted context
-      // CRITICAL FIX: Add user_message so orchestrator sees the REAL message
+      // CRITICAL: All variables used in agent_prompt_blocks must be passed here!
       orchestratorSystemPrompt = applyTemplateVariables(orchestratorSystemPrompt, {
         restaurant_name: restaurant.name,
-        user_message: rawMessage,  // ← CRITICAL: Real user message
+        user_message: rawMessage,
         menu_products: formatted.menu,
+        menu_categories: menuCategories,
         cart_summary: formatted.cart,
         customer_info: formatted.customer,
         conversation_history: formatted.history,
@@ -247,6 +251,7 @@ serve(async (req) => {
       }
       
       console.log('[Orchestrator] ✅ Using database-configured prompt with template variables');
+      console.log('[Orchestrator] Variables applied: restaurant_name, user_message, menu_products, menu_categories, cart_summary, customer_info, conversation_history, current_state, pending_items');
     } else {
       console.log('[Orchestrator] ⚠️ Using fallback hard-coded prompt');
     }
@@ -379,22 +384,51 @@ serve(async (req) => {
     );
     
     if (useConversationalDB && conversationalPromptBlocks.length > 0) {
+      // Build menu categories string for RAG
+      const menuCategories = [...new Set(availableProducts.map((p: any) => p.category).filter(Boolean))].join(' | ');
+      
       // Apply template variables using unified formatted context
+      // CRITICAL: All variables used in agent_prompt_blocks must be passed here!
       conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
+        // Basic context
         restaurant_name: restaurant.name,
+        user_message: rawMessage,
+        
+        // Menu (RAG)
         menu_products: formatted.menu,
+        menu_categories: menuCategories,
+        menu_url: context.menuUrl || '',
+        
+        // Cart & state
         cart_summary: formatted.cart,
-        customer_info: formatted.customer,
-        conversation_history: formatted.history,
         current_state: currentState,
         user_intent: intent,
         target_state: targetState,
-        pending_items: formatted.pendingItems
+        pending_items: formatted.pendingItems,
+        
+        // Customer
+        customer_info: formatted.customer,
+        conversation_history: formatted.history,
+        
+        // Restaurant AI Settings (personalization)
+        tone: restaurantAISettings?.tone || 'friendly',
+        greeting_message: restaurantAISettings?.greeting_message || '',
+        closing_message: restaurantAISettings?.closing_message || '',
+        upsell_aggressiveness: restaurantAISettings?.upsell_aggressiveness || 'medium',
+        custom_instructions: restaurantAISettings?.custom_instructions || '',
+        business_rules: restaurantAISettings?.business_rules || '',
+        faq_responses: restaurantAISettings?.faq_responses || '',
+        special_offers_info: restaurantAISettings?.special_offers_info || '',
+        unavailable_items_handling: restaurantAISettings?.unavailable_items_handling || ''
       });
       
-      // Restaurant AI settings are now injected directly into the prompt builder
-      // via the buildConversationalAIPrompt function parameters above
-      console.log('[Main AI] ✅ Restaurant AI settings integrated into prompt');
+      // Log which variables were applied
+      console.log('[Main AI] ✅ Template variables applied:');
+      console.log('[Main AI]   - restaurant_name, user_message, menu_products, menu_categories, menu_url');
+      console.log('[Main AI]   - cart_summary, current_state, user_intent, target_state, pending_items');
+      console.log('[Main AI]   - customer_info, conversation_history');
+      console.log('[Main AI]   - tone, greeting_message, closing_message, upsell_aggressiveness');
+      console.log('[Main AI]   - custom_instructions, business_rules, faq_responses, special_offers_info, unavailable_items_handling');
       
       // Apply prompt overrides if any
       if (promptOverrides && promptOverrides.length > 0) {
