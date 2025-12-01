@@ -481,10 +481,11 @@ serve(async (req) => {
     // Build messages array and iterate until AI stops calling tools
     // ============================================================
     
-    // Initialize messages array with system prompt, history, and user message
+    // Initialize messages array with system prompt and user message
+    // NOTE: Conversation history is ONLY in the system prompt via {{conversation_history}} variable
+    // This avoids duplication and reduces token usage
     const messages: any[] = [
       { role: 'system', content: conversationalSystemPrompt },
-      ...conversationHistory,
       { role: 'user', content: rawMessage }
     ];
     
@@ -502,7 +503,7 @@ serve(async (req) => {
     let cartModified = false;
     
     console.log('\n[Iterative Loop] Starting iterative function calling loop...');
-    console.log(`[Iterative Loop] Initial messages count: ${messages.length}`);
+    console.log(`[Iterative Loop] Initial messages count: ${messages.length} (history in system prompt only)`);
     
     while (iterations < MAX_ITERATIONS) {
       iterations++;
