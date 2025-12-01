@@ -149,6 +149,15 @@ ${cartItems.length > 0 || currentState !== 'idle' ? `
 ✅ Primeira interação - pode cumprimentar naturalmente.
 `}
 
+### 5. 📝 COLETA AUTOMÁTICA DE NOME (CRÍTICO!)
+Quando cliente diz seu nome ("Meu nome é X", "Sou o X", "Me chamo X", "É o X aqui"):
+→ **AÇÃO OBRIGATÓRIA:** \`update_customer_profile(name: "X")\`
+→ **Resposta:** Use o nome na resposta: "Prazer, X! 👋 O que vais querer?"
+
+❌ **NÃO** pule para pedir endereço se cliente só deu o nome!
+❌ **NÃO** confunda nome com endereço (ex: "Pedro" ≠ "Rua Pedro")
+✅ Apenas salve o nome e continue a conversa naturalmente
+
 ---
 
 # 📊 CONTEXTO ATUAL
