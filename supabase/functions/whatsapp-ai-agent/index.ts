@@ -225,8 +225,10 @@ serve(async (req) => {
     
     if (useOrchestratorDB && orchestratorPromptBlocks.length > 0) {
       // Apply template variables using unified formatted context
+      // CRITICAL FIX: Add user_message so orchestrator sees the REAL message
       orchestratorSystemPrompt = applyTemplateVariables(orchestratorSystemPrompt, {
         restaurant_name: restaurant.name,
+        user_message: rawMessage,  // ← CRITICAL: Real user message
         menu_products: formatted.menu,
         cart_summary: formatted.cart,
         customer_info: formatted.customer,
@@ -1901,6 +1903,29 @@ function buildSystemPromptFromBlocks(
   return blocks.map(block => block.content).join('\n\n');
 }
 
+// ============================================================
+// CATEGORY SYNONYMS - Expand search to related categories
+// ============================================================
+const CATEGORY_SYNONYMS: Record<string, string[]> = {
+  'sobremesas': ['doces', 'açaí', 'pizzas doces', 'sobremesa'],
+  'sobremesa': ['doces', 'açaí', 'pizzas doces', 'sobremesas'],
+  'desserts': ['doces', 'açaí', 'pizzas doces'],
+  'dessert': ['doces', 'açaí', 'pizzas doces'],
+  'lanches': ['hambúrgueres', 'salgados brasileiros', 'enrolados', 'lanche'],
+  'lanche': ['hambúrgueres', 'salgados brasileiros', 'enrolados', 'lanches'],
+  'snacks': ['hambúrgueres', 'salgados brasileiros'],
+  'drinks': ['bebidas', 'bebida'],
+  'bebida': ['bebidas'],
+  'pizzas': ['pizzas salgadas', 'pizzas doces', 'pizza'],
+  'pizza': ['pizzas salgadas', 'pizzas doces', 'pizzas'],
+};
+
+function expandCategorySynonyms(category: string): string[] {
+  const lower = category.toLowerCase().trim();
+  const synonyms = CATEGORY_SYNONYMS[lower];
+  return synonyms ? [lower, ...synonyms] : [lower];
+}
+
 /**
  * Intelligent product search with fuzzy matching
  */
@@ -1915,10 +1940,21 @@ function searchProducts(
   // ============================================================
   const queryLower = (query || '').toLowerCase().trim();
   
-  // Filter by category if specified (with null safety)
-  let filtered = category
-    ? products.filter(p => (p.category || '').toLowerCase().includes(category.toLowerCase()))
-    : products;
+  // ============================================================
+  // CATEGORY SYNONYMS: Expand search to related categories
+  // ============================================================
+  let filtered = products;
+  if (category) {
+    const categoriesToSearch = expandCategorySynonyms(category);
+    console.log(`[Search] Category "${category}" expanded to: ${categoriesToSearch.join(', ')}`);
+    
+    filtered = products.filter(p => {
+      const productCategory = (p.category || '').toLowerCase();
+      return categoriesToSearch.some(cat => productCategory.includes(cat) || cat.includes(productCategory));
+    });
+    
+    console.log(`[Search] Found ${filtered.length} products in expanded categories`);
+  }
   
   // ============================================================
   // CATEGORY-ONLY SEARCH: Return products from category
