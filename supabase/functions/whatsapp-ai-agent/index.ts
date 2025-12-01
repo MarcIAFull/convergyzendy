@@ -264,7 +264,7 @@ serve(async (req) => {
         model: orchestratorAgent?.model || 'gpt-4o',
         messages: [
           { role: 'system', content: orchestratorSystemPrompt },
-          { role: 'user', content: "Analyze the context and return the intent JSON only." }
+          { role: 'user', content: `Classifique esta mensagem do cliente: "${rawMessage}"` }
         ],
         max_tokens: orchestratorAgent?.max_tokens || 500,
         temperature: orchestratorAgent?.temperature ?? 1.0,
