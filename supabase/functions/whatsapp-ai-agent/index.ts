@@ -1075,24 +1075,10 @@ serve(async (req) => {
           const { query, category, max_results = 5 } = args;
           
           // ============================================================
-          // CRITICAL: Block search_menu when intent is provide_address
-          // This prevents the AI from misusing search_menu for addresses
+          // V11: Todas as ferramentas disponíveis independente do intent
+          // Suporte multi-intent: "Rua X e quero pizza" processa ambos
           // ============================================================
-          if (intent === 'provide_address') {
-            console.warn('[Tool] ⚠️ BLOCKED: search_menu called with provide_address intent');
-            console.warn('[Tool] → AI should use validate_and_set_delivery_address instead');
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                found: false,
-                blocked: true,
-                reason: 'Intent é provide_address - use validate_and_set_delivery_address em vez de search_menu',
-                count: 0,
-                products: []
-              })
-            });
-            break;
-          }
+          console.log('[Tool] ✅ search_menu - all tools available for multi-intent support');
           
           // ============================================================
           // VALIDATION: Ensure at least query or category is provided
