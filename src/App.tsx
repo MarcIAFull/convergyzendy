@@ -21,6 +21,7 @@ import Admin from "@/pages/Admin";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
 import Login from "@/pages/Login";
+import Landing from "@/pages/Landing";
 import NotFound from "@/pages/NotFound";
 import PublicMenu from "@/pages/public/PublicMenu";
 import PublicCart from "@/pages/public/PublicCart";
@@ -45,6 +46,7 @@ const App = () => (
               <NotificationProvider>
                 <Routes>
                 {/* Public Routes */}
+                <Route path="/landing" element={<Landing />} />
                 <Route path="/menu/:slug" element={<PublicMenu />} />
                 <Route path="/menu/:slug/cart" element={<PublicCart />} />
                 <Route path="/menu/:slug/checkout" element={<PublicCheckout />} />
