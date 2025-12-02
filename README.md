@@ -1,180 +1,342 @@
-# 🤖 Zendy AI - Intelligent Restaurant Ordering System
+# 🤖 Zendy AI - Sistema de Pedidos via WhatsApp com IA
 
-> **Sistema completo de pedidos via WhatsApp com IA conversacional**
+> **Plataforma SaaS para restaurantes automatizarem pedidos via WhatsApp usando IA conversacional**
 
-Zendy AI é uma plataforma all-in-one que permite restaurantes receberem e gerenciarem pedidos através do WhatsApp, com um assistente de IA que conversa naturalmente com clientes, processa pedidos, e recupera conversas abandonadas.
+Zendy AI permite que restaurantes recebam e gerenciem pedidos automaticamente através do WhatsApp, com um assistente de IA que atua como vendedor ativo - navegando clientes pelo cardápio, montando carrinho, validando endereços de entrega, e finalizando pedidos.
 
-![Status](https://img.shields.io/badge/status-production_ready-green)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Status](https://img.shields.io/badge/status-development-yellow)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
 ---
 
-## ✨ Características Principais
+## 📋 Índice
 
-### 🤖 AI Conversacional
-- Orquestrador Inteligente com detecção de intenção
-- Agent Multi-Tool com 20+ ferramentas
-- Personalizável por restaurante (tom, saudação, upselling)
-- Context-Aware com histórico do cliente
+- [Funcionalidades](#-funcionalidades)
+- [Arquitetura](#-arquitetura)
+- [Stack Tecnológica](#-stack-tecnológica)
+- [Quick Start](#-quick-start)
+- [Documentação](#-documentação)
+- [Estado Atual do Desenvolvimento](#-estado-atual-do-desenvolvimento)
 
-### 📱 WhatsApp Integration
-- Evolution API nativa
-- QR Code setup simples
+---
+
+## ✨ Funcionalidades
+
+### 🤖 IA Conversacional (Arquitetura Two-Agent)
+
+| Componente | Função |
+|------------|--------|
+| **Orchestrator Agent** | Classifica intenção do usuário (browse_menu, provide_address, finalize, etc.) e determina próximo estado |
+| **Conversational Agent** | Executa ações via 14 tools, gera respostas em português, aplica personalização do restaurante |
+
+**Características:**
+- Iterative Function Calling (loop até AI parar de chamar tools)
+- RAG para Menu (só categorias no prompt, produtos via `search_menu` tool)
+- RAG para Customer Insights (histórico via `get_customer_history` tool)
+- Modelo de Vendedor Ativo (puxa próximo passo automaticamente)
+- Anti-loop rules (não repete perguntas já respondidas)
+
+### 📱 Integração WhatsApp
+
+- **Evolution API** nativa
+- QR Code setup via dashboard
+- Webhook para receber mensagens
+- Rate limiting e debounce de mensagens
 - Reconexão automática
-- Rate limiting e proteção contra spam
+
+### 🛒 Gestão de Pedidos
+
+- Dashboard em tempo real (4 colunas: New, Preparing, Delivery, Complete)
+- Workflow de status com drag & drop
+- Detalhes do pedido com itens, addons, endereço
+- Real-time updates via Supabase subscriptions
+
+### 📍 Sistema de Delivery
+
+- Validação de endereço com geocoding
+- Zonas de entrega com taxas configuráveis
+- Cálculo automático de taxa por distância
+- Verificação de pedido mínimo por zona
 
 ### 🔄 Recovery System
-- Abandoned Cart Recovery (30min)
-- Paused Conversation Recovery (15min)
-- Inactive Customer Reengagement (30 dias)
-- Smart Cooldown de 24h
 
-### 📊 Dashboard Completo
-- Real-time orders e mensagens
-- Customer insights
-- Analytics detalhado
-- Menu management
+| Tipo | Delay | Descrição |
+|------|-------|-----------|
+| Carrinho Abandonado | 30 min | Itens no carrinho, cliente parou de responder |
+| Conversa Pausada | 15 min | Conversa ativa, cliente parou |
+| Cliente Inativo | 30 dias | Cliente antigo sem pedidos recentes |
+
+### 📊 Analytics & CRM
+
+- Métricas de receita, pedidos, ticket médio
+- Top produtos
+- Customer insights (frequência, preferências, histórico)
+- Logs de interações AI
+
+---
+
+## 🏗️ Arquitetura
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           CLIENTE                                    │
+│                     (WhatsApp Mobile App)                           │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      EVOLUTION API                                   │
+│            (WhatsApp Business API Gateway)                          │
+│                                                                      │
+│  • Gerencia instâncias WhatsApp                                     │
+│  • Envia/recebe mensagens                                           │
+│  • Emite webhooks para eventos                                      │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │ webhook POST
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   SUPABASE EDGE FUNCTIONS                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────────┐     ┌──────────────────────────────────┐  │
+│  │  whatsapp-webhook   │────▶│   process-debounced-messages     │  │
+│  │  • Rate limiting    │     │   • Agrupa mensagens rápidas     │  │
+│  │  • Valida payload   │     │   • Chama whatsapp-ai-agent      │  │
+│  │  • Debounce queue   │     └──────────────┬───────────────────┘  │
+│  └─────────────────────┘                    │                       │
+│                                             ▼                       │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                    whatsapp-ai-agent                          │  │
+│  │  ┌────────────────────────────────────────────────────────┐  │  │
+│  │  │              ORCHESTRATOR AGENT                         │  │  │
+│  │  │  • Recebe mensagem do cliente                          │  │  │
+│  │  │  • Classifica intenção (intent)                        │  │  │
+│  │  │  • Determina próximo estado                            │  │  │
+│  │  │  • Retorna JSON: {intent, target_state, confidence}    │  │  │
+│  │  └────────────────────────┬───────────────────────────────┘  │  │
+│  │                           ▼                                   │  │
+│  │  ┌────────────────────────────────────────────────────────┐  │  │
+│  │  │           CONVERSATIONAL AGENT (Iterative Loop)        │  │  │
+│  │  │                                                         │  │  │
+│  │  │  while (finish_reason == "tool_calls"):                │  │  │
+│  │  │    1. Envia prompt + contexto para OpenAI              │  │  │
+│  │  │    2. Recebe tool_calls da AI                          │  │  │
+│  │  │    3. Executa tools (search_menu, add_to_cart, etc.)   │  │  │
+│  │  │    4. Adiciona results ao messages[] com role:"tool"   │  │  │
+│  │  │    5. Repete até AI gerar resposta final               │  │  │
+│  │  │                                                         │  │  │
+│  │  │  Tools disponíveis: 14 (ver ARCHITECTURE.md)           │  │  │
+│  │  └────────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌─────────────────────┐     ┌─────────────────────────────────┐   │
+│  │   whatsapp-send     │     │   conversation-recovery         │   │
+│  │   • Envia mensagem  │     │   • Detecta carrinhos abandonados│  │
+│  │   via Evolution API │     │   • Envia mensagens de recovery  │   │
+│  └─────────────────────┘     └─────────────────────────────────┘   │
+│                                                                      │
+│  ┌─────────────────────┐     ┌─────────────────────────────────┐   │
+│  │   evolution-connect │     │   validate-delivery-address     │   │
+│  │   evolution-status  │     │   • Geocoding de endereços      │   │
+│  │   evolution-reset   │     │   • Validação de zona de entrega│   │
+│  └─────────────────────┘     └─────────────────────────────────┘   │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      SUPABASE DATABASE                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Core Tables:                    AI Tables:                         │
+│  • restaurants                   • agents                           │
+│  • categories                    • agent_prompt_blocks              │
+│  • products                      • agent_tools                      │
+│  • addons                        • ai_interaction_logs              │
+│  • customers                     • conversation_state               │
+│  • carts / cart_items            • conversation_pending_items       │
+│  • orders                        • conversation_mode                │
+│  • messages                      • conversation_recovery_attempts   │
+│                                                                      │
+│  Delivery Tables:                Config Tables:                     │
+│  • delivery_zones                • restaurant_ai_settings           │
+│  • address_cache                 • restaurant_settings              │
+│  • distance_matrix_cache         • whatsapp_instances               │
+│                                                                      │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ Real-time subscriptions
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     REACT FRONTEND (Dashboard)                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Pages:                          Components:                        │
+│  • /dashboard - Gestão pedidos   • OrderDetailsDrawer               │
+│  • /messages - Chat conversas    • ConversationList / ChatArea      │
+│  • /menu - Gestão cardápio       • ProductCard / ProductModal       │
+│  • /analytics - Métricas         • CustomerDetails                  │
+│  • /customers - CRM              • DeliveryZoneMap                  │
+│  • /settings - Configurações     • AITestChatSimulator              │
+│  • /whatsapp-connection          • + 50 componentes UI              │
+│  • /ai-configuration                                                │
+│                                                                      │
+│  State Management: Zustand stores                                   │
+│  UI Components: Shadcn/ui + Tailwind                                │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🛠️ Stack Tecnológica
+
+| Camada | Tecnologias |
+|--------|-------------|
+| **Frontend** | React 18, TypeScript, Vite, TailwindCSS, Shadcn/ui, Zustand |
+| **Backend** | Supabase (PostgreSQL, Edge Functions, Realtime, Storage) |
+| **AI** | OpenAI GPT-4o-mini (Orchestrator + Conversational) |
+| **WhatsApp** | Evolution API (Baileys-based) |
+| **Maps** | Google Geocoding API |
 
 ---
 
 ## 🚀 Quick Start
 
 ### Pré-requisitos
+
 - Node.js 18+
 - Conta Supabase
-- Conta OpenAI
-- Evolution API rodando
+- Conta OpenAI com créditos
+- Evolution API rodando (self-hosted ou managed)
 
-### Setup
+### 1. Clone e Instale
 
 ```bash
-# Clone
 git clone <YOUR_GIT_URL>
 cd <YOUR_PROJECT_NAME>
-
-# Install
 npm install
+```
 
-# Configure .env.local
-VITE_SUPABASE_URL=your-url
-VITE_SUPABASE_ANON_KEY=your-key
+### 2. Configure Variáveis de Ambiente
 
-# Start
+**Frontend (.env):**
+```env
+VITE_SUPABASE_URL=https://tgbfqcbqfdzrtbtlycve.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbG...
+```
+
+**Backend (Supabase Secrets):**
+```
+OPENAI_API_KEY=sk-...
+EVOLUTION_API_URL=https://your-evolution.com
+EVOLUTION_API_KEY=your-key
+GOOGLE_GEOCODING_API_KEY=your-key
+```
+
+### 3. Execute
+
+```bash
 npm run dev
 ```
 
-### Configure Secrets no Supabase
+### 4. Conecte WhatsApp
 
-Edge Functions > Secrets:
-```
-OPENAI_API_KEY=sk-...
-EVOLUTION_API_URL=https://...
-EVOLUTION_API_KEY=...
-```
-
-### Conecte WhatsApp
-
-1. Login no sistema
-2. Complete onboarding
-3. WhatsApp Connection > Connect
-4. Escaneie QR Code
-
-✅ Pronto!
+1. Login → Complete onboarding
+2. WhatsApp Connection → Connect
+3. Escaneie QR Code
+4. Teste enviando "Oi" para o número
 
 ---
 
 ## 📚 Documentação
 
-- **[SETUP.md](./SETUP.md)** - Setup completo
-- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Como testar
-- **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)** - Checklist de produção
-- **[DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md)** - Roadmap
+| Documento | Descrição |
+|-----------|-----------|
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Arquitetura técnica detalhada, fluxos de dados, tools |
+| **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)** | Estrutura de pastas e arquivos |
+| **[SETUP.md](./SETUP.md)** | Guia completo de setup |
+| **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** | Como testar cada funcionalidade |
+| **[DEBUGGING_GUIDE.md](./DEBUGGING_GUIDE.md)** | Como debugar problemas comuns |
+| **[DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md)** | Status atual e roadmap |
 
 ---
 
-## 🏗️ Tecnologias
+## 📊 Estado Atual do Desenvolvimento
 
-**Frontend:** React 18, TypeScript, Vite, TailwindCSS, Shadcn/ui  
-**Backend:** Supabase (PostgreSQL, Edge Functions, Realtime)  
-**AI:** OpenAI GPT-4  
-**WhatsApp:** Evolution API
+### ✅ Implementado e Funcional
 
----
+- [x] Dashboard de pedidos em tempo real
+- [x] Gestão de menu (CRUD categorias, produtos, addons)
+- [x] Integração WhatsApp via Evolution API
+- [x] AI Agent com Two-Agent Architecture
+- [x] Iterative Function Calling (14 tools)
+- [x] Sistema de estados de conversa
+- [x] Validação de endereço e zonas de entrega
+- [x] Sistema de recovery (abandoned cart, paused conversation)
+- [x] Analytics e customer insights
+- [x] Configuração de AI por restaurante
+- [x] Menu público e checkout web
+- [x] Sistema de notificações
 
-## 📋 Arquitetura
+### 🔧 Em Refinamento
 
-```
-WhatsApp User
-    ↓
-Evolution API (Webhook)
-    ↓
-whatsapp-webhook (Rate Limiting)
-    ↓
-whatsapp-ai-agent (Orchestrator + AI + Tools)
-    ↓
-Supabase (Orders, Messages, State)
-    ↓
-React Dashboard (Real-time)
-```
+- [ ] Testes end-to-end automatizados
+- [ ] Monitoramento de performance AI
+- [ ] Otimização de prompts (token usage)
 
----
+### 📅 Próximas Features
 
-## 🧪 Testes
-
-Execute todos os testes do [TESTING_GUIDE.md](./TESTING_GUIDE.md):
-
-- WhatsApp Integration End-to-End
-- Sistema de Recovery
-- Error Handling
-- Rate Limiting
-- Notificações
+- [ ] Múltiplos restaurantes por usuário
+- [ ] Programa de fidelidade
+- [ ] Integração com PIX
+- [ ] App mobile nativo
 
 ---
 
-## 🚀 Deploy
+## 🔑 Secrets Configurados
 
-### Backend (Supabase)
-```bash
-supabase functions deploy
 ```
-
-### Frontend (Vercel/Netlify)
-```bash
-npm run build
-vercel --prod
-```
-
-Configure webhook no Evolution API:
-```
-https://your-project.supabase.co/functions/v1/whatsapp-webhook
+OPENAI_API_KEY          - API key OpenAI
+EVOLUTION_API_URL       - URL da Evolution API
+EVOLUTION_API_KEY       - API key Evolution
+EVOLUTION_INSTANCE_NAME - Nome da instância WhatsApp
+GOOGLE_GEOCODING_API_KEY - API key Google Maps
+SUPABASE_URL            - URL do projeto Supabase
+SUPABASE_ANON_KEY       - Anon key Supabase
+SUPABASE_SERVICE_ROLE_KEY - Service role key
+LOVABLE_API_KEY         - API key Lovable (auto-gerado)
 ```
 
 ---
 
-## 🛠️ Troubleshooting
+## 🐛 Troubleshooting Rápido
 
-**WhatsApp não conecta:** Verifique EVOLUTION_API_URL (sem `/` no final)  
-**AI não responde:** Verifique OPENAI_API_KEY e créditos  
-**Recovery não funciona:** Verifique `agents.recovery_config.enabled = true`
+| Problema | Solução |
+|----------|---------|
+| WhatsApp não conecta | Verificar EVOLUTION_API_URL sem `/` no final |
+| AI não responde | Verificar OPENAI_API_KEY e créditos |
+| Mensagens não chegam | Verificar webhook URL no Evolution API |
+| Erro "instance not found" | Reconectar WhatsApp via dashboard |
+| AI diz "não encontrei" mesmo com produtos | Bug de iterative loop - verificar logs |
 
-Mais ajuda: [TESTING_GUIDE.md](./TESTING_GUIDE.md)
+**Logs úteis:**
+- Edge Functions: Supabase Dashboard → Edge Functions → [função] → Logs
+- Database: Supabase Dashboard → Database → Logs
+- AI Interactions: Tabela `ai_interaction_logs`
 
 ---
 
 ## 📄 Licença
 
-MIT License - veja [LICENSE](./LICENSE)
+MIT License
 
 ---
 
 ## 💬 Suporte
 
-- **Email**: support@zendy.ai
-- **Issues**: [GitHub Issues](https://github.com/your-org/zendy-ai/issues)
 - **Docs**: [./docs](./docs)
+- **Lovable Project**: https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031
 
 ---
 
-**Feito com ❤️ pela equipe Zendy**
-
-**URL do Projeto**: https://lovable.dev/projects/789c9398-6603-4ec0-a3d4-d716bc0d8031
+**Última atualização**: 2025-12-02
+**Versão**: 2.0.0
