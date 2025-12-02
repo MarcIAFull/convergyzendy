@@ -125,11 +125,8 @@ export async function buildConversationContext(
   console.log(`[Context Builder] Menu: ${availableProducts.length} products`);
 
   // ============================================================
-  // LOAD CONVERSATION HISTORY (OPTIMIZED - SLIDING WINDOW)
+  // LOAD CONVERSATION HISTORY
   // ============================================================
-  
-  // Carrega apenas as últimas 5 mensagens para reduzir tokens
-  const HISTORY_WINDOW_SIZE = 5;
   
   const { data: messageHistory } = await supabase
     .from('messages')
@@ -137,15 +134,16 @@ export async function buildConversationContext(
     .eq('restaurant_id', restaurantId)
     .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
     .order('timestamp', { ascending: false })
-    .limit(HISTORY_WINDOW_SIZE);
+    .limit(10);
 
   const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = 
     (messageHistory || []).reverse().map((msg: any) => ({
+      // FIX: Bug crítico - direction era 'incoming' mas deve ser 'inbound'
       role: (msg.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: msg.body
     }));
 
-  console.log(`[Context Builder] History: ${conversationHistory.length} messages (window: ${HISTORY_WINDOW_SIZE})`);
+  console.log(`[Context Builder] History: ${conversationHistory.length} messages`);
 
   // ============================================================
   // LOAD ACTIVE CART
@@ -494,24 +492,12 @@ function formatCustomerForPrompt(customer: any | null): string {
   return formatCustomerForRAG(customer, null);
 }
 
-/**
- * OTIMIZAÇÃO DE HISTÓRICO - Format compacto
- * Reduz tokens mantendo contexto essencial
- * - Últimas mensagens em formato curto
- * - ~50% menos tokens que formato completo
- */
 function formatHistoryForPrompt(history: any[]): string {
-  if (history.length === 0) return '(primeira interação)';
+  if (history.length === 0) return 'Sem conversa anterior';
   
-  // Formato ultra-compacto: apenas conteúdo resumido
-  return history.map(msg => {
-    const prefix = msg.role === 'user' ? '→' : '←';
-    // Truncar mensagens longas para economizar tokens
-    const content = msg.content.length > 100 
-      ? msg.content.substring(0, 100) + '...'
-      : msg.content;
-    return `${prefix} ${content}`;
-  }).join('\n');
+  return history.map(msg => 
+    `${msg.role === 'user' ? 'Cliente' : 'Agente'}: ${msg.content}`
+  ).join('\n');
 }
 
 function formatPendingItemsForPrompt(pendingItems: any[]): string {
@@ -527,47 +513,4 @@ function formatPendingItemsForPrompt(pendingItems: any[]): string {
       const notesText = item.notes ? ` (${item.notes})` : '';
       return `${item.quantity}x ${item.product.name}${addonsText}${notesText}`;
     }).join(', ');
-}
-
-/**
- * Extrai informações críticas do histórico para contexto comprimido
- * Usado para manter informações importantes sem repetir todo o histórico
- */
-export function extractCriticalContext(
-  conversationHistory: Array<{ role: string; content: string }>,
-  stateMetadata: any
-): {
-  addressMentioned: string | null;
-  paymentMentioned: string | null;
-  productsMentioned: string[];
-  customerIntent: string | null;
-} {
-  const result = {
-    addressMentioned: stateMetadata?.delivery_address || null,
-    paymentMentioned: stateMetadata?.payment_method || null,
-    productsMentioned: stateMetadata?.products_discussed || [],
-    customerIntent: null
-  };
-  
-  // Analisa últimas mensagens do cliente para extrair contexto
-  const customerMessages = conversationHistory
-    .filter(m => m.role === 'user')
-    .map(m => m.content.toLowerCase());
-  
-  for (const msg of customerMessages) {
-    // Detecta menção de endereço
-    if (!result.addressMentioned && (msg.includes('rua ') || msg.includes('av ') || msg.includes('nº'))) {
-      result.addressMentioned = msg;
-    }
-    
-    // Detecta menção de pagamento
-    if (!result.paymentMentioned) {
-      if (msg.includes('dinheiro') || msg.includes('cash')) result.paymentMentioned = 'dinheiro';
-      else if (msg.includes('cartão') || msg.includes('card')) result.paymentMentioned = 'cartão';
-      else if (msg.includes('mbway') || msg.includes('mb way')) result.paymentMentioned = 'mbway';
-      else if (msg.includes('pix')) result.paymentMentioned = 'pix';
-    }
-  }
-  
-  return result;
 }
