@@ -7,6 +7,20 @@ import { useAuth } from '@/hooks/useAuth';
 import { Loader2, CheckCircle2, XCircle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
+const INVITATION_TOKEN_KEY = 'pending_invitation_token';
+
+export function savePendingInvitationToken(token: string) {
+  localStorage.setItem(INVITATION_TOKEN_KEY, token);
+}
+
+export function getPendingInvitationToken(): string | null {
+  return localStorage.getItem(INVITATION_TOKEN_KEY);
+}
+
+export function clearPendingInvitationToken() {
+  localStorage.removeItem(INVITATION_TOKEN_KEY);
+}
+
 export default function AcceptInvitation() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
@@ -18,6 +32,8 @@ export default function AcceptInvitation() {
 
   useEffect(() => {
     if (token) {
+      // Save token so we can return after login/signup
+      savePendingInvitationToken(token);
       fetchInvitation();
     }
   }, [token]);
@@ -29,7 +45,6 @@ export default function AcceptInvitation() {
       setLoading(true);
       setError(null);
 
-      // Use public access - RLS allows SELECT by token
       const { data, error: fetchError } = await supabase
         .from('team_invitations')
         .select(`
@@ -55,12 +70,13 @@ export default function AcceptInvitation() {
 
       if (!data) {
         setError('Convite não encontrado ou já foi aceito');
+        clearPendingInvitationToken();
         return;
       }
 
-      // Check if expired
       if (new Date(data.expires_at) < new Date()) {
         setError('Este convite expirou');
+        clearPendingInvitationToken();
         return;
       }
 
@@ -102,11 +118,12 @@ export default function AcceptInvitation() {
         throw new Error(data.error);
       }
 
+      // Clear pending token after successful acceptance
+      clearPendingInvitationToken();
+      
       setSuccess(true);
       toast.success('Convite aceito com sucesso!');
       
-      // After accepting invitation, the user is already associated with a restaurant
-      // Just redirect to dashboard
       setTimeout(() => {
         navigate('/dashboard');
       }, 2000);
@@ -116,6 +133,16 @@ export default function AcceptInvitation() {
       setError(error.message || 'Erro ao aceitar convite');
       setLoading(false);
     }
+  };
+
+  const handleGoToLogin = () => {
+    // Token is already saved in localStorage
+    navigate('/login');
+  };
+
+  const handleGoToSignup = () => {
+    // Token is already saved, navigate to signup tab
+    navigate('/login?tab=signup&invite=true');
   };
 
   const copyInvitationLink = async () => {
@@ -204,11 +231,11 @@ export default function AcceptInvitation() {
               Email do convite: <strong>{invitation?.email}</strong>
             </p>
             <div className="space-y-2">
-              <Button onClick={() => navigate('/login')} className="w-full">
+              <Button onClick={handleGoToLogin} className="w-full">
                 Fazer Login para Aceitar
               </Button>
               <Button
-                onClick={() => navigate('/login?tab=signup')}
+                onClick={handleGoToSignup}
                 variant="outline"
                 className="w-full"
               >

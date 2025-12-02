@@ -29,7 +29,9 @@ import PublicCheckout from "@/pages/public/PublicCheckout";
 import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
 import TeamManagement from "@/pages/TeamManagement";
 import AcceptInvitation from "@/pages/AcceptInvitation";
+import Onboarding from "@/pages/Onboarding";
 import { AdminRoute } from "@/components/AdminRoute";
+import { OnboardingRoute } from "@/components/OnboardingRoute";
 import { HelmetProvider } from 'react-helmet-async';
 
 const queryClient = new QueryClient();
@@ -56,6 +58,8 @@ const App = () => (
                 {/* Auth Routes */}
                 <Route path="/login" element={<Login />} />
                 
+                {/* Onboarding Route (protected but doesn't check for restaurants) */}
+                <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
                 {/* Protected Dashboard Routes */}
                 <Route
                   element={
@@ -80,9 +84,11 @@ const App = () => (
                   {/* Settings (UNIFIED) */}
                   <Route path="/settings" element={<SettingsUnified />} />
                   
+                  {/* Team Management (for restaurant owners) */}
+                  <Route path="/team" element={<TeamManagement />} />
+                  
                   {/* Admin Routes (Protected by AdminRoute) */}
                   <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-                  <Route path="/admin/team" element={<AdminRoute><TeamManagement /></AdminRoute>} />
                   <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
                   <Route path="/admin/ai-logs" element={<AdminRoute><AILogs /></AdminRoute>} />
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />

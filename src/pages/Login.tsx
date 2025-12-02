@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,12 +8,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, ArrowLeft } from 'lucide-react';
+import { getPendingInvitationToken } from './AcceptInvitation';
 
 const Login = () => {
   const { signIn, signUp, resetPassword, user, loading: authLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResetPassword, setShowResetPassword] = useState(false);
+
+  // Check if user is coming from invitation
+  const isInviteFlow = searchParams.get('invite') === 'true';
+  const pendingToken = getPendingInvitationToken();
+  const defaultTab = searchParams.get('tab') || 'login';
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -28,6 +36,13 @@ const Login = () => {
   // Reset password state
   const [resetEmail, setResetEmail] = useState('');
 
+  // Redirect to invitation page after auth if there's a pending token
+  useEffect(() => {
+    if (!authLoading && user && pendingToken) {
+      navigate(`/accept-invitation/${pendingToken}`);
+    }
+  }, [user, authLoading, pendingToken, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -35,6 +50,7 @@ const Login = () => {
 
     try {
       await signIn(loginEmail, loginPassword);
+      // If there's a pending invitation, useEffect will handle redirect
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -46,9 +62,15 @@ const Login = () => {
     e.preventDefault();
     setError(null);
 
-    // Validation
-    if (!signUpEmail || !signUpPassword || !restaurantName) {
+    // Validation - restaurant name only required if NOT from invitation
+    if (!signUpEmail || !signUpPassword) {
       setError('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    // Only require restaurant name if not coming from invitation
+    if (!isInviteFlow && !pendingToken && !restaurantName) {
+      setError('Nome do restaurante é obrigatório');
       return;
     }
 
@@ -65,9 +87,10 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await signUp(signUpEmail, signUpPassword, {
-        restaurant_name: restaurantName,
-      });
+      // Pass restaurant_name only if provided (not in invite flow)
+      const metadata = restaurantName ? { restaurant_name: restaurantName } : {};
+      await signUp(signUpEmail, signUpPassword, metadata);
+      // If there's a pending invitation, useEffect will handle redirect
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -97,8 +120,8 @@ const Login = () => {
     }
   };
 
-  // Redirect to dashboard if already authenticated
-  if (!authLoading && user) {
+  // Redirect to dashboard if already authenticated (and no pending invitation)
+  if (!authLoading && user && !pendingToken) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -158,6 +181,8 @@ const Login = () => {
     );
   }
 
+  const showRestaurantField = !isInviteFlow && !pendingToken;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
@@ -175,11 +200,22 @@ const Login = () => {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-foreground">Zendy Delivery AI</h1>
-          <p className="text-muted-foreground">Sistema de pedidos via WhatsApp</p>
+          <p className="text-muted-foreground">
+            {pendingToken ? 'Entre para aceitar o convite' : 'Sistema de pedidos via WhatsApp'}
+          </p>
         </div>
 
+        {/* Invitation notice */}
+        {pendingToken && (
+          <Alert>
+            <AlertDescription>
+              Você tem um convite pendente. Entre ou crie sua conta para aceitá-lo.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Auth Tabs */}
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Entrar</TabsTrigger>
             <TabsTrigger value="signup">Criar Conta</TabsTrigger>
@@ -249,7 +285,11 @@ const Login = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Criar Conta</CardTitle>
-                <CardDescription>Cadastre seu restaurante</CardDescription>
+                <CardDescription>
+                  {showRestaurantField 
+                    ? 'Cadastre seu restaurante' 
+                    : 'Crie sua conta para aceitar o convite'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSignUp} className="space-y-4">
@@ -259,18 +299,20 @@ const Login = () => {
                     </Alert>
                   )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-restaurant">Nome do Restaurante</Label>
-                    <Input
-                      id="signup-restaurant"
-                      type="text"
-                      placeholder="Meu Restaurante"
-                      value={restaurantName}
-                      onChange={(e) => setRestaurantName(e.target.value)}
-                      disabled={loading}
-                      required
-                    />
-                  </div>
+                  {showRestaurantField && (
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-restaurant">Nome do Restaurante</Label>
+                      <Input
+                        id="signup-restaurant"
+                        type="text"
+                        placeholder="Meu Restaurante"
+                        value={restaurantName}
+                        onChange={(e) => setRestaurantName(e.target.value)}
+                        disabled={loading}
+                        required={showRestaurantField}
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
