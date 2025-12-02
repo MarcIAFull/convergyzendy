@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Send, RefreshCw, MessageSquare } from "lucide-react";
+import { Send, RefreshCw, MessageSquare, ShoppingCart, Activity } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -22,6 +22,11 @@ interface CartItem {
   price: number;
 }
 
+interface PendingItem {
+  product_name: string;
+  quantity: number;
+}
+
 interface AITestChatSimulatorProps {
   restaurantId: string;
 }
@@ -32,7 +37,10 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [testPhone] = useState("+351999999999");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [conversationState, setConversationState] = useState("idle");
+  const [lastIntent, setLastIntent] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<any>(null);
   const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +67,7 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
 
       if (stateData) {
         setConversationState(stateData.state);
+        setMetadata(stateData.metadata);
 
         if (stateData.cart_id) {
           const { data: cartData } = await supabase
@@ -71,12 +80,34 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
 
           if (cartData) {
             setCartItems(cartData.map((item: any) => ({
-              product_name: item.products.name,
+              product_name: item.products?.name || 'Produto',
               quantity: item.quantity,
-              price: item.products.price,
+              price: item.products?.price || 0,
             })));
           }
+        } else {
+          setCartItems([]);
         }
+      }
+
+      // Load pending items
+      const { data: pendingData } = await supabase
+        .from('conversation_pending_items')
+        .select(`
+          quantity,
+          products (name)
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('user_phone', testPhone)
+        .eq('status', 'pending');
+
+      if (pendingData) {
+        setPendingItems(pendingData.map((item: any) => ({
+          product_name: item.products?.name || 'Produto',
+          quantity: item.quantity,
+        })));
+      } else {
+        setPendingItems([]);
       }
     } catch (error) {
       console.error('Error loading state:', error);
@@ -108,14 +139,25 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
 
       if (error) throw error;
 
-      if (data.response) {
+      // Fix: Use data.message instead of data.response
+      const responseText = data?.message || data?.response;
+      
+      if (responseText) {
         const aiMessage: TestMessage = {
           id: (Date.now() + 1).toString(),
-          body: data.response,
+          body: responseText,
           direction: 'outbound',
           timestamp: new Date()
         };
         setMessages(prev => [...prev, aiMessage]);
+      }
+
+      // Update state from response
+      if (data?.state) {
+        setConversationState(data.state);
+      }
+      if (data?.intent) {
+        setLastIntent(data.intent);
       }
 
       await loadConversationState();
@@ -146,9 +188,18 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
         .eq('restaurant_id', restaurantId)
         .eq('user_phone', testPhone);
 
+      await supabase
+        .from('conversation_pending_items')
+        .delete()
+        .eq('restaurant_id', restaurantId)
+        .eq('user_phone', testPhone);
+
       setMessages([]);
       setCartItems([]);
+      setPendingItems([]);
       setConversationState("idle");
+      setLastIntent(null);
+      setMetadata(null);
 
       toast({
         title: "Teste resetado",
@@ -164,14 +215,16 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
     }
   };
 
+  const cartTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Chat Area */}
-      <Card className="flex flex-col h-[700px]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Chat Area - Left Side (2 columns) */}
+      <Card className="lg:col-span-2 flex flex-col h-[600px]">
         <div className="p-4 border-b flex items-center justify-between">
           <div>
             <h3 className="font-semibold">Chat de Teste</h3>
-            <p className="text-xs text-muted-foreground">Teste: {testPhone}</p>
+            <p className="text-xs text-muted-foreground">Telefone: {testPhone}</p>
           </div>
           <Button variant="outline" size="sm" onClick={clearTest}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -253,48 +306,105 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
         </div>
       </Card>
 
-      {/* State Monitor */}
-      <Card>
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-sm">Estado da Conversa</h3>
-        </div>
-
-        <div className="p-4">
-          <div className="space-y-4">
+      {/* State Monitor - Right Side (1 column) */}
+      <div className="space-y-4">
+        {/* Estado da Conversa */}
+        <Card>
+          <div className="p-3 border-b flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Estado</h3>
+          </div>
+          <div className="p-3 space-y-3">
             <div>
               <p className="text-xs text-muted-foreground mb-1">Estado Atual</p>
               <Badge variant="secondary" className="text-xs">
                 {conversationState}
               </Badge>
             </div>
-
-            {cartItems.length > 0 && (
+            {lastIntent && (
               <div>
-                <p className="text-xs text-muted-foreground mb-2">Carrinho ({cartItems.length} itens)</p>
-                <div className="space-y-2">
-                  {cartItems.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm border-b pb-2">
-                      <div>
-                        <span className="font-medium">{item.product_name}</span>
-                        <span className="text-muted-foreground ml-2">x{item.quantity}</span>
-                      </div>
-                      <span className="font-medium">€{(item.price * item.quantity).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  <div className="pt-2 flex justify-between font-semibold">
-                    <span>Total</span>
-                    <span>
-                      €{cartItems.reduce((sum, item) => 
-                        sum + (item.price * item.quantity), 0
-                      ).toFixed(2)}
-                    </span>
+                <p className="text-xs text-muted-foreground mb-1">Último Intent</p>
+                <Badge variant="outline" className="text-xs">
+                  {lastIntent}
+                </Badge>
+              </div>
+            )}
+            {metadata?.delivery_address && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Endereço</p>
+                <p className="text-xs">{metadata.delivery_address}</p>
+              </div>
+            )}
+            {metadata?.payment_method && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Pagamento</p>
+                <Badge variant="outline" className="text-xs">
+                  {metadata.payment_method}
+                </Badge>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Itens Pendentes */}
+        {pendingItems.length > 0 && (
+          <Card>
+            <div className="p-3 border-b flex items-center gap-2">
+              <Activity className="h-4 w-4 text-yellow-500" />
+              <h3 className="font-semibold text-sm">Pendentes</h3>
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {pendingItems.length}
+              </Badge>
+            </div>
+            <div className="p-3">
+              <div className="space-y-2">
+                {pendingItems.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-xs">
+                    <span>{item.product_name}</span>
+                    <span className="text-muted-foreground">x{item.quantity}</span>
                   </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Carrinho */}
+        <Card>
+          <div className="p-3 border-b flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Carrinho</h3>
+            {cartItems.length > 0 && (
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {cartItems.length}
+              </Badge>
+            )}
+          </div>
+          <div className="p-3">
+            {cartItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Carrinho vazio
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {cartItems.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-xs border-b pb-2 last:border-0">
+                    <div>
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="text-muted-foreground ml-1">x{item.quantity}</span>
+                    </div>
+                    <span className="font-medium">€{(item.price * item.quantity).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="pt-2 flex justify-between font-semibold text-sm border-t">
+                  <span>Total</span>
+                  <span>€{cartTotal.toFixed(2)}</span>
                 </div>
               </div>
             )}
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }
