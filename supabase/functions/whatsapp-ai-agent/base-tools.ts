@@ -183,7 +183,7 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
             description: "Maximum number of results to return (default 5)"
           }
         },
-        required: ["query"]
+        required: []
       }
     }
   },
