@@ -66,10 +66,11 @@ export function AppSidebar() {
   const isActive = (path: string) => location.pathname === path;
 
   const operationsRoutes = [
-    { title: "Dashboard", url: "/", icon: LayoutDashboard, badge: unreadOrders },
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, badge: unreadOrders },
     { title: "Menu", url: "/menu", icon: Package },
     { title: "Zonas de Entrega", url: "/delivery-zones", icon: MapPin },
     { title: "Clientes", url: "/customers", icon: Users },
+    { title: "Equipe", url: "/team", icon: UserPlus },
   ];
 
   const communicationRoutes = [
@@ -82,7 +83,6 @@ export function AppSidebar() {
 
   const adminRoutes = [
     { title: "Painel Admin", url: "/admin", icon: Shield },
-    { title: "Gestão de Equipe", url: "/admin/team", icon: UserPlus },
     { title: "Configuração Global de IA", url: "/admin/ai-configuration", icon: Settings },
     { title: "AI Interaction Logs", url: "/admin/ai-logs", icon: FileText },
     { title: "System Check", url: "/admin/system-check", icon: Shield },
