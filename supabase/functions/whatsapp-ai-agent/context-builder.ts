@@ -138,7 +138,8 @@ export async function buildConversationContext(
 
   const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = 
     (messageHistory || []).reverse().map((msg: any) => ({
-      role: (msg.direction === 'incoming' ? 'user' : 'assistant') as 'user' | 'assistant',
+      // FIX: Bug crítico - direction era 'incoming' mas deve ser 'inbound'
+      role: (msg.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: msg.body
     }));
 

@@ -497,7 +497,11 @@ serve(async (req) => {
     let iterations = 0;
     
     // State management variables
+    // FIX: Forçar transição de estado baseado no target_state do Orchestrator
+    // O Orchestrator define para onde a conversa DEVE ir, não apenas classifica
     let newState = (targetState === 'unknown' || !targetState) ? currentState : targetState;
+    console.log(`[State Machine] Orchestrator target_state: ${targetState} → newState: ${newState}`);
+    
     let newMetadata = { ...stateMetadata };
     let finalizeSuccess = false;
     let cartModified = false;
@@ -1347,34 +1351,70 @@ async function executeToolCall(
     }
     
     case 'finalize_order': {
+      // ============================================================
+      // CHECKLIST PRÉ-FINALIZAÇÃO (V16)
+      // Verifica todos os requisitos antes de criar o pedido
+      // ============================================================
+      console.log('[Tool] 📋 finalize_order - CHECKLIST PRÉ-FINALIZAÇÃO:');
+      
+      const checklistResults = {
+        has_cart: !!currentActiveCart,
+        has_items: cartItems.length > 0,
+        has_address: !!newMetadata.delivery_address,
+        has_payment: !!newMetadata.payment_method,
+        items_count: cartItems.length,
+        address: newMetadata.delivery_address || null,
+        payment: newMetadata.payment_method || null
+      };
+      
+      console.log(`[Tool]   ✓ Carrinho existe: ${checklistResults.has_cart}`);
+      console.log(`[Tool]   ✓ Itens no carrinho: ${checklistResults.has_items} (${checklistResults.items_count} itens)`);
+      console.log(`[Tool]   ✓ Endereço definido: ${checklistResults.has_address} (${checklistResults.address || 'N/A'})`);
+      console.log(`[Tool]   ✓ Pagamento definido: ${checklistResults.has_payment} (${checklistResults.payment || 'N/A'})`);
+      
+      // Verificação 1: Carrinho
       if (!currentActiveCart || cartItems.length === 0) {
+        console.log('[Tool] ❌ FALHA: Carrinho vazio');
         return {
           output: {
             success: false,
-            error: 'Carrinho vazio - não é possível finalizar'
+            error: 'Carrinho vazio - não é possível finalizar',
+            checklist: checklistResults,
+            action_required: 'add_items',
+            message: 'O carrinho está vazio! O que você gostaria de pedir?'
           }
         };
       }
       
+      // Verificação 2: Endereço
       if (!newMetadata.delivery_address) {
+        console.log('[Tool] ❌ FALHA: Endereço não definido');
         return {
           output: {
             success: false,
             missing: 'delivery_address',
-            message: 'Preciso do teu endereço de entrega para finalizar o pedido.'
+            checklist: checklistResults,
+            action_required: 'collect_address',
+            message: 'Pra onde eu mando? Me diz a rua e número.'
           }
         };
       }
       
+      // Verificação 3: Pagamento
       if (!newMetadata.payment_method) {
+        console.log('[Tool] ❌ FALHA: Método de pagamento não definido');
         return {
           output: {
             success: false,
             missing: 'payment_method',
-            message: 'Qual vai ser o método de pagamento? Dinheiro, cartão ou MBWay?'
+            checklist: checklistResults,
+            action_required: 'collect_payment',
+            message: 'Como vai pagar? Dinheiro, cartão ou MBWay?'
           }
         };
       }
+      
+      console.log('[Tool] ✅ CHECKLIST COMPLETO - Prosseguindo com finalização');
       
       // Calculate total
       const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
