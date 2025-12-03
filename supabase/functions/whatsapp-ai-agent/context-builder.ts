@@ -32,12 +32,13 @@ export interface ConversationContext {
   
   // Formatted strings (for template variables)
   formatted: {
-    menu: string;        // RAG format: categories only
-    menuFull: string;    // Full menu (for search_menu tool)
+    menu: string;           // RAG format: categories only
+    menuFull: string;       // Full menu (for search_menu tool)
     cart: string;
-    customer: string;    // RAG format: minimal status
+    customer: string;       // RAG format: minimal status
     history: string;
     pendingItems: string;
+    restaurantInfo: string; // Restaurant operational info (phone, address, hours, delivery fee)
   };
 }
 
@@ -335,7 +336,8 @@ export async function buildConversationContext(
     cart: formatCartForPrompt(cartItems, cartTotal),
     customer: formatCustomerForRAG(customer, customerInsights),   // RAG: minimal status
     history: formatHistoryForPrompt(conversationHistory),
-    pendingItems: formatPendingItemsForPrompt(pendingItems)
+    pendingItems: formatPendingItemsForPrompt(pendingItems),
+    restaurantInfo: formatRestaurantInfoForPrompt(restaurant)     // Operational info
   };
 
   console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
@@ -521,4 +523,46 @@ function formatPendingItemsForPrompt(pendingItems: any[]): string {
       const notesText = item.notes ? ` (${item.notes})` : '';
       return `${item.quantity}x ${item.product.name}${addonsText}${notesText}`;
     }).join(', ');
+}
+
+/**
+ * Format restaurant operational info for prompt
+ * Includes: phone, address, delivery fee, opening hours
+ */
+function formatRestaurantInfoForPrompt(restaurant: any): string {
+  if (!restaurant) return 'Informações do restaurante não disponíveis';
+  
+  // Format opening hours
+  let hoursText = 'Não definido';
+  if (restaurant.opening_hours) {
+    const days: Record<string, string> = {
+      monday: 'Segunda',
+      tuesday: 'Terça',
+      wednesday: 'Quarta',
+      thursday: 'Quinta',
+      friday: 'Sexta',
+      saturday: 'Sábado',
+      sunday: 'Domingo'
+    };
+    
+    const hours = restaurant.opening_hours;
+    const formattedHours = Object.entries(days)
+      .map(([key, label]) => {
+        const dayHours = hours[key];
+        if (!dayHours || (!dayHours.open && !dayHours.close)) {
+          return `${label}: Fechado`;
+        }
+        return `${label}: ${dayHours.open || '?'} - ${dayHours.close || '?'}`;
+      })
+      .join(' | ');
+    hoursText = formattedHours;
+  }
+  
+  return `📍 DADOS DO RESTAURANTE:
+• Nome: ${restaurant.name}
+• Telefone: ${restaurant.phone || 'Não informado'}
+• Endereço: ${restaurant.address || 'Não informado'}
+• Taxa de Entrega Fixa: €${restaurant.delivery_fee?.toFixed(2) || '0.00'}
+• Status: ${restaurant.is_open ? '🟢 Aberto' : '🔴 Fechado'}
+• Horários: ${hoursText}`;
 }

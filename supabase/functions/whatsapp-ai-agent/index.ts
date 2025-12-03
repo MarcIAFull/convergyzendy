@@ -431,6 +431,9 @@ serve(async (req) => {
         restaurant_name: restaurant.name,
         user_message: rawMessage,
         
+        // Restaurant operational info (phone, address, hours, delivery fee)
+        restaurant_info: formatted.restaurantInfo,
+        
         // Menu (RAG)
         menu_products: formatted.menu,
         menu_categories: menuCategories,
@@ -461,7 +464,8 @@ serve(async (req) => {
       
       // Log which variables were applied
       console.log('[Main AI] ✅ Template variables applied:');
-      console.log('[Main AI]   - restaurant_name, user_message, menu_products, menu_categories, menu_url');
+      console.log('[Main AI]   - restaurant_name, user_message, restaurant_info');
+      console.log('[Main AI]   - menu_products, menu_categories, menu_url');
       console.log('[Main AI]   - cart_summary, current_state, user_intent, target_state, pending_items');
       console.log('[Main AI]   - customer_info, conversation_history');
       console.log('[Main AI]   - tone, greeting_message, closing_message, upsell_aggressiveness');
