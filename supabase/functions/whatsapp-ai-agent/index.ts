@@ -241,15 +241,6 @@ serve(async (req) => {
         pending_items: formatted.pendingItems
       });
       
-      // Apply orchestration config if present
-      const orchestrationConfig = orchestratorAgent.orchestration_config as any;
-      if (orchestrationConfig?.intents) {
-        console.log('[Orchestrator] Applying orchestration rules from database config');
-        orchestratorSystemPrompt += buildOrchestrationRulesSection(orchestrationConfig.intents);
-      } else {
-        console.log('[Orchestrator] No orchestration config found - using base prompt only');
-      }
-      
       console.log('[Orchestrator] ✅ Using database-configured prompt with template variables');
       console.log('[Orchestrator] Variables applied: restaurant_name, user_message, menu_products, menu_categories, cart_summary, customer_info, conversation_history, current_state, pending_items');
     } else {
@@ -476,29 +467,13 @@ serve(async (req) => {
       console.log('[Main AI]   - tone, greeting_message, closing_message, upsell_aggressiveness');
       console.log('[Main AI]   - custom_instructions, business_rules, faq_responses, special_offers_info, unavailable_items_handling');
       
-      // Apply prompt overrides if any
+      // Apply prompt overrides if any (restaurant-specific customizations)
       if (promptOverrides && promptOverrides.length > 0) {
         console.log('[Main AI] Applying restaurant-specific prompt overrides');
         promptOverrides.forEach((override: any) => {
           console.log(`[Main AI]   - Overriding block: ${override.block_key}`);
-          // Add override section to prompt
           conversationalSystemPrompt += `\n\n# RESTAURANT OVERRIDE: ${override.block_key}\n\n${override.content}\n`;
         });
-      }
-      
-      // Add tool usage rules section
-      if (enabledToolsConfig.length > 0) {
-        console.log('[Main AI] Applying tool usage rules from database config');
-        conversationalSystemPrompt += buildToolUsageRulesSection(enabledToolsConfig);
-      }
-      
-      // Apply behavior config if present
-      const behaviorConfig = conversationalAgent.behavior_config as any;
-      if (behaviorConfig && (behaviorConfig.customer_profile || behaviorConfig.pending_products)) {
-        console.log('[Main AI] Applying behavior config from database (customer profile & pending products)');
-        conversationalSystemPrompt += buildBehaviorConfigSection(behaviorConfig);
-      } else {
-        console.log('[Main AI] No behavior config found - using base prompt only');
       }
       
       console.log('[Main AI] ✅ Using database-configured prompt with template variables');
