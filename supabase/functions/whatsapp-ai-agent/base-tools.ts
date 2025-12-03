@@ -296,6 +296,25 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     }
   },
   
+  // Tool to get product addons
+  get_product_addons: {
+    type: "function",
+    function: {
+      name: "get_product_addons",
+      description: "Get available addons (extras, borders, toppings) for a specific product. Use BEFORE add_to_cart when customer asks about customizations like 'quais bordas tem?', 'posso adicionar algo?', or when adding products that typically have addons (pizzas, hambúrgueres). Returns list of addon_ids that can be used in add_to_cart.",
+      parameters: {
+        type: "object",
+        properties: {
+          product_id: {
+            type: "string",
+            description: "UUID of the product to get addons for"
+          }
+        },
+        required: ["product_id"]
+      }
+    }
+  },
+  
   // Alias for backwards compatibility with database entries using old name
   set_delivery_address: {
     type: "function",

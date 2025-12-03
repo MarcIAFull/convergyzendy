@@ -204,6 +204,14 @@ export const AVAILABLE_TOOLS = [
     label: 'Send Menu Link',
     description: 'Send the public menu URL to the customer',
     parameters: {}
+  },
+  {
+    name: 'get_product_addons',
+    label: 'Get Product Addons',
+    description: 'Get available addons (borders, extras) for a specific product',
+    parameters: {
+      product_id: { type: 'string', required: true, description: 'Product UUID' }
+    }
   }
 ] as const;
 
