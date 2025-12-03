@@ -259,14 +259,23 @@ serve(async (req) => {
     console.log(`[Orchestrator] Prompt length: ${orchestratorSystemPrompt.length} characters`);
     console.log(`[Orchestrator] Prompt blocks used: ${orchestratorPromptBlocks.length}`);
 
-    // Helper function to determine correct token parameter based on model
-    const getTokenParam = (model: string, maxTokens: number) => {
-      // Models that require max_completion_tokens instead of max_tokens
-      const newModelPatterns = ['gpt-5', 'o1', 'o1-mini', 'o1-preview', 'o3'];
-      const needsNewParam = newModelPatterns.some(pattern => model.toLowerCase().includes(pattern));
-      return needsNewParam 
-        ? { max_completion_tokens: maxTokens }
-        : { max_tokens: maxTokens };
+    // Helper function to determine correct API parameters based on model
+    // Newer models (gpt-5, o1, o3, o4) require max_completion_tokens and don't support temperature
+    const isNewerModel = (model: string) => {
+      const newModelPatterns = ['gpt-5', 'o1', 'o1-mini', 'o1-preview', 'o3', 'o4'];
+      return newModelPatterns.some(pattern => model.toLowerCase().includes(pattern));
+    };
+    
+    const getModelParams = (model: string, maxTokens: number, temperature?: number) => {
+      if (isNewerModel(model)) {
+        // Newer models: use max_completion_tokens, no temperature (defaults to 1)
+        return { max_completion_tokens: maxTokens };
+      }
+      // Legacy models: use max_tokens and temperature
+      return { 
+        max_tokens: maxTokens,
+        temperature: temperature ?? 1.0
+      };
     };
 
     const orchestratorModel = orchestratorAgent?.model || 'gpt-4o';
@@ -282,11 +291,10 @@ serve(async (req) => {
           { role: 'system', content: orchestratorSystemPrompt },
           { role: 'user', content: `Classifique esta mensagem do cliente: "${rawMessage}"` }
         ],
-        ...getTokenParam(orchestratorModel, orchestratorAgent?.max_tokens || 500),
-        temperature: orchestratorAgent?.temperature ?? 1.0,
-        ...(orchestratorAgent?.top_p !== null && orchestratorAgent?.top_p !== undefined && { top_p: orchestratorAgent.top_p }),
-        ...(orchestratorAgent?.frequency_penalty !== null && orchestratorAgent?.frequency_penalty !== undefined && { frequency_penalty: orchestratorAgent.frequency_penalty }),
-        ...(orchestratorAgent?.presence_penalty !== null && orchestratorAgent?.presence_penalty !== undefined && { presence_penalty: orchestratorAgent.presence_penalty }),
+        ...getModelParams(orchestratorModel, orchestratorAgent?.max_tokens || 500, orchestratorAgent?.temperature),
+        ...(orchestratorAgent?.top_p !== null && orchestratorAgent?.top_p !== undefined && !isNewerModel(orchestratorModel) && { top_p: orchestratorAgent.top_p }),
+        ...(orchestratorAgent?.frequency_penalty !== null && orchestratorAgent?.frequency_penalty !== undefined && !isNewerModel(orchestratorModel) && { frequency_penalty: orchestratorAgent.frequency_penalty }),
+        ...(orchestratorAgent?.presence_penalty !== null && orchestratorAgent?.presence_penalty !== undefined && !isNewerModel(orchestratorModel) && { presence_penalty: orchestratorAgent.presence_penalty }),
         response_format: { type: "json_object" }
       }),
     });
@@ -535,11 +543,10 @@ serve(async (req) => {
           model: conversationalModel,
           messages,
           ...(tools.length > 0 && { tools }),
-          ...getTokenParam(conversationalModel, conversationalAgent?.max_tokens || 500),
-          temperature: conversationalAgent?.temperature ?? 1.0,
-          ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
-          ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && { frequency_penalty: conversationalAgent.frequency_penalty }),
-          ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && { presence_penalty: conversationalAgent.presence_penalty })
+          ...getModelParams(conversationalModel, conversationalAgent?.max_tokens || 500, conversationalAgent?.temperature),
+          ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && !isNewerModel(conversationalModel) && { top_p: conversationalAgent.top_p }),
+          ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && !isNewerModel(conversationalModel) && { frequency_penalty: conversationalAgent.frequency_penalty }),
+          ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && !isNewerModel(conversationalModel) && { presence_penalty: conversationalAgent.presence_penalty })
         }),
       });
 
