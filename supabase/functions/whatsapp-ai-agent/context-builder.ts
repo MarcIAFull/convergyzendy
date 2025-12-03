@@ -128,22 +128,30 @@ export async function buildConversationContext(
   // LOAD CONVERSATION HISTORY
   // ============================================================
   
+  // Buscar últimas 20 mensagens para garantir histórico completo de ambos os lados
   const { data: messageHistory } = await supabase
     .from('messages')
     .select('body, direction, timestamp')
     .eq('restaurant_id', restaurantId)
     .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
     .order('timestamp', { ascending: false })
-    .limit(10);
+    .limit(20);
+
+  // Separar e limitar mensagens por direção
+  const inboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'inbound').slice(0, 10);
+  const outboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'outbound').slice(0, 10);
+  
+  // Combinar e ordenar por timestamp
+  const combinedMessages = [...inboundMessages, ...outboundMessages]
+    .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = 
-    (messageHistory || []).reverse().map((msg: any) => ({
-      // FIX: Bug crítico - direction era 'incoming' mas deve ser 'inbound'
+    combinedMessages.map((msg: any) => ({
       role: (msg.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: msg.body
     }));
 
-  console.log(`[Context Builder] History: ${conversationHistory.length} messages`);
+  console.log(`[Context Builder] History: ${conversationHistory.length} messages (${inboundMessages.length} user, ${outboundMessages.length} assistant)`);
 
   // ============================================================
   // LOAD ACTIVE CART
