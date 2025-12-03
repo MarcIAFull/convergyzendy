@@ -39,6 +39,7 @@ export interface ConversationContext {
     history: string;
     pendingItems: string;
     restaurantInfo: string; // Restaurant operational info (phone, address, hours, delivery fee)
+    localTime: string;      // Local time based on restaurant timezone
   };
 }
 
@@ -337,7 +338,8 @@ export async function buildConversationContext(
     customer: formatCustomerForRAG(customer, customerInsights),   // RAG: minimal status
     history: formatHistoryForPrompt(conversationHistory),
     pendingItems: formatPendingItemsForPrompt(pendingItems),
-    restaurantInfo: formatRestaurantInfoForPrompt(restaurant)     // Operational info
+    restaurantInfo: formatRestaurantInfoForPrompt(restaurant),    // Operational info
+    localTime: formatLocalTimeForPrompt(restaurant)               // Local time
   };
 
   console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
@@ -565,4 +567,78 @@ function formatRestaurantInfoForPrompt(restaurant: any): string {
 • Taxa de Entrega Fixa: €${restaurant.delivery_fee?.toFixed(2) || '0.00'}
 • Status: ${restaurant.is_open ? '🟢 Aberto' : '🔴 Fechado'}
 • Horários: ${hoursText}`;
+}
+
+/**
+ * Detect timezone based on restaurant address
+ * Defaults to Europe/Lisbon for Portuguese restaurants
+ */
+function detectTimezone(restaurant: any): string {
+  if (!restaurant?.address) return 'Europe/Lisbon';
+  
+  const address = restaurant.address.toLowerCase();
+  
+  // Portugal detection
+  if (address.includes('portugal') || address.includes('lisboa') || 
+      address.includes('porto') || address.includes('pt-') ||
+      address.includes('faro') || address.includes('coimbra')) {
+    return 'Europe/Lisbon';
+  }
+  
+  // Spain detection
+  if (address.includes('españa') || address.includes('spain') || 
+      address.includes('madrid') || address.includes('barcelona')) {
+    return 'Europe/Madrid';
+  }
+  
+  // Brazil detection
+  if (address.includes('brasil') || address.includes('brazil') ||
+      address.includes('são paulo') || address.includes('rio de janeiro')) {
+    return 'America/Sao_Paulo';
+  }
+  
+  // UK detection  
+  if (address.includes('uk') || address.includes('united kingdom') ||
+      address.includes('london') || address.includes('england')) {
+    return 'Europe/London';
+  }
+  
+  // Default to Portugal
+  return 'Europe/Lisbon';
+}
+
+/**
+ * Format local time for prompt based on restaurant timezone
+ */
+function formatLocalTimeForPrompt(restaurant: any): string {
+  const timezone = detectTimezone(restaurant);
+  const now = new Date();
+  
+  try {
+    const formatter = new Intl.DateTimeFormat('pt-PT', {
+      timeZone: timezone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+    
+    const weekday = getPart('weekday');
+    const day = getPart('day');
+    const month = getPart('month');
+    const year = getPart('year');
+    const hour = getPart('hour');
+    const minute = getPart('minute');
+    
+    return `🕐 ${weekday}, ${day} de ${month} de ${year}, ${hour}:${minute} (${timezone})`;
+  } catch (e) {
+    // Fallback to simple format
+    return `🕐 ${now.toISOString()} (UTC)`;
+  }
 }

@@ -298,6 +298,13 @@ serve(async (req) => {
 
     const orchestratorData = await orchestratorResponse.json();
     
+    // Track Orchestrator tokens
+    let orchestratorTokens = 0;
+    if (orchestratorData?.usage) {
+      orchestratorTokens = orchestratorData.usage.total_tokens || 0;
+      console.log(`[Orchestrator] Tokens used: ${orchestratorTokens} (prompt: ${orchestratorData.usage.prompt_tokens}, completion: ${orchestratorData.usage.completion_tokens})`);
+    }
+    
     // Safety check for empty or malformed response
     const rawContent = orchestratorData?.choices?.[0]?.message?.content;
     console.log('[Orchestrator] Raw response content:', rawContent);
@@ -434,6 +441,9 @@ serve(async (req) => {
         // Restaurant operational info (phone, address, hours, delivery fee)
         restaurant_info: formatted.restaurantInfo,
         
+        // Local time based on restaurant timezone
+        local_time: formatted.localTime,
+        
         // Menu (RAG)
         menu_products: formatted.menu,
         menu_categories: menuCategories,
@@ -464,7 +474,7 @@ serve(async (req) => {
       
       // Log which variables were applied
       console.log('[Main AI] ✅ Template variables applied:');
-      console.log('[Main AI]   - restaurant_name, user_message, restaurant_info');
+      console.log('[Main AI]   - restaurant_name, user_message, restaurant_info, local_time');
       console.log('[Main AI]   - menu_products, menu_categories, menu_url');
       console.log('[Main AI]   - cart_summary, current_state, user_intent, target_state, pending_items');
       console.log('[Main AI]   - customer_info, conversation_history');
@@ -520,6 +530,7 @@ serve(async (req) => {
     let allToolResults: any[] = [];
     const MAX_ITERATIONS = 5; // Prevent infinite loops
     let iterations = 0;
+    let totalTokensUsed = orchestratorTokens; // Start with Orchestrator tokens
     
     // State management variables
     // FIX: Forçar transição de estado baseado no target_state do Orchestrator
@@ -578,6 +589,12 @@ serve(async (req) => {
       const choice = aiData.choices[0];
       const assistantMessage = choice.message;
       const finishReason = choice.finish_reason;
+      
+      // Track token usage from this iteration
+      if (aiData.usage) {
+        totalTokensUsed += aiData.usage.total_tokens || 0;
+        console.log(`[Iteration ${iterations}] Tokens used: ${aiData.usage.total_tokens} (prompt: ${aiData.usage.prompt_tokens}, completion: ${aiData.usage.completion_tokens})`);
+      }
       
       console.log(`[Iteration ${iterations}] Finish reason: ${finishReason}`);
       console.log(`[Iteration ${iterations}] Has tool_calls: ${!!assistantMessage.tool_calls}`);
@@ -955,7 +972,7 @@ serve(async (req) => {
       interactionLog.state_after = newState;
       interactionLog.final_response = finalResponse;
       interactionLog.processing_time_ms = processingTime;
-      interactionLog.tokens_used = null; // Not tracking tokens currently
+      interactionLog.tokens_used = totalTokensUsed > 0 ? totalTokensUsed : null;
       interactionLog.has_errors = interactionLog.errors.length > 0;
       
       await supabase.from('ai_interaction_logs').insert(interactionLog);
@@ -971,6 +988,7 @@ serve(async (req) => {
     console.log(`[Summary] State transition: ${currentState} → ${newState}`);
     console.log(`[Summary] Pending items: ${pendingItems.length} items`);
     console.log(`[Summary] Processing time: ${processingTime} ms`);
+    console.log(`[Summary] Total tokens used: ${totalTokensUsed}`);
     console.log(`[Summary] ===============================================\n`);
 
     return new Response(
