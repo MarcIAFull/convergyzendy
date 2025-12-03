@@ -306,7 +306,34 @@ serve(async (req) => {
     }
 
     const orchestratorData = await orchestratorResponse.json();
-    const decision = JSON.parse(orchestratorData.choices[0].message.content);
+    
+    // Safety check for empty or malformed response
+    const rawContent = orchestratorData?.choices?.[0]?.message?.content;
+    console.log('[Orchestrator] Raw response content:', rawContent);
+    
+    let decision: { intent: string; target_state: string; confidence: number; reasoning: string };
+    
+    if (!rawContent || rawContent.trim() === '') {
+      console.error('[Orchestrator] Empty response from model, using default intent');
+      decision = {
+        intent: 'unclear',
+        target_state: currentState || 'idle',
+        confidence: 0,
+        reasoning: 'Model returned empty response'
+      };
+    } else {
+      try {
+        decision = JSON.parse(rawContent);
+      } catch (parseError) {
+        console.error('[Orchestrator] JSON parse error:', parseError, 'Content:', rawContent);
+        decision = {
+          intent: 'unclear',
+          target_state: currentState || 'idle',
+          confidence: 0,
+          reasoning: 'Failed to parse model response'
+        };
+      }
+    }
     
     console.log('[Orchestrator] Intent Classification:', JSON.stringify(decision, null, 2));
     console.log(`[Orchestrator] → Intent: ${decision.intent}`);
