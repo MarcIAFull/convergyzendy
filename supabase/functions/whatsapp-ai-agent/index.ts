@@ -1128,7 +1128,8 @@ async function executeToolCall(
             price: r.product.price,
             category: r.product.category,
             description: r.product.description,
-            similarity: r.similarity
+            similarity: r.similarity,
+            addons: r.product.addons || []
           }))
         }
       };
@@ -1141,6 +1142,34 @@ async function executeToolCall(
       if (!product) {
         console.error(`[Tool] Product not found: ${product_id}`);
         return { output: { success: false, error: 'Produto não encontrado' } };
+      }
+      
+      // CRITICAL: Validate addon_ids belong to this product
+      let validatedAddons: any[] = [];
+      let invalidAddons: string[] = [];
+      
+      if (addon_ids && addon_ids.length > 0) {
+        // Fetch addons that belong to this product
+        const { data: productAddons } = await supabase
+          .from('addons')
+          .select('id, name, price')
+          .eq('product_id', product_id);
+        
+        const validAddonIds = new Set((productAddons || []).map((a: { id: string }) => a.id));
+        
+        for (const addonId of addon_ids) {
+          if (validAddonIds.has(addonId)) {
+            const addon = productAddons?.find((a: { id: string }) => a.id === addonId);
+            validatedAddons.push(addon);
+          } else {
+            invalidAddons.push(addonId);
+            console.warn(`[Tool] ⚠️ Invalid addon ${addonId} for product ${product_id}`);
+          }
+        }
+        
+        if (invalidAddons.length > 0) {
+          console.error(`[Tool] ❌ Rejected ${invalidAddons.length} invalid addons: ${invalidAddons.join(', ')}`);
+        }
       }
       
       // Create cart if needed
@@ -1177,19 +1206,23 @@ async function executeToolCall(
       
       console.log(`[Tool] ✅ Added ${quantity}x ${product.name} to cart`);
       
-      // Add addons if specified
-      if (addon_ids && addon_ids.length > 0) {
-        const addonInserts = addon_ids.map((addon_id: string) => ({
+      // Add ONLY validated addons
+      if (validatedAddons.length > 0) {
+        const addonInserts = validatedAddons.map((addon: any) => ({
           cart_item_id: cartItem.id,
-          addon_id
+          addon_id: addon.id
         }));
         
         await supabase.from('cart_item_addons').insert(addonInserts);
-        console.log(`[Tool] ✅ Added ${addon_ids.length} addons`);
+        console.log(`[Tool] ✅ Added ${validatedAddons.length} validated addons: ${validatedAddons.map(a => a.name).join(', ')}`);
       }
       
       stateUpdate.newState = 'confirming_item';
       stateUpdate.cartModified = true;
+      
+      // Calculate total with addons
+      const addonsTotal = validatedAddons.reduce((sum, a) => sum + (a.price || 0), 0);
+      const itemTotal = (product.price + addonsTotal) * quantity;
       
       return {
         output: {
@@ -1197,7 +1230,10 @@ async function executeToolCall(
           message: `Adicionei ${quantity}x ${product.name} ao carrinho!`,
           product_name: product.name,
           quantity,
-          price: product.price
+          price: product.price,
+          addons_added: validatedAddons.map(a => ({ name: a.name, price: a.price })),
+          addons_rejected: invalidAddons.length > 0 ? invalidAddons : undefined,
+          item_total: itemTotal
         },
         stateUpdate
       };
@@ -1285,6 +1321,66 @@ async function executeToolCall(
           success: true,
           menu_url: menuUrl,
           message: `Acesse nosso menu completo: ${menuUrl}`
+        }
+      };
+    }
+    
+    case 'get_product_addons': {
+      const { product_id } = args;
+      
+      if (!product_id) {
+        return {
+          output: {
+            success: false,
+            error: 'ID do produto não fornecido'
+          }
+        };
+      }
+      
+      const product = availableProducts.find(p => p.id === product_id);
+      if (!product) {
+        return {
+          output: {
+            success: false,
+            error: 'Produto não encontrado'
+          }
+        };
+      }
+      
+      // Fetch addons from database
+      const { data: addons, error: addonsError } = await supabase
+        .from('addons')
+        .select('id, name, price')
+        .eq('product_id', product_id);
+      
+      if (addonsError) {
+        console.error('[Tool] Error fetching addons:', addonsError);
+        return {
+          output: {
+            success: false,
+            error: 'Erro ao buscar complementos'
+          }
+        };
+      }
+      
+      const hasAddons = addons && addons.length > 0;
+      
+      console.log(`[Tool] 🍕 Found ${addons?.length || 0} addons for ${product.name}`);
+      
+      return {
+        output: {
+          success: true,
+          product_id,
+          product_name: product.name,
+          has_addons: hasAddons,
+          addons: (addons || []).map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            price: a.price
+          })),
+          message: hasAddons 
+            ? `${product.name} tem ${addons?.length} opção(ões) de complemento: ${addons?.map((a: any) => `${a.name} (+€${a.price.toFixed(2)})`).join(', ')}`
+            : `${product.name} não tem complementos disponíveis.`
         }
       };
     }
