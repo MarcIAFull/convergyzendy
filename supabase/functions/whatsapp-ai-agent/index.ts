@@ -530,9 +530,19 @@ serve(async (req) => {
     console.log('\n[Iterative Loop] Starting iterative function calling loop...');
     console.log(`[Iterative Loop] Initial messages count: ${messages.length} (history in system prompt only)`);
     
+    // CRITICAL FIX: Force tool usage for browse intents
+    // This prevents AI from responding "não temos" without calling search_menu
+    const shouldForceToolUse = ['browse_product', 'browse_menu'].includes(intent) && tools.length > 0 && iterations === 0;
+    if (shouldForceToolUse) {
+      console.log(`[Tool Forcing] ⚠️ Intent is ${intent} - forcing tool_choice: required for first iteration`);
+    }
+    
     while (iterations < MAX_ITERATIONS) {
       iterations++;
       console.log(`\n[Iteration ${iterations}] ========== CALLING AI ==========`);
+      
+      // Only force tool use on first iteration for browse intents
+      const forceToolsThisIteration = shouldForceToolUse && iterations === 1;
       
       const conversationalModel = conversationalAgent?.model || 'gpt-4o';
       const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -545,6 +555,8 @@ serve(async (req) => {
           model: conversationalModel,
           messages,
           ...(tools.length > 0 && { tools }),
+          // Force tool_choice: required for browse intents on first iteration
+          ...(forceToolsThisIteration && { tool_choice: 'required' }),
           ...getModelParams(conversationalModel, conversationalAgent?.max_tokens || 500, conversationalAgent?.temperature),
           ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && !isNewerModel(conversationalModel) && { top_p: conversationalAgent.top_p }),
           ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && !isNewerModel(conversationalModel) && { frequency_penalty: conversationalAgent.frequency_penalty }),
@@ -652,6 +664,18 @@ serve(async (req) => {
     
     if (iterations >= MAX_ITERATIONS) {
       console.warn(`[Iterative Loop] ⚠️ Max iterations (${MAX_ITERATIONS}) reached - stopping loop`);
+    }
+    
+    // POST-RESPONSE VALIDATION: Check if browse intent didn't trigger search_menu
+    if (['browse_product', 'browse_menu'].includes(intent)) {
+      const searchMenuCalled = allToolCallsValidated.some(tc => tc.function?.name === 'search_menu');
+      if (!searchMenuCalled) {
+        console.error(`[VALIDATION ERROR] ❌ Intent was ${intent} but search_menu was NOT called!`);
+        console.error(`[VALIDATION ERROR] This indicates the AI responded without consulting the menu.`);
+        console.error(`[VALIDATION ERROR] Response given: "${finalResponse.substring(0, 100)}..."`);
+      } else {
+        console.log(`[VALIDATION] ✅ search_menu was correctly called for ${intent} intent`);
+      }
     }
     
     console.log(`\n[Iterative Loop] ========== LOOP COMPLETE ==========`);
