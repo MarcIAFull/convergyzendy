@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ChevronDown, ChevronRight, Settings2, Trash2, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Settings2, Trash2, Info, Plus } from 'lucide-react';
 import { AgentTool, AVAILABLE_TOOLS } from '@/types/agent';
 import {
   Dialog,
@@ -12,6 +12,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,13 +28,15 @@ interface CompactToolsListProps {
   onToggleTool: (toolName: string, enabled: boolean) => void;
   onUpdateTool: (toolName: string, updates: Partial<AgentTool>) => void;
   onDeleteTool: (toolName: string) => void;
+  onAddTool?: (toolName: string) => void;
 }
 
 export function CompactToolsList({ 
   tools, 
   onToggleTool, 
   onUpdateTool,
-  onDeleteTool 
+  onDeleteTool,
+  onAddTool
 }: CompactToolsListProps) {
   const [expanded, setExpanded] = useState(true);
   const [editingTool, setEditingTool] = useState<AgentTool | null>(null);
@@ -36,6 +44,11 @@ export function CompactToolsList({
   const [usageRules, setUsageRules] = useState('');
 
   const enabledCount = tools.filter(t => t.enabled).length;
+  
+  // Tools that aren't added yet
+  const availableToAdd = AVAILABLE_TOOLS.filter(
+    at => !tools.some(t => t.tool_name === at.name)
+  );
 
   const handleOpenSettings = (tool: AgentTool) => {
     setEditingTool(tool);
@@ -58,9 +71,36 @@ export function CompactToolsList({
               {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               <CardTitle>Ferramentas & Capacidades</CardTitle>
             </div>
-            <Badge variant="secondary">
-              {enabledCount} ativas
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">
+                {enabledCount} ativas
+              </Badge>
+              {onAddTool && availableToAdd.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="outline" size="sm" className="h-7">
+                      <Plus className="h-3 w-3 mr-1" />
+                      Adicionar
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <ScrollArea className="h-[300px]">
+                      {availableToAdd.map((tool) => (
+                        <DropdownMenuItem 
+                          key={tool.name}
+                          onClick={() => onAddTool(tool.name)}
+                        >
+                          <div>
+                            <div className="font-medium">{tool.label}</div>
+                            <div className="text-xs text-muted-foreground">{tool.description}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                    </ScrollArea>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
           <CardDescription>
             Ferramentas disponíveis para o agente usar durante conversas
