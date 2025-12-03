@@ -259,6 +259,17 @@ serve(async (req) => {
     console.log(`[Orchestrator] Prompt length: ${orchestratorSystemPrompt.length} characters`);
     console.log(`[Orchestrator] Prompt blocks used: ${orchestratorPromptBlocks.length}`);
 
+    // Helper function to determine correct token parameter based on model
+    const getTokenParam = (model: string, maxTokens: number) => {
+      // Models that require max_completion_tokens instead of max_tokens
+      const newModelPatterns = ['gpt-5', 'o1', 'o1-mini', 'o1-preview', 'o3'];
+      const needsNewParam = newModelPatterns.some(pattern => model.toLowerCase().includes(pattern));
+      return needsNewParam 
+        ? { max_completion_tokens: maxTokens }
+        : { max_tokens: maxTokens };
+    };
+
+    const orchestratorModel = orchestratorAgent?.model || 'gpt-4o';
     const orchestratorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -266,12 +277,12 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: orchestratorAgent?.model || 'gpt-4o',
+        model: orchestratorModel,
         messages: [
           { role: 'system', content: orchestratorSystemPrompt },
           { role: 'user', content: `Classifique esta mensagem do cliente: "${rawMessage}"` }
         ],
-        max_tokens: orchestratorAgent?.max_tokens || 500,
+        ...getTokenParam(orchestratorModel, orchestratorAgent?.max_tokens || 500),
         temperature: orchestratorAgent?.temperature ?? 1.0,
         ...(orchestratorAgent?.top_p !== null && orchestratorAgent?.top_p !== undefined && { top_p: orchestratorAgent.top_p }),
         ...(orchestratorAgent?.frequency_penalty !== null && orchestratorAgent?.frequency_penalty !== undefined && { frequency_penalty: orchestratorAgent.frequency_penalty }),
@@ -513,6 +524,7 @@ serve(async (req) => {
       iterations++;
       console.log(`\n[Iteration ${iterations}] ========== CALLING AI ==========`);
       
+      const conversationalModel = conversationalAgent?.model || 'gpt-4o';
       const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -520,10 +532,10 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: conversationalAgent?.model || 'gpt-4o',
+          model: conversationalModel,
           messages,
           ...(tools.length > 0 && { tools }),
-          max_tokens: conversationalAgent?.max_tokens || 500,
+          ...getTokenParam(conversationalModel, conversationalAgent?.max_tokens || 500),
           temperature: conversationalAgent?.temperature ?? 1.0,
           ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && { top_p: conversationalAgent.top_p }),
           ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && { frequency_penalty: conversationalAgent.frequency_penalty }),
