@@ -638,7 +638,8 @@ serve(async (req) => {
             newState,
             newMetadata,
             pendingItems,
-            restaurant
+            restaurant,
+            menuUrl: context.menuUrl
           }
         );
         
@@ -1030,6 +1031,7 @@ interface ToolExecutionContext {
   newMetadata: any;
   pendingItems: any[];
   restaurant: any;
+  menuUrl: string;
 }
 
 interface ToolExecutionResult {
@@ -1053,7 +1055,7 @@ async function executeToolCall(
   const { 
     restaurantId, customerPhone, availableProducts, activeCart, 
     cartItems, rawMessage, intent, confidence, newState, newMetadata, 
-    pendingItems, restaurant 
+    pendingItems, restaurant, menuUrl 
   } = ctx;
   
   let currentActiveCart = activeCart;
@@ -1262,6 +1264,27 @@ async function executeToolCall(
           message: cartItems.length > 0 
             ? `Carrinho: ${cartItems.length} items, Total: €${total.toFixed(2)}`
             : 'Carrinho vazio'
+        }
+      };
+    }
+    
+    case 'send_menu_link': {
+      console.log(`[Tool] 🔗 Sending menu link: ${menuUrl}`);
+      
+      if (!menuUrl) {
+        return {
+          output: {
+            success: false,
+            error: 'Menu público não está configurado para este restaurante.'
+          }
+        };
+      }
+      
+      return {
+        output: {
+          success: true,
+          menu_url: menuUrl,
+          message: `Acesse nosso menu completo: ${menuUrl}`
         }
       };
     }

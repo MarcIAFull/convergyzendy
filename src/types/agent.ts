@@ -192,6 +192,18 @@ export const AVAILABLE_TOOLS = [
     label: 'Confirm Pending Items',
     description: 'Move all pending items to cart',
     parameters: {}
+  },
+  {
+    name: 'get_customer_history',
+    label: 'Get Customer History',
+    description: 'Retrieve customer order history and preferences for personalization',
+    parameters: {}
+  },
+  {
+    name: 'send_menu_link',
+    label: 'Send Menu Link',
+    description: 'Send the public menu URL to the customer',
+    parameters: {}
   }
 ] as const;
 

@@ -283,6 +283,19 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     }
   },
   
+  // Tool to send menu link to customer
+  send_menu_link: {
+    type: "function",
+    function: {
+      name: "send_menu_link",
+      description: "Send the restaurant's public menu link to the customer. Use when customer asks to see the menu online, wants a link to browse products, or would benefit from seeing the digital menu with images and prices.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  
   // Alias for backwards compatibility with database entries using old name
   set_delivery_address: {
     type: "function",
