@@ -250,6 +250,41 @@ export default function AIConfiguration() {
     }
   };
 
+  const handleAddTool = async (toolName: string) => {
+    if (!selectedAgentId) return;
+    
+    try {
+      const maxOrdering = tools.reduce((max, t) => Math.max(max, t.ordering || 0), 0);
+      
+      const { data, error } = await supabase
+        .from('agent_tools')
+        .insert({
+          agent_id: selectedAgentId,
+          tool_name: toolName,
+          enabled: true,
+          ordering: maxOrdering + 1
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setTools(prev => [...prev, data as AgentTool]);
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Ferramenta adicionada'
+      });
+    } catch (error) {
+      console.error('Error adding tool:', error);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao adicionar ferramenta',
+        variant: 'destructive'
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -339,6 +374,7 @@ export default function AIConfiguration() {
               onToggleTool={handleToggleTool}
               onUpdateTool={handleUpdateTool}
               onDeleteTool={handleDeleteTool}
+              onAddTool={handleAddTool}
             />
 
             {/* Orchestration Rules */}
