@@ -126,14 +126,39 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = inputMessage;
     setInputMessage("");
 
     try {
+      // CRITICAL FIX: Save inbound message to database BEFORE calling AI
+      // This ensures conversation_history includes customer messages
+      const { data: restaurantData } = await supabase
+        .from('restaurants')
+        .select('phone')
+        .eq('id', restaurantId)
+        .single();
+      
+      const restaurantPhone = restaurantData?.phone || 'restaurant';
+      
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          restaurant_id: restaurantId,
+          from_number: testPhone,
+          to_number: restaurantPhone,
+          body: messageToSend,
+          direction: 'inbound'
+        });
+
+      if (insertError) {
+        console.warn('[AITestChatSimulator] Failed to save inbound message:', insertError);
+      }
+
       const { data, error } = await supabase.functions.invoke('whatsapp-ai-agent', {
         body: {
           restaurantId,
           customerPhone: testPhone,
-          messageBody: inputMessage
+          messageBody: messageToSend
         }
       });
 
