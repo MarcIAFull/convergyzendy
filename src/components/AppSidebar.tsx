@@ -19,7 +19,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  LayoutDashboard,
   Package,
   MapPin,
   Users,
@@ -67,8 +66,7 @@ export function AppSidebar() {
   const isActive = (path: string) => location.pathname === path;
 
   const operationsRoutes = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, badge: unreadOrders },
-    { title: "Pedidos", url: "/orders", icon: ClipboardList },
+    { title: "Pedidos", url: "/dashboard", icon: ClipboardList, badge: unreadOrders },
     { title: "Menu", url: "/menu", icon: Package },
     { title: "Zonas de Entrega", url: "/delivery-zones", icon: MapPin },
     { title: "Clientes", url: "/customers", icon: Users },
