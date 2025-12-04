@@ -9,6 +9,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
+import Orders from "@/pages/Orders";
 import MenuManagement from "@/pages/MenuManagement";
 import OrderDetail from "@/pages/OrderDetail";
 import Analytics from "@/pages/Analytics";
@@ -71,6 +72,7 @@ const App = () => (
                 >
                   {/* Operations */}
                   <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/orders" element={<Orders />} />
                   <Route path="/menu" element={<MenuManagement />} />
                   <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />
