@@ -183,8 +183,11 @@ serve(async (req) => {
       throw new Error(`Error fetching zones: ${zonesError.message}`);
     }
 
+    console.log(`[Zones] Found ${zones?.length || 0} active delivery zones`);
+
     if (!zones || zones.length === 0) {
       // No zones configured, use simple radius check with default delivery fee
+      console.log('[Zones] No zones configured, using default 10km radius');
       const { data: restaurantData } = await supabase
         .from('restaurants')
         .select('delivery_fee')
@@ -194,6 +197,7 @@ serve(async (req) => {
       const maxDistance = 10; // Default 10km radius
       
       if (distance > maxDistance) {
+        console.log(`[Zones] ❌ Distance ${distance.toFixed(2)}km exceeds default max ${maxDistance}km`);
         return new Response(
           JSON.stringify({
             valid: false,
@@ -206,6 +210,7 @@ serve(async (req) => {
 
       const deliveryFee = restaurantData?.delivery_fee || 0;
       const estimatedTime = estimateDeliveryTime(distance);
+      console.log(`[Zones] ✅ Within default zone - Fee: €${deliveryFee}, Time: ${estimatedTime}min`);
 
       return new Response(
         JSON.stringify({
@@ -220,28 +225,42 @@ serve(async (req) => {
 
     // Check which zone contains the delivery address
     let matchedZone: DeliveryZone | null = null;
+    console.log(`[Zones] Checking ${zones.length} zones for point (${lat}, ${lng})`);
 
     for (const zone of zones) {
       const coords = zone.coordinates;
+      console.log(`[Zones] Checking zone "${zone.name}" - Type: ${coords.type}`);
 
       // Check if it's a circle zone
       if (coords.type === 'circle' && coords.center && coords.radius) {
+        const distanceFromZoneCenter = calculateDistance(lat, lng, coords.center.lat, coords.center.lng);
+        console.log(`[Zones] Circle zone - Center: (${coords.center.lat}, ${coords.center.lng}), Radius: ${coords.radius}km`);
+        console.log(`[Zones] Distance from zone center: ${distanceFromZoneCenter.toFixed(2)}km`);
+        
         if (isPointInCircle(lat, lng, coords.center.lat, coords.center.lng, coords.radius)) {
+          console.log(`[Zones] ✅ Point is INSIDE circle zone "${zone.name}"`);
           matchedZone = zone;
           break;
+        } else {
+          console.log(`[Zones] ❌ Point is OUTSIDE circle zone "${zone.name}" (${distanceFromZoneCenter.toFixed(2)}km > ${coords.radius}km)`);
         }
       }
 
       // Check if it's a polygon zone
       if (coords.type === 'polygon' && coords.points && Array.isArray(coords.points)) {
+        console.log(`[Zones] Polygon zone - ${coords.points.length} points`);
         if (isPointInPolygon(lat, lng, coords.points)) {
+          console.log(`[Zones] ✅ Point is INSIDE polygon zone "${zone.name}"`);
           matchedZone = zone;
           break;
+        } else {
+          console.log(`[Zones] ❌ Point is OUTSIDE polygon zone "${zone.name}"`);
         }
       }
     }
 
     if (!matchedZone) {
+      console.log(`[Zones] ❌ No matching zone found for address at (${lat}, ${lng})`);
       return new Response(
         JSON.stringify({
           valid: false,
