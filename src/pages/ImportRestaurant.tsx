@@ -67,8 +67,9 @@ export default function ImportRestaurant() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type !== 'application/pdf') {
-        toast.error('Por favor, selecione apenas ficheiros PDF');
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast.error('Por favor, selecione apenas imagens (PNG, JPG, WEBP)');
         return;
       }
       setSelectedFile(file);
@@ -76,9 +77,9 @@ export default function ImportRestaurant() {
     }
   };
 
-  const extractMenuFromPDF = async () => {
+  const extractMenuFromImage = async () => {
     if (!selectedFile) {
-      toast.error('Selecione um ficheiro PDF primeiro');
+      toast.error('Selecione uma imagem primeiro');
       return;
     }
 
@@ -86,7 +87,6 @@ export default function ImportRestaurant() {
     setError(null);
 
     try {
-      // Convert file to base64
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onload = () => {
@@ -102,6 +102,7 @@ export default function ImportRestaurant() {
         body: {
           document_base64: base64Content,
           file_name: selectedFile.name,
+          file_type: selectedFile.type,
           restaurant_name: form.name || 'Restaurante',
         },
       });
@@ -113,8 +114,8 @@ export default function ImportRestaurant() {
       toast.success('Menu extraído com sucesso!');
     } catch (err: any) {
       console.error('Erro ao extrair menu:', err);
-      setError(err.message || 'Erro ao extrair menu do PDF');
-      toast.error('Erro ao extrair menu do PDF');
+      setError(err.message || 'Erro ao extrair menu da imagem');
+      toast.error('Erro ao extrair menu da imagem');
     } finally {
       setExtracting(false);
     }
@@ -127,7 +128,7 @@ export default function ImportRestaurant() {
     }
 
     if (!extractedMenu) {
-      toast.error('Extraia o menu do PDF primeiro');
+      toast.error('Extraia o menu da imagem primeiro');
       return;
     }
 
@@ -137,7 +138,6 @@ export default function ImportRestaurant() {
     setProgress(0);
 
     try {
-      // 1. Create restaurant
       setStatus('Criando restaurante...');
       await createRestaurant({
         name: form.name,
@@ -164,7 +164,6 @@ export default function ImportRestaurant() {
       const restaurantId = restaurant.id;
       setProgress(10);
 
-      // 2. Create public menu settings
       setStatus('Configurando menu público...');
       const slug = form.name.toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -180,7 +179,6 @@ export default function ImportRestaurant() {
       });
       setProgress(20);
 
-      // 3. Create categories
       setStatus('Criando categorias...');
       const categoriesData = extractedMenu.categories.map((cat, index) => ({
         name: cat.name,
@@ -196,7 +194,6 @@ export default function ImportRestaurant() {
       if (!createdCategories) throw new Error('Falha ao criar categorias');
       setProgress(40);
 
-      // 4. Create products
       setStatus('Criando produtos...');
       const categoryMap = Object.fromEntries(createdCategories.map(c => [c.name, c.id]));
       
@@ -229,7 +226,6 @@ export default function ImportRestaurant() {
       if (!createdProducts) throw new Error('Falha ao criar produtos');
       setProgress(60);
 
-      // 5. Create addons
       setStatus('Criando addons...');
       const addonsToInsert: any[] = [];
       
@@ -255,7 +251,6 @@ export default function ImportRestaurant() {
       }
       setProgress(80);
 
-      // 6. Configure AI Settings
       setStatus('Configurando IA...');
       await supabase.from('restaurant_ai_settings').insert({
         restaurant_id: restaurantId,
@@ -291,7 +286,6 @@ export default function ImportRestaurant() {
 
   return (
     <div className="container max-w-3xl mx-auto py-10 space-y-6">
-      {/* Restaurant Info Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -299,7 +293,7 @@ export default function ImportRestaurant() {
             <div>
               <CardTitle>Importar Restaurante</CardTitle>
               <CardDescription>
-                Preencha as informações básicas e faça upload do menu em PDF
+                Preencha as informações básicas e faça upload de uma imagem do menu
               </CardDescription>
             </div>
           </div>
@@ -307,7 +301,6 @@ export default function ImportRestaurant() {
         <CardContent className="space-y-6">
           {!loading && !success && (
             <>
-              {/* Basic Info Form */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome do Restaurante *</Label>
@@ -349,9 +342,13 @@ export default function ImportRestaurant() {
                 </div>
               </div>
 
-              {/* PDF Upload Section */}
               <div className="border-t pt-6 space-y-4">
-                <Label>Menu em PDF *</Label>
+                <div>
+                  <Label>Imagem do Menu *</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Faça upload de uma foto/screenshot do cardápio
+                  </p>
+                </div>
                 <div 
                   className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
@@ -359,7 +356,7 @@ export default function ImportRestaurant() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
                     className="hidden"
                     onChange={handleFileSelect}
                   />
@@ -377,10 +374,10 @@ export default function ImportRestaurant() {
                     <div className="space-y-2">
                       <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
                       <p className="text-sm text-muted-foreground">
-                        Clique para selecionar ou arraste o PDF do menu
+                        Clique para selecionar uma imagem do menu
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Apenas ficheiros PDF são aceites
+                        Formatos aceites: PNG, JPG, WEBP
                       </p>
                     </div>
                   )}
@@ -388,7 +385,7 @@ export default function ImportRestaurant() {
 
                 {selectedFile && !extractedMenu && (
                   <Button 
-                    onClick={extractMenuFromPDF} 
+                    onClick={extractMenuFromImage} 
                     disabled={extracting}
                     className="w-full"
                   >
@@ -400,7 +397,7 @@ export default function ImportRestaurant() {
                     ) : (
                       <>
                         <FileText className="h-4 w-4 mr-2" />
-                        Extrair Menu do PDF
+                        Extrair Menu da Imagem
                       </>
                     )}
                   </Button>
@@ -417,7 +414,6 @@ export default function ImportRestaurant() {
                 )}
               </div>
 
-              {/* Import Button */}
               <div className="border-t pt-6">
                 <Button 
                   onClick={importRestaurant} 

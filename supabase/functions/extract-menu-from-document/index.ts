@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const EXTRACTION_PROMPT = `Você é um especialista em extração de dados de menus de restaurantes.
-Analise o documento PDF fornecido e extraia TODOS os produtos, categorias e preços.
+Analise a imagem do menu e extraia TODOS os produtos, categorias e preços visíveis.
 
 REGRAS IMPORTANTES:
 1. Extraia TODAS as categorias encontradas no menu
@@ -39,7 +39,7 @@ Formato de resposta JSON:
     }
   ],
   "ai_settings": {
-    "greeting_message": "Mensagem de boas-vindas sugerida",
+    "greeting_message": "Mensagem de boas-vindas sugerida baseada no estilo do restaurante",
     "business_rules": "Regras de negócio identificadas (horários, pagamentos, etc)",
     "special_offers_info": "Promoções ou ofertas especiais identificadas",
     "custom_instructions": "Instruções especiais para o AI (produto estrela, upsells sugeridos)"
@@ -52,7 +52,7 @@ serve(async (req) => {
   }
 
   try {
-    const { document_base64, file_name, restaurant_name } = await req.json();
+    const { document_base64, file_name, file_type, restaurant_name } = await req.json();
 
     if (!document_base64) {
       return new Response(
@@ -70,9 +70,14 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Extracting menu from PDF: ${file_name} for restaurant: ${restaurant_name}`);
+    // Detect MIME type
+    let mimeType = file_type || 'image/png';
+    if (!mimeType.startsWith('image/')) {
+      mimeType = 'image/png';
+    }
 
-    // Use GPT-4o with vision to analyze the PDF
+    console.log(`Extracting menu from image: ${file_name} (${mimeType}) for restaurant: ${restaurant_name}`);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -91,12 +96,12 @@ serve(async (req) => {
             content: [
               {
                 type: 'text',
-                text: `Extraia o menu completo deste documento PDF do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
+                text: `Extraia o menu completo desta imagem do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
               },
               {
                 type: 'image_url',
                 image_url: {
-                  url: `data:application/pdf;base64,${document_base64}`,
+                  url: `data:${mimeType};base64,${document_base64}`,
                 },
               },
             ],
@@ -110,82 +115,6 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('OpenAI API error:', response.status, errorText);
-      
-      // If PDF not supported directly, try converting to text extraction approach
-      if (errorText.includes('Could not process') || errorText.includes('unsupported')) {
-        console.log('PDF direct processing not supported, trying alternative approach...');
-        
-        // Alternative: Use base model to process text extracted from PDF
-        const altResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: EXTRACTION_PROMPT,
-              },
-              {
-                role: 'user',
-                content: `O documento PDF foi enviado mas não pode ser processado diretamente. 
-                
-Por favor, gere um menu de exemplo estruturado para o restaurante "${restaurant_name}" com base em um restaurante típico português/brasileiro.
-
-Inclua:
-- 5-8 categorias típicas (Entradas, Pratos Principais, Pizzas, Hambúrgueres, Sobremesas, Bebidas, etc)
-- 3-5 produtos por categoria com preços realistas
-- Addons apropriados (bordas para pizzas, extras, etc)
-- Configurações de AI sugeridas
-
-Retorne apenas JSON válido.`,
-              },
-            ],
-            max_tokens: 4096,
-            temperature: 0.3,
-          }),
-        });
-
-        if (!altResponse.ok) {
-          throw new Error('Falha ao processar documento');
-        }
-
-        const altData = await altResponse.json();
-        const altContent = altData.choices[0]?.message?.content;
-        
-        if (!altContent) {
-          throw new Error('Resposta vazia do modelo');
-        }
-
-        // Parse JSON from response
-        let menu;
-        try {
-          const jsonMatch = altContent.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            menu = JSON.parse(jsonMatch[0]);
-          } else {
-            menu = JSON.parse(altContent);
-          }
-        } catch (parseError) {
-          console.error('JSON parse error:', parseError, 'Content:', altContent);
-          throw new Error('Formato de resposta inválido');
-        }
-
-        console.log(`Menu extracted (fallback): ${menu.categories?.length || 0} categories`);
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            menu,
-            note: 'Menu gerado como exemplo - edite conforme necessário'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
       throw new Error(`OpenAI API error: ${response.status}`);
     }
 
@@ -199,7 +128,6 @@ Retorne apenas JSON válido.`,
     // Parse JSON from response
     let menu;
     try {
-      // Try to extract JSON from the response (in case there's extra text)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         menu = JSON.parse(jsonMatch[0]);
