@@ -1,15 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useOrderStore } from '@/stores/orderStore';
-import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -26,34 +22,27 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { OrderWithDetails } from '@/types/database';
-import { Search, Clock, AlertCircle, Eye, Phone, Package, ShoppingBag } from 'lucide-react';
+import { AlertCircle, Eye, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export default function Orders() {
-  const { restaurant } = useRestaurantGuard();
-  const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
+interface OrdersTableProps {
+  orders: OrderWithDetails[];
+  onStatusChange: (orderId: string, newStatus: OrderWithDetails['status']) => Promise<void>;
+  searchQuery: string;
+}
+
+export function OrdersTable({ orders, onStatusChange, searchQuery }: OrdersTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  useEffect(() => {
-    if (restaurant?.id) {
-      fetchOrders(restaurant.id);
-      const unsubscribe = subscribeToOrders(restaurant.id);
-      return () => unsubscribe();
-    }
-  }, [restaurant?.id, fetchOrders, subscribeToOrders]);
 
   const filterOrders = (ordersList: OrderWithDetails[]) => {
     let filtered = ordersList;
     
-    // Filter by status
     if (statusFilter !== 'all') {
       filtered = filtered.filter(order => order.status === statusFilter);
     }
     
-    // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(order => 
@@ -89,10 +78,6 @@ export default function Orders() {
     return colors[status] || 'bg-muted text-muted-foreground';
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: OrderWithDetails['status']) => {
-    await updateOrderStatus(orderId, newStatus);
-  };
-
   const openWhatsApp = (phone: string) => {
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
   };
@@ -104,123 +89,24 @@ export default function Orders() {
 
   const filteredOrders = filterOrders(orders);
 
-  // Statistics
-  const stats = {
-    total: orders.length,
-    new: orders.filter(o => o.status === 'new').length,
-    preparing: orders.filter(o => o.status === 'preparing').length,
-    outForDelivery: orders.filter(o => o.status === 'out_for_delivery').length,
-    completed: orders.filter(o => o.status === 'completed').length,
-  };
-
-  if (loading && orders.length === 0) {
-    return (
-      <div className="container mx-auto p-6">
-        <Skeleton className="h-10 w-48 mb-6" />
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
-        <Skeleton className="h-96" />
-      </div>
-    );
-  }
-
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-foreground">Gestão de Pedidos</h1>
+    <>
+      <div className="mb-4">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Filtrar por status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="new">Novos</SelectItem>
+            <SelectItem value="preparing">Preparando</SelectItem>
+            <SelectItem value="out_for_delivery">Em Entrega</SelectItem>
+            <SelectItem value="completed">Concluídos</SelectItem>
+            <SelectItem value="cancelled">Cancelados</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <ShoppingBag className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Novos</p>
-                <p className="text-2xl font-bold">{stats.new}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-warning/10">
-                <Clock className="h-5 w-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Preparando</p>
-                <p className="text-2xl font-bold">{stats.preparing}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-info/10">
-                <Package className="h-5 w-5 text-info" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Em Entrega</p>
-                <p className="text-2xl font-bold">{stats.outForDelivery}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-success/10">
-                <Package className="h-5 w-5 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Concluídos</p>
-                <p className="text-2xl font-bold">{stats.completed}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar por ID, telefone, endereço ou cliente..." 
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Filtrar por status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="new">Novos</SelectItem>
-                <SelectItem value="preparing">Preparando</SelectItem>
-                <SelectItem value="out_for_delivery">Em Entrega</SelectItem>
-                <SelectItem value="completed">Concluídos</SelectItem>
-                <SelectItem value="cancelled">Cancelados</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orders Table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
@@ -267,19 +153,17 @@ export default function Orders() {
         </CardContent>
       </Card>
 
-      {/* Order Details Drawer */}
       <OrderDetailsDrawer
         order={selectedOrder}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
-        onStatusChange={handleStatusChange}
+        onStatusChange={onStatusChange}
         onContactCustomer={openWhatsApp}
       />
-    </div>
+    </>
   );
 }
 
-// Separate component for table row to use hooks
 function OrderTableRow({ 
   order, 
   onView, 
