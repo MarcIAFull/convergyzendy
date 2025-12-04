@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const EXTRACTION_PROMPT = `Você é um especialista em extração de dados de menus de restaurantes.
-Analise a imagem do menu e extraia TODOS os produtos, categorias e preços visíveis.
+Analise o documento do menu e extraia TODOS os produtos, categorias e preços visíveis.
 
 REGRAS IMPORTANTES:
 1. Extraia TODAS as categorias encontradas no menu
@@ -46,6 +46,110 @@ Formato de resposta JSON:
   }
 }`;
 
+async function extractFromImage(document_base64: string, file_type: string, restaurant_name: string): Promise<any> {
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!openaiApiKey) {
+    throw new Error('OPENAI_API_KEY not configured');
+  }
+
+  let mimeType = file_type || 'image/png';
+  if (!mimeType.startsWith('image/')) {
+    mimeType = 'image/png';
+  }
+
+  console.log(`[Image] Extracting menu from image for restaurant: ${restaurant_name}`);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: EXTRACTION_PROMPT,
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Extraia o menu completo desta imagem do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${mimeType};base64,${document_base64}`,
+              },
+            },
+          ],
+        },
+      ],
+      max_tokens: 4096,
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Image] OpenAI API error:', response.status, errorText);
+    throw new Error(`OpenAI API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content;
+}
+
+async function extractFromPDF(document_base64: string, file_name: string, restaurant_name: string): Promise<any> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!lovableApiKey) {
+    throw new Error('LOVABLE_API_KEY not configured');
+  }
+
+  console.log(`[PDF] Extracting menu from PDF: ${file_name} for restaurant: ${restaurant_name}`);
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${lovableApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `${EXTRACTION_PROMPT}\n\nExtraia o menu completo deste PDF do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
+            },
+            {
+              type: 'file',
+              file: {
+                filename: file_name || 'menu.pdf',
+                data: document_base64,
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[PDF] Lovable AI error:', response.status, errorText);
+    throw new Error(`Lovable AI error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -61,65 +165,16 @@ serve(async (req) => {
       );
     }
 
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ success: false, error: 'API key não configurada' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const isPDF = file_type === 'application/pdf';
+    console.log(`Processing ${isPDF ? 'PDF' : 'Image'}: ${file_name} (${file_type})`);
+
+    let content: string;
+    
+    if (isPDF) {
+      content = await extractFromPDF(document_base64, file_name, restaurant_name);
+    } else {
+      content = await extractFromImage(document_base64, file_type, restaurant_name);
     }
-
-    // Detect MIME type
-    let mimeType = file_type || 'image/png';
-    if (!mimeType.startsWith('image/')) {
-      mimeType = 'image/png';
-    }
-
-    console.log(`Extracting menu from image: ${file_name} (${mimeType}) for restaurant: ${restaurant_name}`);
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: EXTRACTION_PROMPT,
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Extraia o menu completo desta imagem do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${document_base64}`,
-                },
-              },
-            ],
-          },
-        ],
-        max_tokens: 4096,
-        temperature: 0.1,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
 
     if (!content) {
       throw new Error('Resposta vazia do modelo');

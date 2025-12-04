@@ -64,16 +64,26 @@ export default function ImportRestaurant() {
   const { createRestaurant, restaurant } = useRestaurantStore();
   const navigate = useNavigate();
 
+  const [fileType, setFileType] = useState<'image' | 'pdf' | null>(null);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-      if (!validTypes.includes(file.type)) {
-        toast.error('Por favor, selecione apenas imagens (PNG, JPG, WEBP)');
+      const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+      const pdfType = 'application/pdf';
+      
+      if (imageTypes.includes(file.type)) {
+        setSelectedFile(file);
+        setFileType('image');
+        setExtractedMenu(null);
+      } else if (file.type === pdfType) {
+        setSelectedFile(file);
+        setFileType('pdf');
+        setExtractedMenu(null);
+      } else {
+        toast.error('Formato inválido. Use PNG, JPG, WEBP ou PDF.');
         return;
       }
-      setSelectedFile(file);
-      setExtractedMenu(null);
     }
   };
 
@@ -344,9 +354,9 @@ export default function ImportRestaurant() {
 
               <div className="border-t pt-6 space-y-4">
                 <div>
-                  <Label>Imagem do Menu *</Label>
+                  <Label>Documento do Menu *</Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Faça upload de uma foto/screenshot do cardápio
+                    Faça upload de uma imagem (PNG, JPG, WEBP) ou PDF do cardápio
                   </p>
                 </div>
                 <div 
@@ -356,7 +366,7 @@ export default function ImportRestaurant() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
                     className="hidden"
                     onChange={handleFileSelect}
                   />
@@ -366,7 +376,7 @@ export default function ImportRestaurant() {
                       <div className="text-left">
                         <p className="font-medium">{selectedFile.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {fileType === 'pdf' ? 'PDF' : 'Imagem'}
                         </p>
                       </div>
                     </div>
@@ -374,10 +384,10 @@ export default function ImportRestaurant() {
                     <div className="space-y-2">
                       <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
                       <p className="text-sm text-muted-foreground">
-                        Clique para selecionar uma imagem do menu
+                        Clique para selecionar imagem ou PDF do menu
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Formatos aceites: PNG, JPG, WEBP
+                        Formatos aceites: PNG, JPG, WEBP, PDF
                       </p>
                     </div>
                   )}
@@ -397,7 +407,7 @@ export default function ImportRestaurant() {
                     ) : (
                       <>
                         <FileText className="h-4 w-4 mr-2" />
-                        Extrair Menu da Imagem
+                        Extrair Menu do {fileType === 'pdf' ? 'PDF' : 'Documento'}
                       </>
                     )}
                   </Button>
