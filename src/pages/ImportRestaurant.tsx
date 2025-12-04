@@ -61,7 +61,7 @@ export default function ImportRestaurant() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { createRestaurant, restaurant } = useRestaurantStore();
+  const { createRestaurant } = useRestaurantStore();
   const navigate = useNavigate();
 
   const [fileType, setFileType] = useState<'image' | 'pdf' | null>(null);
@@ -149,7 +149,7 @@ export default function ImportRestaurant() {
 
     try {
       setStatus('Criando restaurante...');
-      await createRestaurant({
+      const newRestaurant = await createRestaurant({
         name: form.name,
         phone: form.phone,
         address: form.address,
@@ -168,10 +168,8 @@ export default function ImportRestaurant() {
         },
       });
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      if (!restaurant) throw new Error('Falha ao criar restaurante');
-      const restaurantId = restaurant.id;
+      if (!newRestaurant?.id) throw new Error('Falha ao criar restaurante');
+      const restaurantId = newRestaurant.id;
       setProgress(10);
 
       setStatus('Configurando menu público...');
@@ -196,12 +194,16 @@ export default function ImportRestaurant() {
         restaurant_id: restaurantId,
       }));
 
-      const { data: createdCategories } = await supabase
+      const { data: createdCategories, error: catError } = await supabase
         .from('categories')
         .insert(categoriesData)
         .select();
 
-      if (!createdCategories) throw new Error('Falha ao criar categorias');
+      if (catError) {
+        console.error('Erro ao criar categorias:', catError);
+        throw new Error(`Falha ao criar categorias: ${catError.message}`);
+      }
+      if (!createdCategories?.length) throw new Error('Falha ao criar categorias');
       setProgress(40);
 
       setStatus('Criando produtos...');
@@ -212,13 +214,18 @@ export default function ImportRestaurant() {
 
       extractedMenu.categories.forEach(cat => {
         cat.products.forEach(prod => {
+          const categoryId = categoryMap[cat.name];
+          if (!categoryId) {
+            console.warn(`Categoria não encontrada para: ${cat.name}`);
+            return;
+          }
           const productKey = `${cat.name}:${prod.name}`;
           allProducts.push({
-            category_id: categoryMap[cat.name],
+            category_id: categoryId,
             restaurant_id: restaurantId,
             name: prod.name,
-            description: prod.description,
-            price: prod.price,
+            description: prod.description || '',
+            price: prod.price || 0,
             is_featured: prod.is_featured || false,
             is_available: true,
           });
@@ -228,12 +235,20 @@ export default function ImportRestaurant() {
         });
       });
 
-      const { data: createdProducts } = await supabase
+      if (allProducts.length === 0) {
+        throw new Error('Nenhum produto válido para importar');
+      }
+
+      const { data: createdProducts, error: prodError } = await supabase
         .from('products')
         .insert(allProducts)
         .select();
 
-      if (!createdProducts) throw new Error('Falha ao criar produtos');
+      if (prodError) {
+        console.error('Erro ao criar produtos:', prodError);
+        throw new Error(`Falha ao criar produtos: ${prodError.message}`);
+      }
+      if (!createdProducts?.length) throw new Error('Falha ao criar produtos');
       setProgress(60);
 
       setStatus('Criando addons...');
@@ -249,7 +264,7 @@ export default function ImportRestaurant() {
               addonsToInsert.push({
                 product_id: prod.id,
                 name: addon.name,
-                price: addon.price,
+                price: addon.price || 0,
               });
             });
           }
@@ -257,7 +272,10 @@ export default function ImportRestaurant() {
       });
 
       if (addonsToInsert.length > 0) {
-        await supabase.from('addons').insert(addonsToInsert);
+        const { error: addonError } = await supabase.from('addons').insert(addonsToInsert);
+        if (addonError) {
+          console.warn('Erro ao criar addons:', addonError);
+        }
       }
       setProgress(80);
 

@@ -11,7 +11,7 @@ interface RestaurantState {
   
   // Actions
   fetchRestaurant: () => Promise<void>;
-  createRestaurant: (restaurant: Omit<Restaurant, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<void>;
+  createRestaurant: (restaurant: Omit<Restaurant, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<Restaurant>;
   updateRestaurant: (updates: Partial<Restaurant>) => Promise<void>;
   setRestaurant: (restaurant: Restaurant | null) => void;
   clearRestaurant: () => void;
@@ -185,6 +185,9 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
 
       console.log('[RestaurantStore] Restaurant created successfully:', data);
       set({ restaurant: data as unknown as Restaurant, loading: false });
+      
+      // Return the created restaurant for immediate use
+      return data as unknown as Restaurant;
     } catch (error) {
       console.error('[RestaurantStore] Failed to create restaurant:', error);
       set({ 
