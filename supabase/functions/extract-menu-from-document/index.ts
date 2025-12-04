@@ -111,6 +111,9 @@ async function extractFromPDF(document_base64: string, file_name: string, restau
 
   console.log(`[PDF] Extracting menu from PDF: ${file_name} for restaurant: ${restaurant_name}`);
 
+  // Use data URL format for PDF - Gemini supports this through the gateway
+  const pdfDataUrl = `data:application/pdf;base64,${document_base64}`;
+
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -128,10 +131,9 @@ async function extractFromPDF(document_base64: string, file_name: string, restau
               text: `${EXTRACTION_PROMPT}\n\nExtraia o menu completo deste PDF do restaurante "${restaurant_name}". Retorne apenas JSON válido.`,
             },
             {
-              type: 'file',
-              file: {
-                filename: file_name || 'menu.pdf',
-                data: document_base64,
+              type: 'image_url',
+              image_url: {
+                url: pdfDataUrl,
               },
             },
           ],
