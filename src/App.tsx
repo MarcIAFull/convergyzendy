@@ -30,6 +30,7 @@ import PublicOrderConfirmed from "@/pages/public/PublicOrderConfirmed";
 import TeamManagement from "@/pages/TeamManagement";
 import AcceptInvitation from "@/pages/AcceptInvitation";
 import Onboarding from "@/pages/Onboarding";
+import ImportRestaurant from "@/pages/ImportRestaurant";
 import { AdminRoute } from "@/components/AdminRoute";
 import { OnboardingRoute } from "@/components/OnboardingRoute";
 import { HelmetProvider } from 'react-helmet-async';
@@ -92,6 +93,7 @@ const App = () => (
                   <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
                   <Route path="/admin/ai-logs" element={<AdminRoute><AILogs /></AdminRoute>} />
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
+                  <Route path="/admin/import-restaurant" element={<AdminRoute><ImportRestaurant /></AdminRoute>} />
                 </Route>
                 
                 {/* 404 Catch-All */}
