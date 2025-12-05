@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { EnrichedConversation, CustomerDetails, CartItemWithDetails } from '@/types/conversation';
 
+// AbortController for cancelling in-flight requests
+let abortController: AbortController | null = null;
+// Track active channels for cleanup
+let activeChannels: any[] = [];
+
 interface ConversationsStore {
   conversations: EnrichedConversation[];
   selectedPhone: string | null;
@@ -23,7 +28,33 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
   customerDetails: null,
   loading: false,
 
+  reset: () => {
+    console.log('[ConversationsStore] 🧹 Resetting store');
+    
+    // Cancel any in-flight requests
+    abortController?.abort();
+    abortController = null;
+    
+    // Remove all active channels
+    activeChannels.forEach(channel => {
+      supabase.removeChannel(channel);
+    });
+    activeChannels = [];
+    
+    set({
+      conversations: [],
+      selectedPhone: null,
+      customerDetails: null,
+      loading: false,
+    });
+  },
+
   loadConversations: async (restaurantId: string) => {
+    // Cancel previous request
+    abortController?.abort();
+    abortController = new AbortController();
+    const signal = abortController.signal;
+
     set({ loading: true });
     try {
       // Buscar todas as mensagens do restaurante
@@ -31,15 +62,19 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
         .from('messages')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .order('timestamp', { ascending: false });
+        .order('timestamp', { ascending: false })
+        .abortSignal(signal);
 
       if (messagesError) throw messagesError;
+      if (signal.aborted) return;
 
       // Agrupar por telefone
       const conversationMap = new Map<string, any>();
       
       messages?.forEach(msg => {
-        const phone = msg.direction === 'incoming' ? msg.from_number : msg.to_number;
+        const phone = msg.direction === 'incoming' || msg.direction === 'inbound' 
+          ? msg.from_number 
+          : msg.to_number;
         if (!conversationMap.has(phone)) {
           conversationMap.set(phone, {
             userPhone: phone,
@@ -51,26 +86,36 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
       });
 
       const phones = Array.from(conversationMap.keys());
+      if (signal.aborted) return;
 
       // Buscar dados dos clientes
       const { data: customers } = await supabase
         .from('customers')
         .select('phone, name')
-        .in('phone', phones);
+        .in('phone', phones)
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       // Buscar estados das conversas
       const { data: states } = await supabase
         .from('conversation_state')
         .select('user_phone, state, cart_id')
         .eq('restaurant_id', restaurantId)
-        .in('user_phone', phones);
+        .in('user_phone', phones)
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       // Buscar modos de conversa
       const { data: modes } = await supabase
         .from('conversation_mode')
         .select('user_phone, mode')
         .eq('restaurant_id', restaurantId)
-        .in('user_phone', phones);
+        .in('user_phone', phones)
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       // Enriquecer conversas
       const enrichedConversations: EnrichedConversation[] = Array.from(conversationMap.values()).map(conv => {
@@ -84,12 +129,17 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
           conversationState: state?.state || 'idle',
           mode: mode?.mode || 'ai',
           hasActiveCart: !!state?.cart_id,
-          isOnline: false, // TODO: implementar lógica de online
+          isOnline: false,
         };
       });
 
       set({ conversations: enrichedConversations, loading: false });
     } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[ConversationsStore] Request aborted');
+        return;
+      }
       console.error('Error loading conversations:', error);
       set({ loading: false });
     }
@@ -197,7 +247,7 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
 
   subscribeToConversations: (restaurantId: string) => {
     const channel = supabase
-      .channel('conversations-realtime')
+      .channel(`conversations-realtime-${restaurantId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -235,14 +285,18 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
       })
       .subscribe();
 
+    // Track channel for cleanup
+    activeChannels.push(channel);
+
     return () => {
       supabase.removeChannel(channel);
+      activeChannels = activeChannels.filter(c => c !== channel);
     };
   },
 
   subscribeToCustomerDetails: (phone: string, restaurantId: string) => {
     const channel = supabase
-      .channel(`customer-details-${phone}`)
+      .channel(`customer-details-${phone}-${restaurantId}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -271,17 +325,12 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
       })
       .subscribe();
 
+    // Track channel for cleanup
+    activeChannels.push(channel);
+
     return () => {
       supabase.removeChannel(channel);
+      activeChannels = activeChannels.filter(c => c !== channel);
     };
-  },
-
-  reset: () => {
-    set({
-      conversations: [],
-      selectedPhone: null,
-      customerDetails: null,
-      loading: false,
-    });
   },
 }));

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { useAnalyticsStore } from '@/stores/analyticsStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,7 +20,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { formatDistanceToNow } from 'date-fns';
 
 const Analytics = () => {
-  const { restaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantGuard();
   const { data, loading, dateRange, fetchAnalytics, setDateRange } = useAnalyticsStore();
 
   useEffect(() => {

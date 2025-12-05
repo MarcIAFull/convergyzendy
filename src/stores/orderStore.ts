@@ -4,6 +4,8 @@ import type { Order, OrderWithDetails, CartItemWithDetails } from '@/types/datab
 
 // AbortController for cancelling in-flight requests
 let abortController: AbortController | null = null;
+// Track active channels for cleanup
+let activeChannel: any = null;
 
 interface OrderState {
   orders: OrderWithDetails[];
@@ -23,16 +25,23 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   error: null,
 
   reset: () => {
+    console.log('[OrderStore] 🧹 Resetting store');
+    
     // Cancel any in-flight requests
     abortController?.abort();
     abortController = null;
+    
+    // Remove active channel
+    if (activeChannel) {
+      supabase.removeChannel(activeChannel);
+      activeChannel = null;
+    }
     
     set({ 
       orders: [], 
       loading: false, 
       error: null 
     });
-    console.log('[OrderStore] 🧹 Store reset');
   },
 
   fetchOrders: async (restaurantId: string) => {
@@ -172,10 +181,15 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   },
 
   subscribeToOrders: (restaurantId: string) => {
-    console.log('Setting up real-time subscription for restaurant:', restaurantId);
+    console.log('[OrderStore] Setting up real-time subscription for restaurant:', restaurantId);
+    
+    // Remove existing channel if any
+    if (activeChannel) {
+      supabase.removeChannel(activeChannel);
+    }
     
     const channel = supabase
-      .channel('orders-realtime')
+      .channel(`orders-realtime-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -186,7 +200,6 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         },
         (payload) => {
           console.log('Order change detected:', payload);
-          // Refetch orders when any change occurs
           get().fetchOrders(restaurantId);
         }
       )
@@ -199,7 +212,6 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         },
         (payload) => {
           console.log('Cart item change detected:', payload);
-          // Refetch orders when cart items change
           get().fetchOrders(restaurantId);
         }
       )
@@ -212,7 +224,6 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         },
         (payload) => {
           console.log('Cart item addon change detected:', payload);
-          // Refetch orders when cart item addons change
           get().fetchOrders(restaurantId);
         }
       )
@@ -223,10 +234,15 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         }
       });
 
+    activeChannel = channel;
+
     // Return unsubscribe function
     return () => {
       console.log('Unsubscribing from real-time updates');
       supabase.removeChannel(channel);
+      if (activeChannel === channel) {
+        activeChannel = null;
+      }
     };
   },
 }));

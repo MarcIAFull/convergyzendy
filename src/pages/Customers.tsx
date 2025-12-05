@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { useCustomersStore } from '@/stores/customersStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,7 +26,7 @@ import {
 import { formatDistanceToNow, format } from 'date-fns';
 
 const Customers = () => {
-  const { restaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantGuard();
   const {
     customers,
     selectedCustomer,
