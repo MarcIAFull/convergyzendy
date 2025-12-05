@@ -1,5 +1,5 @@
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -17,46 +17,30 @@ import {
 } from "@/components/ui/popover";
 import { useUserRestaurantsStore } from "@/stores/userRestaurantsStore";
 import { useRestaurantStore } from "@/stores/restaurantStore";
+import { useRestaurantSwitch } from "@/hooks/useRestaurantSwitch";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-
-const STORAGE_KEY = 'zendy_active_restaurant';
+import type { Restaurant } from "@/types/database";
 
 export function RestaurantSwitcher() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   
   const { restaurants } = useUserRestaurantsStore();
-  const { restaurant: currentRestaurant, setRestaurant } = useRestaurantStore();
-
-  // Persist selection to localStorage
-  useEffect(() => {
-    if (currentRestaurant?.id) {
-      localStorage.setItem(STORAGE_KEY, currentRestaurant.id);
-      console.log('[RestaurantSwitcher] Saved restaurant to localStorage:', currentRestaurant.id);
-    }
-  }, [currentRestaurant?.id]);
-
-  // Load saved selection on mount
-  useEffect(() => {
-    const savedId = localStorage.getItem(STORAGE_KEY);
-    if (savedId && restaurants.length > 0 && !currentRestaurant) {
-      const saved = restaurants.find(r => r.id === savedId);
-      if (saved) {
-        console.log('[RestaurantSwitcher] Restoring saved restaurant:', saved.name);
-        setRestaurant(saved as any);
-      } else if (restaurants.length > 0) {
-        // If saved restaurant not found, select first one
-        console.log('[RestaurantSwitcher] Saved restaurant not found, selecting first');
-        setRestaurant(restaurants[0] as any);
-      }
-    }
-  }, [restaurants, currentRestaurant, setRestaurant]);
+  const { restaurant: currentRestaurant } = useRestaurantStore();
+  const { switchRestaurant } = useRestaurantSwitch();
 
   const handleSelect = (restaurantId: string) => {
+    // Não fazer nada se for o mesmo restaurante
+    if (restaurantId === currentRestaurant?.id) {
+      setOpen(false);
+      return;
+    }
+
     const selected = restaurants.find(r => r.id === restaurantId);
     if (selected) {
-      setRestaurant(selected as any);
+      // Usar o hook central para trocar (limpa stores automaticamente)
+      switchRestaurant(selected as unknown as Restaurant);
       setOpen(false);
     }
   };
