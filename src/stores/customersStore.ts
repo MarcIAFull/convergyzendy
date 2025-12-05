@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
+// AbortController for cancelling in-flight requests
+let abortController: AbortController | null = null;
+
 interface CustomerWithInsights {
   phone: string;
   name: string | null;
@@ -53,6 +56,7 @@ interface CustomersState {
   fetchCustomerDetails: (phone: string, restaurantId: string) => Promise<void>;
   setFilter: (filter: 'all' | 'frequent' | 'inactive' | 'high_value') => void;
   clearSelectedCustomer: () => void;
+  reset: () => void;
 }
 
 export const useCustomersStore = create<CustomersState>((set, get) => ({
@@ -65,10 +69,33 @@ export const useCustomersStore = create<CustomersState>((set, get) => ({
   error: null,
   filter: 'all',
 
+  reset: () => {
+    // Cancel any in-flight requests
+    abortController?.abort();
+    abortController = null;
+    
+    set({ 
+      customers: [],
+      selectedCustomer: null,
+      customerOrders: [],
+      customerRecoveryAttempts: [],
+      loading: false,
+      loadingOrders: false,
+      error: null,
+      filter: 'all'
+    });
+    console.log('[CustomersStore] 🧹 Store reset');
+  },
+
   setFilter: (filter) => set({ filter }),
   clearSelectedCustomer: () => set({ selectedCustomer: null, customerOrders: [], customerRecoveryAttempts: [] }),
 
   fetchCustomers: async (restaurantId: string) => {
+    // Cancel previous request if still in progress
+    abortController?.abort();
+    abortController = new AbortController();
+    const signal = abortController.signal;
+
     set({ loading: true, error: null });
     
     try {
@@ -79,9 +106,11 @@ export const useCustomersStore = create<CustomersState>((set, get) => ({
         .from('orders')
         .select('user_phone, total_amount, created_at, id')
         .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(signal);
 
       if (ordersError) throw ordersError;
+      if (signal.aborted) return;
 
       // Fetch customer insights
       const uniquePhones = [...new Set(orders?.map(o => o.user_phone) || [])];
@@ -89,17 +118,21 @@ export const useCustomersStore = create<CustomersState>((set, get) => ({
       const { data: insights, error: insightsError } = await supabase
         .from('customer_insights')
         .select('*')
-        .in('phone', uniquePhones);
+        .in('phone', uniquePhones)
+        .abortSignal(signal);
 
       if (insightsError) throw insightsError;
+      if (signal.aborted) return;
 
       // Fetch customer names from customers table
       const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select('phone, name')
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .abortSignal(signal);
 
       if (customersError) throw customersError;
+      if (signal.aborted) return;
 
       const customerNamesMap = new Map(
         customersData?.map(c => [c.phone, c.name]) || []
@@ -139,6 +172,12 @@ export const useCustomersStore = create<CustomersState>((set, get) => ({
       console.log('[CustomersStore] Fetched customers:', customersWithInsights.length);
       set({ customers: customersWithInsights, loading: false });
     } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[CustomersStore] Request aborted');
+        return;
+      }
+      
       console.error('[CustomersStore] Error fetching customers:', error);
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch customers',

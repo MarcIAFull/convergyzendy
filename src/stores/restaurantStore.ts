@@ -15,12 +15,46 @@ interface RestaurantState {
   updateRestaurant: (updates: Partial<Restaurant>) => Promise<void>;
   setRestaurant: (restaurant: Restaurant | null) => void;
   clearRestaurant: () => void;
+  verifyAccess: (restaurantId: string) => Promise<boolean>;
 }
 
 export const useRestaurantStore = create<RestaurantState>((set, get) => ({
   restaurant: null,
   loading: false,
   error: null,
+
+  /**
+   * Verifica se o usuário atual tem acesso ao restaurante especificado
+   */
+  verifyAccess: async (restaurantId: string): Promise<boolean> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Check if admin
+      const { data: adminRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (adminRole) return true;
+
+      // Check ownership
+      const { data: ownership } = await supabase
+        .from('restaurant_owners')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      return !!ownership;
+    } catch (error) {
+      console.error('[RestaurantStore] Error verifying access:', error);
+      return false;
+    }
+  },
 
   fetchRestaurant: async () => {
     console.log('[RestaurantStore] 🔄 Starting fetchRestaurant...');
@@ -30,24 +64,32 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (savedId) {
       console.log('[RestaurantStore] 📦 Found saved restaurant ID:', savedId);
-      try {
-        const { data: savedRestaurant } = await supabase
-          .from('restaurants')
-          .select('*')
-          .eq('id', savedId)
-          .single();
-        
-        if (savedRestaurant) {
-          console.log('[RestaurantStore] ✅ Loaded saved restaurant:', savedRestaurant.name);
-          set({ restaurant: savedRestaurant as unknown as Restaurant, loading: false });
-          return;
-        } else {
-          console.log('[RestaurantStore] ⚠️ Saved restaurant not found, clearing localStorage');
+      
+      // Verificar se o usuário ainda tem acesso
+      const hasAccess = await get().verifyAccess(savedId);
+      if (!hasAccess) {
+        console.log('[RestaurantStore] ⚠️ User no longer has access to saved restaurant, clearing');
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        try {
+          const { data: savedRestaurant } = await supabase
+            .from('restaurants')
+            .select('*')
+            .eq('id', savedId)
+            .single();
+          
+          if (savedRestaurant) {
+            console.log('[RestaurantStore] ✅ Loaded saved restaurant:', savedRestaurant.name);
+            set({ restaurant: savedRestaurant as unknown as Restaurant, loading: false });
+            return;
+          } else {
+            console.log('[RestaurantStore] ⚠️ Saved restaurant not found, clearing localStorage');
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        } catch (error) {
+          console.error('[RestaurantStore] ⚠️ Error loading saved restaurant:', error);
           localStorage.removeItem(STORAGE_KEY);
         }
-      } catch (error) {
-        console.error('[RestaurantStore] ⚠️ Error loading saved restaurant:', error);
-        localStorage.removeItem(STORAGE_KEY);
       }
     }
     
@@ -184,6 +226,7 @@ export const useRestaurantStore = create<RestaurantState>((set, get) => ({
       }
 
       console.log('[RestaurantStore] Restaurant created successfully:', data);
+      localStorage.setItem(STORAGE_KEY, data.id);
       set({ restaurant: data as unknown as Restaurant, loading: false });
       
       // Return the created restaurant for immediate use

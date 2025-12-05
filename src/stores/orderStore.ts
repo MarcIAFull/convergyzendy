@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { Order, OrderWithDetails, CartItemWithDetails } from '@/types/database';
 
+// AbortController for cancelling in-flight requests
+let abortController: AbortController | null = null;
+
 interface OrderState {
   orders: OrderWithDetails[];
   loading: boolean;
@@ -11,6 +14,7 @@ interface OrderState {
   fetchOrders: (restaurantId: string) => Promise<void>;
   updateOrderStatus: (id: string, status: Order['status']) => Promise<void>;
   subscribeToOrders: (restaurantId: string) => () => void;
+  reset: () => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => ({
@@ -18,7 +22,25 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   loading: false,
   error: null,
 
+  reset: () => {
+    // Cancel any in-flight requests
+    abortController?.abort();
+    abortController = null;
+    
+    set({ 
+      orders: [], 
+      loading: false, 
+      error: null 
+    });
+    console.log('[OrderStore] 🧹 Store reset');
+  },
+
   fetchOrders: async (restaurantId: string) => {
+    // Cancel previous request if still in progress
+    abortController?.abort();
+    abortController = new AbortController();
+    const signal = abortController.signal;
+
     set({ loading: true, error: null });
     try {
       // Fetch orders
@@ -26,7 +48,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         .from('orders')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(signal);
 
       if (ordersError) throw ordersError;
 
@@ -35,42 +58,53 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         return;
       }
 
+      // Check if request was cancelled
+      if (signal.aborted) return;
+
       // Fetch customers for all orders
       const userPhones = [...new Set(orders.map(o => o.user_phone))];
       const { data: customers, error: customersError } = await supabase
         .from('customers')
         .select('phone, name')
         .in('phone', userPhones)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .abortSignal(signal);
 
       if (customersError) throw customersError;
+      if (signal.aborted) return;
 
       // Fetch cart items for all orders
       const cartIds = orders.map(o => o.cart_id);
       const { data: cartItems, error: cartItemsError } = await supabase
         .from('cart_items')
         .select('*')
-        .in('cart_id', cartIds);
+        .in('cart_id', cartIds)
+        .abortSignal(signal);
 
       if (cartItemsError) throw cartItemsError;
+      if (signal.aborted) return;
 
       // Fetch products
       const productIds = [...new Set(cartItems?.map(ci => ci.product_id) || [])];
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select('*')
-        .in('id', productIds);
+        .in('id', productIds)
+        .abortSignal(signal);
 
       if (productsError) throw productsError;
+      if (signal.aborted) return;
 
       // Fetch cart item addons
       const cartItemIds = cartItems?.map(ci => ci.id) || [];
       const { data: cartItemAddons, error: cartItemAddonsError } = await supabase
         .from('cart_item_addons')
         .select('*, addons(*)')
-        .in('cart_item_id', cartItemIds);
+        .in('cart_item_id', cartItemIds)
+        .abortSignal(signal);
 
       if (cartItemAddonsError) throw cartItemAddonsError;
+      if (signal.aborted) return;
 
       // Build nested structure
       const ordersWithDetails = orders.map(order => {
@@ -99,6 +133,12 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
       set({ orders: ordersWithDetails, loading: false });
     } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[OrderStore] Request aborted');
+        return;
+      }
+      
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch orders',
         loading: false 

@@ -19,9 +19,13 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RestaurantSwitcher } from "@/components/RestaurantSwitcher";
 import { useUserRestaurantsStore } from "@/stores/userRestaurantsStore";
+import { useRestaurantSwitch } from "@/hooks/useRestaurantSwitch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import type { Restaurant } from "@/types/database";
+
+const STORAGE_KEY = 'zendy_active_restaurant';
 
 const DashboardLayout = () => {
   const navigate = useNavigate();
@@ -30,29 +34,30 @@ const DashboardLayout = () => {
   const { loading, error, ready, retry } = useRestaurantGuard();
   const { soundEnabled, toggleSound } = useNotifications();
   const { restaurants, fetchUserRestaurants } = useUserRestaurantsStore();
-  const { restaurant: currentRestaurant, setRestaurant } = useRestaurantStore();
+  const { restaurant: currentRestaurant } = useRestaurantStore();
+  const { switchRestaurant } = useRestaurantSwitch();
 
   // Fetch user restaurants on mount
   useEffect(() => {
     fetchUserRestaurants();
   }, [fetchUserRestaurants]);
 
-  // Sync localStorage selection with available restaurants
+  // Inicializar restaurante ativo quando a lista carregar
   useEffect(() => {
     if (restaurants.length > 0 && !currentRestaurant) {
-      const savedId = localStorage.getItem('zendy_active_restaurant');
-      const saved = savedId ? restaurants.find(r => r.id === savedId) : null;
+      const savedId = localStorage.getItem(STORAGE_KEY);
+      const savedRestaurant = savedId ? restaurants.find(r => r.id === savedId) : null;
       
-      if (saved) {
-        console.log('[DashboardLayout] Restoring saved restaurant:', saved.name);
-        setRestaurant(saved as any);
+      if (savedRestaurant) {
+        console.log('[DashboardLayout] Restoring saved restaurant:', savedRestaurant.name);
+        // Usar switchRestaurant para garantir consistência
+        switchRestaurant(savedRestaurant as unknown as Restaurant);
       } else if (restaurants.length > 0) {
-        console.log('[DashboardLayout] No saved restaurant, selecting first available');
-        setRestaurant(restaurants[0] as any);
-        toast.info(`Restaurante ativo: ${restaurants[0].name}`);
+        console.log('[DashboardLayout] No valid saved restaurant, selecting first available');
+        switchRestaurant(restaurants[0] as unknown as Restaurant);
       }
     }
-  }, [restaurants, currentRestaurant, setRestaurant]);
+  }, [restaurants, currentRestaurant, switchRestaurant]);
 
   // Periodic session check to prevent expiration
   useEffect(() => {

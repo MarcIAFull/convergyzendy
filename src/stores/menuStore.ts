@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { Category, Product, Addon, CategoryWithProducts, ProductWithAddons } from '@/types/database';
 
+// AbortController for cancelling in-flight requests
+let abortController: AbortController | null = null;
+
 interface MenuState {
   categories: CategoryWithProducts[];
   loading: boolean;
@@ -9,6 +12,7 @@ interface MenuState {
   
   // Actions
   fetchMenu: (restaurantId: string) => Promise<void>;
+  reset: () => void;
   
   // Category actions
   addCategory: (name: string, restaurantId: string) => Promise<void>;
@@ -31,7 +35,25 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   loading: false,
   error: null,
 
+  reset: () => {
+    // Cancel any in-flight requests
+    abortController?.abort();
+    abortController = null;
+    
+    set({ 
+      categories: [], 
+      loading: false, 
+      error: null 
+    });
+    console.log('[MenuStore] 🧹 Store reset');
+  },
+
   fetchMenu: async (restaurantId: string) => {
+    // Cancel previous request if still in progress
+    abortController?.abort();
+    abortController = new AbortController();
+    const signal = abortController.signal;
+
     set({ loading: true, error: null });
     try {
       // Fetch categories
@@ -39,25 +61,31 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         .from('categories')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true });
+        .order('sort_order', { ascending: true })
+        .abortSignal(signal);
 
       if (categoriesError) throw categoriesError;
+      if (signal.aborted) return;
 
       // Fetch products
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select('*')
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .abortSignal(signal);
 
       if (productsError) throw productsError;
+      if (signal.aborted) return;
 
       // Fetch addons
       const { data: addons, error: addonsError } = await supabase
         .from('addons')
         .select('*')
-        .in('product_id', products?.map(p => p.id) || []);
+        .in('product_id', products?.map(p => p.id) || [])
+        .abortSignal(signal);
 
       if (addonsError) throw addonsError;
+      if (signal.aborted) return;
 
       // Build nested structure
       const categoriesWithProducts: CategoryWithProducts[] = (categories || []).map(category => ({
@@ -72,6 +100,12 @@ export const useMenuStore = create<MenuState>((set, get) => ({
 
       set({ categories: categoriesWithProducts, loading: false });
     } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[MenuStore] Request aborted');
+        return;
+      }
+      
       set({ 
         error: error instanceof Error ? error.message : 'Failed to fetch menu',
         loading: false 
@@ -112,7 +146,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to add category',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
@@ -143,15 +177,13 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to update category',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
   deleteCategory: async (id) => {
     set({ loading: true, error: null });
     try {
-      // Database CASCADE will automatically delete all products and their addons
-      // when the category is deleted
       const { error } = await supabase
         .from('categories')
         .delete()
@@ -169,7 +201,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to delete category',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
@@ -202,7 +234,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to add product',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
@@ -243,7 +275,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to update product',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
@@ -288,7 +320,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to delete product',
         loading: false 
       });
-      throw error; // Re-throw to handle in UI
+      throw error;
     }
   },
 
