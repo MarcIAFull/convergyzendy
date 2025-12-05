@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useRestaurantStore } from "@/stores/restaurantStore";
 import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone, QrCode, Send } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +29,7 @@ interface StatusResponse {
 
 export function WhatsAppTab() {
   const { toast } = useToast();
+  const { restaurant } = useRestaurantStore();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -237,13 +239,24 @@ export function WhatsAppTab() {
     generateQRCode();
   }, [status?.qr?.qrText]);
 
+  // Reset state and refetch when restaurant changes
   useEffect(() => {
+    // Reset local state when restaurant changes
+    setStatus(null);
+    setInstanceName(null);
+    setQrImageUrl(null);
+    setQrModalOpen(false);
+    setLoading(true);
+    
+    if (!restaurant?.id) return;
+    
+    console.log('[WhatsAppTab] Restaurant changed, refetching status for:', restaurant.id);
     fetchStatus();
     
     const interval = setInterval(fetchStatus, 10000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [restaurant?.id]);
 
   const handleSendTest = async () => {
     if (!testPhone || !testMessage) {
