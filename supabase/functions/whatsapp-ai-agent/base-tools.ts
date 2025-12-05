@@ -67,16 +67,24 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     type: "function",
     function: {
       name: "validate_and_set_delivery_address",
-      description: "Validate and set the delivery address. First geocodes the address, then validates against delivery zones. Returns validation result with fee and estimated time. ALWAYS use this to set delivery address.",
+      description: "Validate and set the delivery address. Accepts either a text address (will geocode) OR direct GPS coordinates from WhatsApp location. Returns validation result with fee and estimated time. ALWAYS use this to set delivery address.",
       parameters: {
         type: "object",
         properties: {
           address: {
             type: "string",
-            description: "Full delivery address (street, number, postal code, city)"
+            description: "Full delivery address (street, number, postal code, city) OR description/name from location"
+          },
+          latitude: {
+            type: "number",
+            description: "GPS latitude (optional - use when customer sends WhatsApp location)"
+          },
+          longitude: {
+            type: "number",
+            description: "GPS longitude (optional - use when customer sends WhatsApp location)"
           }
         },
-        required: ["address"]
+        required: []
       }
     }
   },
@@ -320,16 +328,24 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     type: "function",
     function: {
       name: "validate_and_set_delivery_address",
-      description: "Alias for validate_and_set_delivery_address. Validate and set the delivery address. ALWAYS use this to set delivery address.",
+      description: "Alias for validate_and_set_delivery_address. Validate and set the delivery address. Accepts text address OR GPS coordinates from WhatsApp location.",
       parameters: {
         type: "object",
         properties: {
           address: {
             type: "string",
-            description: "Full delivery address (street, number, postal code, city)"
+            description: "Full delivery address (street, number, postal code, city) OR description from location"
+          },
+          latitude: {
+            type: "number",
+            description: "GPS latitude (optional - use when customer sends WhatsApp location)"
+          },
+          longitude: {
+            type: "number",
+            description: "GPS longitude (optional - use when customer sends WhatsApp location)"
           }
         },
-        required: ["address"]
+        required: []
       }
     }
   }
