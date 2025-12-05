@@ -13,6 +13,7 @@ interface PublicMenuSettingsState {
   updateSettings: (id: string, updates: TablesUpdate<'restaurant_settings'>) => Promise<void>;
   uploadImage: (file: File, restaurantId: string, type: 'logo' | 'banner') => Promise<string>;
   checkSlugAvailability: (slug: string, restaurantId: string) => Promise<{ available: boolean; suggestion?: string }>;
+  reset: () => void;
 }
 
 export const usePublicMenuSettingsStore = create<PublicMenuSettingsState>((set) => ({
@@ -80,5 +81,10 @@ export const usePublicMenuSettingsStore = create<PublicMenuSettingsState>((set) 
 
     if (error) throw error;
     return data;
+  },
+
+  reset: () => {
+    console.log('[PublicMenuSettingsStore] 🧹 Store reset');
+    set({ settings: null, loading: false, error: null });
   }
 }));
