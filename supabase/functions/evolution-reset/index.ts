@@ -55,14 +55,67 @@ serve(async (req) => {
 
     const userId = user.id;
 
-    // Get restaurant for this user
-    const { data: restaurantOwner, error: ownerError } = await supabase
-      .from('restaurant_owners')
-      .select('restaurant_id')
-      .eq('user_id', userId)
-      .single();
+    // Parse request body for restaurant_id
+    let requestedRestaurantId: string | null = null;
+    try {
+      const body = await req.json();
+      requestedRestaurantId = body?.restaurant_id || null;
+    } catch {
+      // No body or invalid JSON
+    }
 
-    if (ownerError || !restaurantOwner) {
+    let restaurantId: string | null = requestedRestaurantId;
+
+    // If restaurant_id provided, validate access
+    if (restaurantId) {
+      console.log(`[evolution-reset] Using provided restaurant_id: ${restaurantId}`);
+      
+      // Check if user has access to this restaurant
+      const { data: hasAccess } = await supabase
+        .from('restaurant_owners')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (!hasAccess) {
+        // Also check if user owns the restaurant directly
+        const { data: ownsRestaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('id', restaurantId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (!ownsRestaurant) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Access denied to this restaurant',
+              errorCode: 'FORBIDDEN' 
+            }),
+            {
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
+          );
+        }
+      }
+    } else {
+      // Fallback: get first restaurant
+      const { data: restaurantOwner } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (restaurantOwner) {
+        restaurantId = restaurantOwner.restaurant_id;
+      }
+    }
+
+    if (!restaurantId) {
       console.error('[evolution-reset] No restaurant found for user:', userId);
       return new Response(
         JSON.stringify({ 
@@ -77,7 +130,7 @@ serve(async (req) => {
       );
     }
 
-    const restaurantId = restaurantOwner.restaurant_id;
+    console.log(`[evolution-reset] Using restaurant: ${restaurantId}`);
 
     // Get current instance details
     const { data: currentInstance } = await supabase

@@ -10,7 +10,7 @@ const corsHeaders = {
 interface TestMessageRequest {
   phone: string;
   message: string;
-  restaurantId?: string;
+  restaurant_id?: string;
 }
 
 serve(async (req) => {
@@ -59,7 +59,7 @@ serve(async (req) => {
       );
     }
 
-    const { phone, message, restaurantId }: TestMessageRequest = await req.json();
+    const { phone, message, restaurant_id }: TestMessageRequest = await req.json();
 
     if (!phone || !message) {
       return new Response(
@@ -77,17 +77,29 @@ serve(async (req) => {
     // Verify user has access to at least one restaurant with WhatsApp connected
     let instanceName: string | null = null;
 
-    if (restaurantId) {
+    if (restaurant_id) {
       // Check specific restaurant access
       const { data: owner } = await supabase
         .from('restaurant_owners')
         .select('restaurant_id')
         .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId)
-        .single();
+        .eq('restaurant_id', restaurant_id)
+        .maybeSingle();
 
-      if (!owner) {
-        console.error('[EvolutionTestMessage] User does not have access to restaurant:', restaurantId);
+      // Also check direct ownership
+      let hasAccess = !!owner;
+      if (!hasAccess) {
+        const { data: ownsRestaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('id', restaurant_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        hasAccess = !!ownsRestaurant;
+      }
+
+      if (!hasAccess) {
+        console.error('[EvolutionTestMessage] User does not have access to restaurant:', restaurant_id);
         return new Response(
           JSON.stringify({ 
             success: false,
@@ -104,7 +116,7 @@ serve(async (req) => {
       const { data: instance } = await supabase
         .from('whatsapp_instances')
         .select('instance_name')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', restaurant_id)
         .single();
 
       instanceName = instance?.instance_name || null;
