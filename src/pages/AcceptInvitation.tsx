@@ -4,10 +4,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
+import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useUserRestaurantsStore } from '@/stores/userRestaurantsStore';
 import { Loader2, CheckCircle2, XCircle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INVITATION_TOKEN_KEY = 'pending_invitation_token';
+const JUST_ACCEPTED_KEY = 'just_accepted_invitation';
+const ACTIVE_RESTAURANT_KEY = 'zendy_active_restaurant';
 
 export function savePendingInvitationToken(token: string) {
   localStorage.setItem(INVITATION_TOKEN_KEY, token);
@@ -21,10 +25,25 @@ export function clearPendingInvitationToken() {
   localStorage.removeItem(INVITATION_TOKEN_KEY);
 }
 
+export function setJustAcceptedInvitation() {
+  sessionStorage.setItem(JUST_ACCEPTED_KEY, 'true');
+}
+
+export function getAndClearJustAcceptedInvitation(): boolean {
+  const value = sessionStorage.getItem(JUST_ACCEPTED_KEY);
+  if (value) {
+    sessionStorage.removeItem(JUST_ACCEPTED_KEY);
+    return true;
+  }
+  return false;
+}
+
 export default function AcceptInvitation() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const setRestaurant = useRestaurantStore(state => state.setRestaurant);
+  const addRestaurant = useUserRestaurantsStore(state => state.addRestaurant);
   const [loading, setLoading] = useState(true);
   const [invitation, setInvitation] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +74,21 @@ export default function AcceptInvitation() {
           expires_at,
           restaurant_id,
           restaurants:restaurant_id (
-            name
+            id,
+            name,
+            phone,
+            address,
+            delivery_fee,
+            is_open,
+            opening_hours,
+            slug,
+            created_at,
+            updated_at,
+            user_id,
+            latitude,
+            longitude,
+            google_place_id,
+            stripe_customer_id
           )
         `)
         .eq('token', token)
@@ -84,7 +117,7 @@ export default function AcceptInvitation() {
 
       // If user is logged in and email matches, auto-accept
       if (user && user.email === data.email) {
-        await handleAccept();
+        await handleAccept(data);
       }
 
     } catch (error: any) {
@@ -95,8 +128,10 @@ export default function AcceptInvitation() {
     }
   };
 
-  const handleAccept = async () => {
+  const handleAccept = async (invitationData?: any) => {
     if (!token) return;
+
+    const currentInvitation = invitationData || invitation;
 
     try {
       setLoading(true);
@@ -118,6 +153,25 @@ export default function AcceptInvitation() {
         throw new Error(data.error);
       }
 
+      // Get the full restaurant data from the invitation we already fetched
+      const restaurant = currentInvitation?.restaurants;
+      
+      if (restaurant) {
+        console.log('[AcceptInvitation] Setting restaurant in stores:', restaurant.name);
+        
+        // Update userRestaurantsStore
+        addRestaurant(restaurant);
+        
+        // Set as active restaurant in restaurantStore
+        setRestaurant(restaurant);
+        
+        // Also save to localStorage for persistence
+        localStorage.setItem(ACTIVE_RESTAURANT_KEY, restaurant.id);
+      }
+
+      // Set flag so ProtectedRoute knows to skip restaurant check
+      setJustAcceptedInvitation();
+      
       // Clear pending token after successful acceptance
       clearPendingInvitationToken();
       
@@ -126,7 +180,7 @@ export default function AcceptInvitation() {
       
       setTimeout(() => {
         navigate('/dashboard');
-      }, 2000);
+      }, 1500);
 
     } catch (error: any) {
       console.error('Error accepting invitation:', error);
@@ -290,7 +344,7 @@ export default function AcceptInvitation() {
               <strong>Cargo:</strong> {invitation?.role}
             </p>
           </div>
-          <Button onClick={handleAccept} className="w-full" disabled={loading}>
+          <Button onClick={() => handleAccept()} className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Aceitar Convite
           </Button>
