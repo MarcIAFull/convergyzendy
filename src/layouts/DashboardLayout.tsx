@@ -195,7 +195,8 @@ const DashboardLayout = () => {
                 </AlertDescription>
               </Alert>
             )}
-            <Outlet />
+            {/* Key forces full re-render when restaurant changes */}
+            <Outlet key={currentRestaurant?.id || 'no-restaurant'} />
           </main>
         </div>
       </div>

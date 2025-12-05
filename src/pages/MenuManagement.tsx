@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { useMenuStore } from '@/stores/menuStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -49,7 +49,7 @@ import type { CategoryWithProducts, Product, Addon } from '@/types/database';
 import { uploadImage, deleteImage, validateImageFile, extractPathFromUrl } from '@/lib/imageUpload';
 
 const MenuManagement = () => {
-  const { restaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantGuard();
   const { categories, loading, fetchMenu, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct, addAddon, updateAddon, deleteAddon } = useMenuStore();
   const { toast } = useToast();
 

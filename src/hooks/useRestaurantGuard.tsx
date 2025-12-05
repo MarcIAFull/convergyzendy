@@ -26,14 +26,29 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
   const [isReady, setIsReady] = useState(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);
   
-  // Control flag to ensure fetch happens only once
+  // Control flag to ensure fetch happens only once per session
   const hasFetchedRef = useRef(false);
+  // Track current restaurant ID to detect changes
+  const currentRestaurantIdRef = useRef<string | null>(null);
+
+  // Reset ready state when restaurant changes (critical for restaurant switching)
+  useEffect(() => {
+    if (restaurant?.id && restaurant.id !== currentRestaurantIdRef.current) {
+      console.log('[useRestaurantGuard] 🔄 Restaurant changed:', {
+        from: currentRestaurantIdRef.current,
+        to: restaurant.id
+      });
+      currentRestaurantIdRef.current = restaurant.id;
+      setIsReady(true); // Mark ready immediately when restaurant is set
+    }
+  }, [restaurant?.id]);
 
   console.log('[useRestaurantGuard] 🔄 Render with state:', {
     authLoading,
     hasUser: !!user,
     hasSession: !!session?.access_token,
     hasRestaurant: !!restaurant,
+    restaurantId: restaurant?.id,
     restaurantLoading,
     restaurantError,
     localError,
@@ -125,6 +140,7 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
   const retry = useCallback(() => {
     console.log('[useRestaurantGuard] 🔄 RETRY: Manual retry triggered');
     hasFetchedRef.current = false; // Reset fetch flag
+    currentRestaurantIdRef.current = null; // Reset restaurant tracking
     setLocalError(null);
     setHasTimedOut(false);
     setIsReady(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,7 +47,7 @@ interface Invitation {
 }
 
 export default function TeamManagement() {
-  const { restaurant } = useRestaurantStore();
+  const { restaurant } = useRestaurantGuard();
   const { user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
