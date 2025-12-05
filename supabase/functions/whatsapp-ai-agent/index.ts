@@ -1433,7 +1433,16 @@ async function executeToolCall(
         console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
         
         // Step 2: Validate against delivery zones
-        const orderAmount = cartItems.reduce((sum: any, item: any) => sum + item.total_price, 0);
+        // Include both cart items AND pending items in order amount calculation
+        const cartTotal = cartItems.reduce((sum: any, item: any) => sum + (item.total_price || 0), 0);
+        const pendingTotal = pendingItems.reduce((sum: any, item: any) => {
+          const itemPrice = item.product?.price || 0;
+          const qty = item.quantity || 1;
+          return sum + (itemPrice * qty);
+        }, 0);
+        const orderAmount = cartTotal + pendingTotal;
+        
+        console.log(`[Tool] 🧮 Order amount calculation: cart=€${cartTotal.toFixed(2)}, pending=€${pendingTotal.toFixed(2)}, total=€${orderAmount.toFixed(2)}`);
         
         const { data: validationData, error: validationError } = await supabase.functions.invoke(
           'validate-delivery-address',
@@ -1485,14 +1494,19 @@ async function executeToolCall(
             stateUpdate
           };
         } else {
-          console.log(`[Tool] ❌ Address outside delivery zone: ${validationData.reason}`);
+          // Use specific error message from validation function
+          const errorReason = validationData.error || 'Endereço fora da área de entrega';
+          console.log(`[Tool] ❌ Address validation failed: ${errorReason}`);
+          
           return {
             output: {
               valid: false,
               success: false,
               address: formatted_address,
-              reason: validationData.reason,
-              message: `Infelizmente o endereço "${formatted_address}" está fora da nossa área de entrega.`
+              reason: errorReason,
+              message: errorReason.includes('Valor mínimo') 
+                ? `${errorReason}. Adicione mais itens ao pedido para entregar neste endereço.`
+                : `Infelizmente o endereço "${formatted_address}" está fora da nossa área de entrega.`
             }
           };
         }
