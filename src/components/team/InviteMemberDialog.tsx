@@ -36,7 +36,7 @@ export function InviteMemberDialog({
   onSuccess,
 }: InviteMemberDialogProps) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('member');
+  const [role, setRole] = useState('staff');
   const [permissions, setPermissions] = useState({
     menu: true,
     orders: true,
@@ -92,7 +92,7 @@ export function InviteMemberDialog({
 
   const resetForm = () => {
     setEmail('');
-    setRole('member');
+    setRole('staff');
     setPermissions({
       menu: true,
       orders: true,
@@ -132,7 +132,7 @@ export function InviteMemberDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Membro</SelectItem>
+                  <SelectItem value="staff">Membro</SelectItem>
                   <SelectItem value="admin">Administrador</SelectItem>
                   <SelectItem value="owner">Proprietário</SelectItem>
                 </SelectContent>
