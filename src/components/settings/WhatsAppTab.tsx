@@ -45,8 +45,16 @@ export function WhatsAppTab() {
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async (showToast = false) => {
+    if (!restaurant?.id) {
+      console.log('[WhatsAppTab] No restaurant selected, skipping fetch');
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-status');
+      const { data, error } = await supabase.functions.invoke('evolution-status', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) throw error;
       
@@ -82,13 +90,17 @@ export function WhatsAppTab() {
   };
 
   const handleReset = async () => {
+    if (!restaurant?.id) return;
+    
     if (!confirm('Deseja realmente resetar a instância? Isso irá desconectar o WhatsApp atual e gerar um novo QR code.')) {
       return;
     }
 
     setResetting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-reset');
+      const { data, error } = await supabase.functions.invoke('evolution-reset', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) {
         toast({
@@ -120,9 +132,13 @@ export function WhatsAppTab() {
   };
 
   const handleConnect = async () => {
+    if (!restaurant?.id) return;
+    
     setConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-connect');
+      const { data, error } = await supabase.functions.invoke('evolution-connect', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) {
         const errorData = error.context?.body;
@@ -259,6 +275,8 @@ export function WhatsAppTab() {
   }, [restaurant?.id]);
 
   const handleSendTest = async () => {
+    if (!restaurant?.id) return;
+    
     if (!testPhone || !testMessage) {
       toast({
         title: "Campos obrigatórios",
@@ -271,7 +289,7 @@ export function WhatsAppTab() {
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke('evolution-test-message', {
-        body: { phone: testPhone, message: testMessage },
+        body: { phone: testPhone, message: testMessage, restaurant_id: restaurant.id },
       });
 
       if (error) throw error;

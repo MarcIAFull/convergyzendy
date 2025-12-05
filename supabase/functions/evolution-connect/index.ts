@@ -31,21 +31,64 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's restaurant
-    const { data: restaurantOwner } = await supabase
-      .from('restaurant_owners')
-      .select('restaurant_id')
-      .eq('user_id', user.id)
-      .single();
+    // Parse request body for restaurant_id
+    let requestedRestaurantId: string | null = null;
+    try {
+      const body = await req.json();
+      requestedRestaurantId = body?.restaurant_id || null;
+    } catch {
+      // No body or invalid JSON
+    }
 
-    if (!restaurantOwner) {
+    let restaurantId: string | null = requestedRestaurantId;
+
+    // If restaurant_id provided, validate access
+    if (restaurantId) {
+      console.log(`[evolution-connect] Using provided restaurant_id: ${restaurantId}`);
+      
+      // Check if user has access to this restaurant
+      const { data: hasAccess } = await supabase
+        .from('restaurant_owners')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (!hasAccess) {
+        // Also check if user owns the restaurant directly
+        const { data: ownsRestaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('id', restaurantId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (!ownsRestaurant) {
+          throw new Error('Access denied to this restaurant');
+        }
+      }
+    } else {
+      // Fallback: get first restaurant
+      const { data: restaurantOwner } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (restaurantOwner) {
+        restaurantId = restaurantOwner.restaurant_id;
+      }
+    }
+
+    if (!restaurantId) {
       throw new Error('No restaurant found for user');
     }
 
     const { data: restaurant } = await supabase
       .from('restaurants')
       .select('*')
-      .eq('id', restaurantOwner.restaurant_id)
+      .eq('id', restaurantId)
       .single();
 
     if (!restaurant) {

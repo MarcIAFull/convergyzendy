@@ -31,42 +31,74 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's restaurant - try restaurant_owners first, then restaurants table
-    let restaurantId: string | null = null;
-    
-    const { data: restaurantOwner } = await supabase
-      .from('restaurant_owners')
-      .select('restaurant_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Parse request body for restaurant_id (optional for backward compatibility)
+    let requestedRestaurantId: string | null = null;
+    try {
+      const body = await req.json();
+      requestedRestaurantId = body?.restaurant_id || null;
+    } catch {
+      // No body or invalid JSON, will use fallback
+    }
 
-    if (restaurantOwner) {
-      restaurantId = restaurantOwner.restaurant_id;
-    } else {
-      // Fallback: check restaurants table directly
-      const { data: restaurant } = await supabase
-        .from('restaurants')
+    let restaurantId: string | null = requestedRestaurantId;
+
+    // If restaurant_id provided, validate access
+    if (restaurantId) {
+      console.log(`[evolution-status] Using provided restaurant_id: ${restaurantId}`);
+      
+      // Check if user has access to this restaurant
+      const { data: hasAccess } = await supabase
+        .from('restaurant_owners')
         .select('id')
+        .eq('restaurant_id', restaurantId)
         .eq('user_id', user.id)
         .maybeSingle();
       
-      if (restaurant) {
-        restaurantId = restaurant.id;
+      if (!hasAccess) {
+        // Also check if user owns the restaurant directly
+        const { data: ownsRestaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('id', restaurantId)
+          .eq('user_id', user.id)
+          .maybeSingle();
         
-        // Create missing restaurant_owners entry
-        await supabase
-          .from('restaurant_owners')
-          .insert({
-            user_id: user.id,
-            restaurant_id: restaurant.id,
-            role: 'owner'
-          });
+        if (!ownsRestaurant) {
+          throw new Error('Access denied to this restaurant');
+        }
+      }
+    } else {
+      // Fallback: get first restaurant (for backward compatibility)
+      console.log(`[evolution-status] No restaurant_id provided, using fallback`);
+      
+      const { data: restaurantOwner } = await supabase
+        .from('restaurant_owners')
+        .select('restaurant_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (restaurantOwner) {
+        restaurantId = restaurantOwner.restaurant_id;
+      } else {
+        const { data: restaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+        
+        if (restaurant) {
+          restaurantId = restaurant.id;
+        }
       }
     }
 
     if (!restaurantId) {
       throw new Error('No restaurant found for user');
     }
+    
+    console.log(`[evolution-status] Using restaurant: ${restaurantId}`);
     
     // Get instance name from database
     const { data: instance, error: instanceError } = await supabase
