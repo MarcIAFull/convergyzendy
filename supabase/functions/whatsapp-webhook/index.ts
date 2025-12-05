@@ -186,16 +186,42 @@ serve(async (req) => {
       }
       
       // Extract message text (Evolution supports multiple message types)
-      const messageBody = 
+      let messageBody = 
         data.message?.conversation || 
         data.message?.extendedTextMessage?.text || 
         data.message?.imageMessage?.caption ||
         '';
 
+      // Check for location message (WhatsApp GPS location share)
+      const locationMessage = data.message?.locationMessage;
+      if (locationMessage) {
+        const lat = locationMessage.degreesLatitude;
+        const lng = locationMessage.degreesLongitude;
+        const locationName = locationMessage.name || '';
+        const locationAddress = locationMessage.address || '';
+        
+        console.log('[EvolutionWebhook] 📍 Location message detected:', {
+          lat,
+          lng,
+          name: locationName,
+          address: locationAddress
+        });
+        
+        // Format location as special message for AI to recognize
+        const locationDetails = [
+          locationName && `nome="${locationName}"`,
+          locationAddress && `endereço="${locationAddress}"`
+        ].filter(Boolean).join(', ');
+        
+        messageBody = `[LOCALIZAÇÃO GPS: lat=${lat}, lng=${lng}${locationDetails ? ', ' + locationDetails : ''}]`;
+        console.log('[EvolutionWebhook] 📍 Formatted location message:', messageBody);
+      }
+
       console.log('[EvolutionWebhook] Extracted data:', {
         from,
         messageBody,
         hasMessage: !!messageBody,
+        isLocation: !!locationMessage,
       });
 
       if (!messageBody) {

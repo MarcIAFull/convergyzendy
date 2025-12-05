@@ -1407,29 +1407,53 @@ async function executeToolCall(
     }
     
     case 'validate_and_set_delivery_address': {
-      const { address } = args;
+      const { address, latitude, longitude } = args;
       
-      console.log(`[Tool] 🗺️ Validating address: ${address}`);
+      console.log(`[Tool] 🗺️ Validating address: ${address || 'GPS Location'}`);
       
       try {
-        // Step 1: Geocode the address
-        const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke(
-          'geocode-address-free',
-          { body: { address } }
-        );
+        let lat: number;
+        let lng: number;
+        let formatted_address: string;
         
-        if (geocodeError || !geocodeData) {
-          console.error('[Tool] Geocoding failed:', geocodeError);
+        // Check if GPS coordinates were provided directly (WhatsApp location)
+        if (latitude !== undefined && longitude !== undefined) {
+          // Use GPS coordinates directly - skip geocoding
+          lat = latitude;
+          lng = longitude;
+          formatted_address = address || `Localização GPS (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+          console.log(`[Tool] 📍 Using GPS coordinates directly: ${lat}, ${lng} - "${formatted_address}"`);
+        } else if (address) {
+          // Step 1: Geocode the text address
+          const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke(
+            'geocode-address-free',
+            { body: { address } }
+          );
+          
+          if (geocodeError || !geocodeData) {
+            console.error('[Tool] Geocoding failed:', geocodeError);
+            return {
+              output: {
+                valid: false,
+                success: false,
+                error: 'Não foi possível encontrar o endereço. Por favor, verifica se está correto.'
+              }
+            };
+          }
+          
+          lat = geocodeData.lat;
+          lng = geocodeData.lng;
+          formatted_address = geocodeData.formatted_address;
+          console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
+        } else {
           return {
             output: {
               valid: false,
               success: false,
-              error: 'Não foi possível encontrar o endereço. Por favor, verifica se está correto.'
+              error: 'Por favor, forneça um endereço ou envie a sua localização pelo WhatsApp.'
             }
           };
         }
-        
-        const { lat, lng, formatted_address } = geocodeData;
         console.log(`[Tool] ✅ Geocoded: ${formatted_address} (${lat}, ${lng})`);
         
         // Step 2: Validate against delivery zones
