@@ -8,24 +8,39 @@ interface UserRestaurantsState {
   restaurants: Restaurant[];
   loading: boolean;
   error: string | null;
+  lastFetchedAt: number | null;
   fetchUserRestaurants: () => Promise<void>;
   addRestaurant: (restaurant: Restaurant) => void;
   clearRestaurants: () => void;
+  invalidateAndRefetch: () => Promise<void>;
 }
 
-export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
+const CACHE_TTL_MS = 30000; // 30 seconds
+
+export const useUserRestaurantsStore = create<UserRestaurantsState>((set, get) => ({
   restaurants: [],
   loading: false,
   error: null,
+  lastFetchedAt: null,
 
   fetchUserRestaurants: async () => {
+    // Skip if recently fetched (within cache TTL)
+    const { lastFetchedAt, loading } = get();
+    if (loading) return;
+    
+    const now = Date.now();
+    if (lastFetchedAt && (now - lastFetchedAt) < CACHE_TTL_MS) {
+      console.log('[UserRestaurantsStore] Using cached data');
+      return;
+    }
+
     set({ loading: true, error: null });
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        set({ restaurants: [], loading: false });
+        set({ restaurants: [], loading: false, lastFetchedAt: now });
         return;
       }
 
@@ -49,7 +64,7 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
         if (restaurantsError) throw restaurantsError;
 
         console.log('[UserRestaurantsStore] Admin - Loaded ALL restaurants:', restaurants?.length || 0);
-        set({ restaurants: restaurants || [], loading: false });
+        set({ restaurants: restaurants || [], loading: false, lastFetchedAt: now });
       } else {
         // Regular users only see their assigned restaurants
         const { data: ownerships, error: ownershipsError } = await supabase
@@ -60,7 +75,7 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
         if (ownershipsError) throw ownershipsError;
 
         if (!ownerships || ownerships.length === 0) {
-          set({ restaurants: [], loading: false });
+          set({ restaurants: [], loading: false, lastFetchedAt: now });
           return;
         }
 
@@ -75,7 +90,7 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
         if (restaurantsError) throw restaurantsError;
 
         console.log('[UserRestaurantsStore] User - Loaded restaurants:', restaurants?.length || 0);
-        set({ restaurants: restaurants || [], loading: false });
+        set({ restaurants: restaurants || [], loading: false, lastFetchedAt: now });
       }
 
     } catch (error) {
@@ -88,13 +103,27 @@ export const useUserRestaurantsStore = create<UserRestaurantsState>((set) => ({
   },
 
   addRestaurant: (restaurant: Restaurant) => {
-    set(state => ({
-      restaurants: [...state.restaurants, restaurant]
-    }));
-    console.log('[UserRestaurantsStore] Added restaurant locally:', restaurant.name);
+    set(state => {
+      // Avoid duplicates
+      const exists = state.restaurants.some(r => r.id === restaurant.id);
+      if (exists) {
+        console.log('[UserRestaurantsStore] Restaurant already in list:', restaurant.name);
+        return state;
+      }
+      console.log('[UserRestaurantsStore] Added restaurant locally:', restaurant.name);
+      return {
+        restaurants: [...state.restaurants, restaurant]
+      };
+    });
   },
 
   clearRestaurants: () => {
-    set({ restaurants: [], loading: false, error: null });
+    set({ restaurants: [], loading: false, error: null, lastFetchedAt: null });
+  },
+
+  invalidateAndRefetch: async () => {
+    console.log('[UserRestaurantsStore] Invalidating cache and refetching');
+    set({ lastFetchedAt: null, restaurants: [] });
+    await get().fetchUserRestaurants();
   },
 }));

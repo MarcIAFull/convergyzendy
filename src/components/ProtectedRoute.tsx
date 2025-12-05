@@ -3,14 +3,26 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useUserRestaurantsStore } from '@/stores/userRestaurantsStore';
-import { getPendingInvitationToken } from '@/pages/AcceptInvitation';
+import { getPendingInvitationToken, getAndClearJustAcceptedInvitation } from '@/pages/AcceptInvitation';
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading: authLoading } = useAuth();
   const location = useLocation();
   const clearRestaurant = useRestaurantStore(state => state.clearRestaurant);
+  const restaurant = useRestaurantStore(state => state.restaurant);
   const { restaurants, loading: restaurantsLoading, fetchUserRestaurants } = useUserRestaurantsStore();
   const [checkingRestaurants, setCheckingRestaurants] = useState(true);
+  const [skipRestaurantCheck, setSkipRestaurantCheck] = useState(false);
+
+  // Check if user just accepted an invitation
+  useEffect(() => {
+    const justAccepted = getAndClearJustAcceptedInvitation();
+    if (justAccepted) {
+      console.log('[ProtectedRoute] User just accepted invitation, skipping restaurant check');
+      setSkipRestaurantCheck(true);
+      setCheckingRestaurants(false);
+    }
+  }, []);
 
   // Clear restaurant when user logs out
   useEffect(() => {
@@ -22,7 +34,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Fetch user restaurants when authenticated
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !skipRestaurantCheck) {
       console.log('[ProtectedRoute] Fetching user restaurants');
       fetchUserRestaurants().finally(() => {
         setCheckingRestaurants(false);
@@ -30,10 +42,10 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     } else if (!authLoading && !user) {
       setCheckingRestaurants(false);
     }
-  }, [user, authLoading, fetchUserRestaurants]);
+  }, [user, authLoading, fetchUserRestaurants, skipRestaurantCheck]);
 
   // Show loading spinner while checking auth
-  if (authLoading || (user && checkingRestaurants)) {
+  if (authLoading || (user && checkingRestaurants && !skipRestaurantCheck)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -53,6 +65,11 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const pendingToken = getPendingInvitationToken();
   if (pendingToken) {
     return <Navigate to={`/accept-invitation/${pendingToken}`} replace />;
+  }
+
+  // If user just accepted invitation or already has restaurant set, skip onboarding redirect
+  if (skipRestaurantCheck || restaurant) {
+    return <>{children}</>;
   }
 
   // If user has no restaurants, redirect to onboarding
