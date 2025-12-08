@@ -67,15 +67,20 @@ export async function buildConversationContext(
   if (!restaurant) throw new Error('Restaurant not found');
   console.log(`[Context Builder] Restaurant: ${restaurant.name}`);
 
-  // Load restaurant settings for slug
+  // Load restaurant settings for slug and custom domain
   const { data: restaurantSettings } = await supabase
     .from('restaurant_settings')
-    .select('slug')
+    .select('slug, custom_domain')
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
   
+  // Build menu URL - use custom domain if available, otherwise use Lovable preview URL
+  const baseUrl = restaurantSettings?.custom_domain 
+    ? `https://${restaurantSettings.custom_domain}`
+    : 'https://preview--zendy-ai.lovable.app';
+  
   const menuUrl = restaurantSettings?.slug 
-    ? `https://zendy.pt/menu/${restaurantSettings.slug}` 
+    ? `${baseUrl}/menu/${restaurantSettings.slug}` 
     : '';
   console.log(`[Context Builder] Menu URL: ${menuUrl || 'Not configured'}`);
 
