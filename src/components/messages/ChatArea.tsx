@@ -39,8 +39,12 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
   useEffect(() => {
     loadMessages();
 
+    // Create unique channel name per conversation
+    const channelName = `chat-messages-${restaurantId}-${selectedPhone.replace(/\+/g, '')}`;
+    console.log('[ChatArea] Setting up realtime subscription:', channelName);
+
     const channel = supabase
-      .channel('chat-messages')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -50,6 +54,7 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
+          console.log('[ChatArea] New message received:', payload);
           const newMsg = payload.new as Message;
           if (
             newMsg.from_number === selectedPhone ||
@@ -59,9 +64,12 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[ChatArea] Subscription status:', status);
+      });
 
     return () => {
+      console.log('[ChatArea] Cleaning up subscription:', channelName);
       supabase.removeChannel(channel);
     };
   }, [selectedPhone, restaurantId]);
