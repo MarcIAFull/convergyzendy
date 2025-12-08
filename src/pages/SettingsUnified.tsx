@@ -6,8 +6,11 @@ import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab
 import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
 import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
+import { useRestaurantStore } from '@/stores/restaurantStore';
 
 export default function SettingsUnified() {
+  const { restaurant } = useRestaurantStore();
+  
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
@@ -17,7 +20,8 @@ export default function SettingsUnified() {
         </p>
       </div>
 
-      <Tabs defaultValue="restaurant" className="space-y-6">
+      {/* KEY força re-mount de todas as tabs quando restaurante muda */}
+      <Tabs defaultValue="restaurant" className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />

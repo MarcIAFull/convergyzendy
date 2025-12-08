@@ -48,43 +48,51 @@ export function PublicMenuTab() {
 
   const [newKeyword, setNewKeyword] = useState('');
 
-  // Debounce slug validation
+  // Debounce slug validation - apenas validar se não estiver em loading
   useEffect(() => {
-    if (!formData.slug || !restaurant) return;
+    if (!formData.slug || !restaurant || loading) return;
     
     const timer = setTimeout(() => {
       validateSlug(formData.slug);
     }, 800);
     
     return () => clearTimeout(timer);
-  }, [formData.slug, restaurant]);
+  }, [formData.slug, restaurant, loading]);
 
   // Reset form when restaurant changes and fetch new settings
   useEffect(() => {
-    if (restaurant?.id) {
-      // Reset form to defaults when restaurant changes
-      setFormData({
-        menu_enabled: false,
-        slug: '',
-        logo_url: '',
-        banner_url: '',
-        primary_color: '#3b82f6',
-        accent_color: '#10b981',
-        min_order_amount: 10,
-        max_delivery_distance_km: 10,
-        estimated_prep_time_minutes: 30,
-        checkout_whatsapp_enabled: true,
-        checkout_web_enabled: false,
-        meta_title: '',
-        meta_description: '',
-        meta_keywords: [],
-        instagram_url: '',
-        facebook_url: ''
-      });
-      setSlugValidation({ checking: false, available: null, message: '' });
-      fetchSettings(restaurant.id);
+    // Reset IMEDIATO para valores default quando restaurante muda
+    const defaultFormData = {
+      menu_enabled: false,
+      slug: '',
+      logo_url: '',
+      banner_url: '',
+      primary_color: '#3b82f6',
+      accent_color: '#10b981',
+      min_order_amount: 10,
+      max_delivery_distance_km: 10,
+      estimated_prep_time_minutes: 30,
+      checkout_whatsapp_enabled: true,
+      checkout_web_enabled: false,
+      meta_title: '',
+      meta_description: '',
+      meta_keywords: [] as string[],
+      instagram_url: '',
+      facebook_url: ''
+    };
+    
+    setFormData(defaultFormData);
+    setSlugValidation({ checking: false, available: null, message: '' });
+    setNewKeyword('');
+    
+    if (!restaurant?.id) {
+      console.log('[PublicMenuTab] No restaurant selected, waiting...');
+      return;
     }
-  }, [restaurant?.id]);
+    
+    console.log('[PublicMenuTab] Restaurant changed, fetching settings for:', restaurant.id, restaurant.name);
+    fetchSettings(restaurant.id);
+  }, [restaurant?.id, fetchSettings]);
 
   useEffect(() => {
     if (settings) {
