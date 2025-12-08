@@ -59,11 +59,32 @@ export function PublicMenuTab() {
     return () => clearTimeout(timer);
   }, [formData.slug, restaurant]);
 
+  // Reset form when restaurant changes and fetch new settings
   useEffect(() => {
-    if (restaurant) {
+    if (restaurant?.id) {
+      // Reset form to defaults when restaurant changes
+      setFormData({
+        menu_enabled: false,
+        slug: '',
+        logo_url: '',
+        banner_url: '',
+        primary_color: '#3b82f6',
+        accent_color: '#10b981',
+        min_order_amount: 10,
+        max_delivery_distance_km: 10,
+        estimated_prep_time_minutes: 30,
+        checkout_whatsapp_enabled: true,
+        checkout_web_enabled: false,
+        meta_title: '',
+        meta_description: '',
+        meta_keywords: [],
+        instagram_url: '',
+        facebook_url: ''
+      });
+      setSlugValidation({ checking: false, available: null, message: '' });
       fetchSettings(restaurant.id);
     }
-  }, [restaurant, fetchSettings]);
+  }, [restaurant?.id]);
 
   useEffect(() => {
     if (settings) {
