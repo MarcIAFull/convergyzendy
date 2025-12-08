@@ -148,15 +148,30 @@ export default function PublicCheckout() {
 
       if (orderError || !webOrder) throw new Error('Erro ao criar pedido');
 
-      // Notify restaurant via WhatsApp
+      // Notify restaurant via WhatsApp using direct fetch
+      console.log('[Checkout] Order created, sending WhatsApp notification...', webOrder.id);
+      
       try {
-        await supabase.functions.invoke('notify-web-order', {
-          body: { 
-            order_id: webOrder.id,
-            restaurant_id: menuData.restaurant.id 
+        const notifyResponse = await fetch(
+          'https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/notify-web-order',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              order_id: webOrder.id,
+              restaurant_id: menuData.restaurant.id 
+            }),
           }
-        });
-        console.log('[Checkout] WhatsApp notification sent for order:', webOrder.id);
+        );
+        
+        const notifyResult = await notifyResponse.json();
+        console.log('[Checkout] WhatsApp notification result:', notifyResult);
+        
+        if (!notifyResponse.ok) {
+          console.error('[Checkout] WhatsApp notification failed:', notifyResult);
+        }
       } catch (notifyError) {
         // Don't block the flow if notification fails
         console.error('[Checkout] Failed to send WhatsApp notification:', notifyError);
