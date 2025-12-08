@@ -44,16 +44,20 @@ export function WhatsAppTab() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
-  const fetchStatus = async (showToast = false) => {
-    if (!restaurant?.id) {
+  const fetchStatus = async (showToast = false, restaurantIdOverride?: string) => {
+    const targetRestaurantId = restaurantIdOverride || restaurant?.id;
+    
+    if (!targetRestaurantId) {
       console.log('[WhatsAppTab] No restaurant selected, skipping fetch');
       setLoading(false);
       return;
     }
     
+    console.log('[WhatsAppTab] fetchStatus: Calling evolution-status with restaurant_id:', targetRestaurantId);
+    
     try {
       const { data, error } = await supabase.functions.invoke('evolution-status', {
-        body: { restaurant_id: restaurant.id }
+        body: { restaurant_id: targetRestaurantId }
       });
       
       if (error) throw error;
@@ -257,19 +261,40 @@ export function WhatsAppTab() {
 
   // Reset state and refetch when restaurant changes
   useEffect(() => {
-    // Reset local state when restaurant changes
+    // Reset local state IMEDIATAMENTE quando restaurante muda
     setStatus(null);
     setInstanceName(null);
     setQrImageUrl(null);
     setQrModalOpen(false);
+    setQrExpiresIn(30);
+    setTestPhone("+351912345678");
+    setTestMessage("Olá! Esta é uma mensagem de teste. 😊");
+    
+    if (!restaurant?.id) {
+      console.log('[WhatsAppTab] No restaurant selected, waiting...');
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
+    console.log('[WhatsAppTab] Restaurant changed to:', restaurant.id, restaurant.name);
     
-    if (!restaurant?.id) return;
+    // Capturar o ID atual para evitar race conditions
+    const currentRestaurantId = restaurant.id;
     
-    console.log('[WhatsAppTab] Restaurant changed, refetching status for:', restaurant.id);
-    fetchStatus();
+    // Fetch imediato com novo restaurant
+    fetchStatus(false, currentRestaurantId);
     
-    const interval = setInterval(fetchStatus, 10000);
+    // Polling periódico - verificar se o restaurante ainda é o mesmo
+    const interval = setInterval(() => {
+      const storeRestaurant = useRestaurantStore.getState().restaurant;
+      if (storeRestaurant?.id === currentRestaurantId) {
+        fetchStatus(false, currentRestaurantId);
+      } else {
+        console.log('[WhatsAppTab] Restaurant changed during poll, clearing interval');
+        clearInterval(interval);
+      }
+    }, 10000);
     
     return () => clearInterval(interval);
   }, [restaurant?.id]);

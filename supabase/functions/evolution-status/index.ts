@@ -36,8 +36,10 @@ serve(async (req) => {
     try {
       const body = await req.json();
       requestedRestaurantId = body?.restaurant_id || null;
+      console.log(`[evolution-status] Received body:`, JSON.stringify(body));
+      console.log(`[evolution-status] Extracted restaurant_id from body: ${requestedRestaurantId}`);
     } catch {
-      // No body or invalid JSON, will use fallback
+      console.log(`[evolution-status] No body or invalid JSON - will use fallback`);
     }
 
     let restaurantId: string | null = requestedRestaurantId;
