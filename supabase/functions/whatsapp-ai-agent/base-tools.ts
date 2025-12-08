@@ -348,6 +348,30 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
         required: []
       }
     }
+  },
+  
+  // Tool to request human handoff
+  request_human_handoff: {
+    type: "function",
+    function: {
+      name: "request_human_handoff",
+      description: "Transfere a conversa para atendimento humano. Use quando: 1) Cliente pede explicitamente para falar com humano/atendente/gerente. 2) Tom agressivo ou frustração clara. 3) IA não consegue resolver após múltiplas tentativas. 4) Situação requer julgamento humano.",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: {
+            type: "string",
+            enum: ["customer_request", "aggressive_tone", "ai_limitation", "repeated_confusion"],
+            description: "Motivo da transferência: customer_request (pedido explícito), aggressive_tone (cliente agressivo/frustrado), ai_limitation (IA não consegue resolver), repeated_confusion (confusão repetida)"
+          },
+          summary: {
+            type: "string",
+            description: "Resumo breve da situação para o atendente humano (max 200 chars)"
+          }
+        },
+        required: ["reason"]
+      }
+    }
   }
 };
 

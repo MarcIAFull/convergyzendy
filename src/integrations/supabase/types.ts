@@ -479,6 +479,8 @@ export type Database = {
       conversation_mode: {
         Row: {
           created_at: string
+          handoff_reason: string | null
+          handoff_summary: string | null
           id: string
           mode: string
           restaurant_id: string
@@ -489,6 +491,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          handoff_reason?: string | null
+          handoff_summary?: string | null
           id?: string
           mode: string
           restaurant_id: string
@@ -499,6 +503,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          handoff_reason?: string | null
+          handoff_summary?: string | null
           id?: string
           mode?: string
           restaurant_id?: string

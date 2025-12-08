@@ -1956,6 +1956,92 @@ async function executeToolCall(
       };
     }
     
+    case 'request_human_handoff': {
+      const { reason, summary } = args;
+      
+      console.log(`[Tool] 🚨 HANDOFF REQUESTED - Reason: ${reason}`);
+      console.log(`[Tool] 📝 Summary: ${summary || 'No summary provided'}`);
+      
+      // 1. Update conversation_mode to 'manual'
+      const { error: modeError } = await supabase
+        .from('conversation_mode')
+        .upsert({
+          restaurant_id: restaurantId,
+          user_phone: customerPhone,
+          mode: 'manual',
+          taken_over_at: new Date().toISOString(),
+          handoff_reason: reason,
+          handoff_summary: summary || null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'restaurant_id,user_phone' });
+      
+      if (modeError) {
+        console.error('[Tool] ❌ Failed to set manual mode:', modeError);
+        return {
+          output: {
+            success: false,
+            error: 'Erro ao transferir para atendente'
+          }
+        };
+      }
+      
+      console.log('[Tool] ✅ Conversation mode set to MANUAL');
+      
+      // 2. Get customer name for notification
+      const { data: customerData } = await supabase
+        .from('customers')
+        .select('name')
+        .eq('phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+      
+      const customerName = customerData?.name || customerPhone;
+      
+      // 3. Create urgent notification entry in system_logs for real-time detection
+      const reasonLabels: Record<string, string> = {
+        'customer_request': 'Pedido do cliente',
+        'aggressive_tone': 'Tom agressivo/frustração',
+        'ai_limitation': 'IA não conseguiu resolver',
+        'repeated_confusion': 'Confusão repetida'
+      };
+      
+      const { error: logError } = await supabase
+        .from('system_logs')
+        .insert({
+          restaurant_id: restaurantId,
+          log_type: 'handoff_requested',
+          severity: 'warn',
+          message: `🚨 Handoff solicitado: ${customerName}`,
+          metadata: {
+            customer_phone: customerPhone,
+            customer_name: customerName,
+            reason,
+            reason_label: reasonLabels[reason] || reason,
+            summary: summary || null,
+            timestamp: new Date().toISOString()
+          }
+        });
+      
+      if (logError) {
+        console.error('[Tool] ⚠️ Failed to create handoff log:', logError);
+      } else {
+        console.log('[Tool] ✅ Handoff notification logged');
+      }
+      
+      // Set state to manual_requested
+      stateUpdate.newState = 'manual_requested';
+      
+      return {
+        output: {
+          success: true,
+          reason,
+          summary,
+          message: 'Conversa transferida para atendente humano'
+        },
+        stateUpdate
+      };
+    }
+    
     default:
       console.warn(`[Tool] ⚠️ Unknown tool: ${functionName}`);
       return {

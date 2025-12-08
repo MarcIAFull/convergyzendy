@@ -8,10 +8,12 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 interface NotificationContextType {
   unreadOrders: number;
   unreadMessages: number;
+  unreadHandoffs: number;
   soundEnabled: boolean;
   toggleSound: () => void;
   markOrdersRead: () => void;
   markMessagesRead: () => void;
+  markHandoffsRead: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -33,9 +35,11 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   const { restaurant } = useRestaurantStore();
   const [unreadOrders, setUnreadOrders] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadHandoffs, setUnreadHandoffs] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [ordersChannel, setOrdersChannel] = useState<RealtimeChannel | null>(null);
   const [messagesChannel, setMessagesChannel] = useState<RealtimeChannel | null>(null);
+  const [handoffChannel, setHandoffChannel] = useState<RealtimeChannel | null>(null);
 
   // Load notification preferences
   useEffect(() => {
@@ -72,11 +76,29 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     if (!soundEnabled) return;
     
     try {
-      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0I=');
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0IFmG45eh9Kg0NVKzn6qNUEQpGnuDzu2weBCuBzvLZiTYIGGi77eahTBENUKnn77RgGwU7k9zxxHQpBSl+y/DcjD0I=');
       audio.volume = 0.5;
       audio.play().catch(e => console.log('Could not play sound:', e));
     } catch (e) {
       console.log('Sound not supported:', e);
+    }
+  }, [soundEnabled]);
+
+  // Play urgent notification sound for handoffs (triple beep)
+  const playUrgentSound = useCallback(() => {
+    if (!soundEnabled) return;
+    
+    try {
+      const playOnce = () => {
+        const audio = new Audio('/notification-sound.mp3');
+        audio.volume = 0.8;
+        audio.play().catch(e => console.log('Could not play urgent sound:', e));
+      };
+      playOnce();
+      setTimeout(playOnce, 300);
+      setTimeout(playOnce, 600);
+    } catch (e) {
+      console.log('Urgent sound not supported:', e);
     }
   }, [soundEnabled]);
 
@@ -159,6 +181,59 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     };
   }, [restaurant?.id, playNotificationSound]);
 
+  // Subscribe to handoff requests (via system_logs)
+  useEffect(() => {
+    if (!restaurant?.id) return;
+
+    console.log('[Notifications] Setting up handoff subscription for restaurant:', restaurant.id);
+
+    const channel = supabase
+      .channel('handoff-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'system_logs',
+          filter: `restaurant_id=eq.${restaurant.id}`
+        },
+        (payload) => {
+          // Only process handoff_requested logs
+          if (payload.new.log_type !== 'handoff_requested') return;
+          
+          console.log('[Notifications] 🚨 Handoff requested:', payload);
+          
+          setUnreadHandoffs(prev => prev + 1);
+          playUrgentSound();
+          
+          const metadata = payload.new.metadata as any;
+          const reasonLabels: Record<string, string> = {
+            'customer_request': 'Cliente pediu atendente',
+            'aggressive_tone': 'Cliente frustrado',
+            'ai_limitation': 'IA não conseguiu resolver',
+            'repeated_confusion': 'Confusão repetida'
+          };
+          
+          toast.error('🚨 Handoff Solicitado!', {
+            description: `${metadata?.customer_name || metadata?.customer_phone || 'Cliente'}: ${reasonLabels[metadata?.reason] || metadata?.reason}`,
+            duration: 15000,
+            action: {
+              label: 'Ver Mensagens',
+              onClick: () => window.location.href = '/messages'
+            }
+          });
+        }
+      )
+      .subscribe();
+
+    setHandoffChannel(channel);
+
+    return () => {
+      console.log('[Notifications] Cleaning up handoff subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [restaurant?.id, playUrgentSound]);
+
   const toggleSound = useCallback(async () => {
     if (!user) return;
 
@@ -185,15 +260,21 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     setUnreadMessages(0);
   }, []);
 
+  const markHandoffsRead = useCallback(() => {
+    setUnreadHandoffs(0);
+  }, []);
+
   return (
     <NotificationContext.Provider
       value={{
         unreadOrders,
         unreadMessages,
+        unreadHandoffs,
         soundEnabled,
         toggleSound,
         markOrdersRead,
         markMessagesRead,
+        markHandoffsRead,
       }}
     >
       {children}
