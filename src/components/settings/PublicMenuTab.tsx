@@ -14,7 +14,7 @@ import { Loader2, ExternalLink, Upload, Check, X, Globe } from 'lucide-react';
 
 export function PublicMenuTab() {
   const { restaurant } = useRestaurantStore();
-  const { settings, loading, fetchSettings, updateSettings, uploadImage, checkSlugAvailability } = usePublicMenuSettingsStore();
+  const { settings, loading, fetchSettings, createSettings, updateSettings, uploadImage, checkSlugAvailability } = usePublicMenuSettingsStore();
   
   const [formData, setFormData] = useState({
     menu_enabled: false,
@@ -171,15 +171,28 @@ export function PublicMenuTab() {
   };
 
   const handleSave = async () => {
-    if (!settings || !restaurant) return;
+    if (!restaurant) return;
 
-    if (formData.menu_enabled && !slugValidation.available) {
+    // Validate slug if menu is being enabled
+    if (formData.menu_enabled && formData.slug && slugValidation.available === false) {
       toast.error('Corrija o slug antes de ativar o menu');
       return;
     }
 
     try {
-      await updateSettings(settings.id, formData);
+      if (settings) {
+        // Update existing settings
+        await updateSettings(settings.id, formData);
+      } else {
+        // Create new settings - generate slug from restaurant name if not provided
+        const slug = formData.slug || restaurant.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        await createSettings(restaurant.id, slug);
+        // After creation, update with full formData
+        const newSettings = usePublicMenuSettingsStore.getState().settings;
+        if (newSettings) {
+          await updateSettings(newSettings.id, formData);
+        }
+      }
       toast.success('Configurações salvas com sucesso!');
     } catch (error: any) {
       toast.error(`Erro ao salvar: ${error.message}`);

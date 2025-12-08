@@ -10,6 +10,7 @@ interface PublicMenuSettingsState {
   error: string | null;
   
   fetchSettings: (restaurantId: string) => Promise<void>;
+  createSettings: (restaurantId: string, slug: string) => Promise<RestaurantSettings>;
   updateSettings: (id: string, updates: TablesUpdate<'restaurant_settings'>) => Promise<void>;
   uploadImage: (file: File, restaurantId: string, type: 'logo' | 'banner') => Promise<string>;
   checkSlugAvailability: (slug: string, restaurantId: string) => Promise<{ available: boolean; suggestion?: string }>;
@@ -22,18 +23,40 @@ export const usePublicMenuSettingsStore = create<PublicMenuSettingsState>((set) 
   error: null,
 
   fetchSettings: async (restaurantId: string) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, settings: null });
     try {
       const { data, error } = await supabase
         .from('restaurant_settings')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       set({ settings: data, loading: false });
     } catch (error: any) {
+      set({ error: error.message, loading: false, settings: null });
+    }
+  },
+
+  createSettings: async (restaurantId: string, slug: string) => {
+    set({ loading: true, error: null });
+    try {
+      const { data, error } = await supabase
+        .from('restaurant_settings')
+        .insert({
+          restaurant_id: restaurantId,
+          slug: slug,
+          menu_enabled: false
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      set({ settings: data, loading: false });
+      return data;
+    } catch (error: any) {
       set({ error: error.message, loading: false });
+      throw error;
     }
   },
 
@@ -51,7 +74,7 @@ export const usePublicMenuSettingsStore = create<PublicMenuSettingsState>((set) 
       set({ settings: data, loading: false });
     } catch (error: any) {
       set({ error: error.message, loading: false });
-      throw error; // Propagar erro para o componente
+      throw error;
     }
   },
 
