@@ -236,5 +236,7 @@ export const DEFAULT_INTENTS = [
   'manage_pending_items',
   'confirm_pending_items',
   'modify_cart',
+  'prefilled_order',
+  'needs_human',
   'unclear'
 ] as const;
