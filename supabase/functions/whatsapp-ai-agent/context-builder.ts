@@ -74,10 +74,10 @@ export async function buildConversationContext(
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
   
-  // Build menu URL - use custom domain if available, otherwise use Lovable preview URL
+  // Build menu URL - use custom domain if configured, otherwise use production domain
   const baseUrl = restaurantSettings?.custom_domain 
     ? `https://${restaurantSettings.custom_domain}`
-    : 'https://preview--zendy-ai.lovable.app';
+    : 'https://convergy.agency';
   
   const menuUrl = restaurantSettings?.slug 
     ? `${baseUrl}/menu/${restaurantSettings.slug}` 
