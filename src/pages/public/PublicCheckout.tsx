@@ -148,6 +148,20 @@ export default function PublicCheckout() {
 
       if (orderError || !webOrder) throw new Error('Erro ao criar pedido');
 
+      // Notify restaurant via WhatsApp
+      try {
+        await supabase.functions.invoke('notify-web-order', {
+          body: { 
+            order_id: webOrder.id,
+            restaurant_id: menuData.restaurant.id 
+          }
+        });
+        console.log('[Checkout] WhatsApp notification sent for order:', webOrder.id);
+      } catch (notifyError) {
+        // Don't block the flow if notification fails
+        console.error('[Checkout] Failed to send WhatsApp notification:', notifyError);
+      }
+
       clearCart();
 
       toast({

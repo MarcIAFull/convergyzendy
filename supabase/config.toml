@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.extract-menu-from-document]
 verify_jwt = true
+
+[functions.notify-web-order]
+verify_jwt = false
