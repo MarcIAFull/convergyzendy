@@ -72,11 +72,15 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
   }
 
-  // If user has no restaurants, redirect to onboarding
-  if (!restaurantsLoading && restaurants.length === 0) {
+  // Check if there's a saved restaurant in localStorage - don't redirect if so
+  // This prevents redirect during brief state transitions
+  const savedRestaurantId = localStorage.getItem('zendy_active_restaurant');
+  
+  // If user has no restaurants and no saved restaurant, redirect to onboarding
+  if (!restaurantsLoading && restaurants.length === 0 && !savedRestaurantId) {
     // Don't redirect if already on onboarding
     if (location.pathname !== '/onboarding') {
-      console.log('[ProtectedRoute] User has no restaurants, redirecting to onboarding');
+      console.log('[ProtectedRoute] User has no restaurants and no saved ID, redirecting to onboarding');
       return <Navigate to="/onboarding" replace />;
     }
   }

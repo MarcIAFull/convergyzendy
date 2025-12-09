@@ -42,22 +42,28 @@ const DashboardLayout = () => {
     fetchUserRestaurants();
   }, [fetchUserRestaurants]);
 
-  // Inicializar restaurante ativo quando a lista carregar
+  // Inicializar restaurante ativo APENAS quando necessário
+  // Não re-inicializar se já temos um restaurante válido
   useEffect(() => {
-    if (restaurants.length > 0 && !currentRestaurant) {
+    // Skip if we already have a current restaurant
+    if (currentRestaurant?.id) {
+      console.log('[DashboardLayout] Already have restaurant, skipping initialization:', currentRestaurant.name);
+      return;
+    }
+    
+    if (restaurants.length > 0) {
       const savedId = localStorage.getItem(STORAGE_KEY);
       const savedRestaurant = savedId ? restaurants.find(r => r.id === savedId) : null;
       
       if (savedRestaurant) {
         console.log('[DashboardLayout] Restoring saved restaurant:', savedRestaurant.name);
-        // Usar switchRestaurant para garantir consistência
         switchRestaurant(savedRestaurant as unknown as Restaurant);
-      } else if (restaurants.length > 0) {
+      } else {
         console.log('[DashboardLayout] No valid saved restaurant, selecting first available');
         switchRestaurant(restaurants[0] as unknown as Restaurant);
       }
     }
-  }, [restaurants, currentRestaurant, switchRestaurant]);
+  }, [restaurants, currentRestaurant?.id, switchRestaurant]);
 
   // Periodic session check to prevent expiration
   useEffect(() => {
