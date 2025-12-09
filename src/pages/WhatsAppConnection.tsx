@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone, QrCode } from "lucide-react";
+import { useRestaurantStore } from "@/stores/restaurantStore";
+import { useNavigate } from "react-router-dom";
+import { Loader2, RefreshCw, CheckCircle2, XCircle, AlertCircle, Clock, Smartphone, QrCode, ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
@@ -33,6 +35,8 @@ interface StatusResponse {
 
 export default function WhatsAppConnection() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { restaurant } = useRestaurantStore();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -48,8 +52,16 @@ export default function WhatsAppConnection() {
   const webhookUrl = `https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/whatsapp-webhook`;
 
   const fetchStatus = async (showToast = false) => {
+    if (!restaurant?.id) {
+      console.log('[WhatsAppConnection] No restaurant selected, skipping fetch');
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-status');
+      const { data, error } = await supabase.functions.invoke('evolution-status', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) throw error;
       
@@ -87,13 +99,17 @@ export default function WhatsAppConnection() {
   };
 
   const handleReset = async () => {
+    if (!restaurant?.id) return;
+    
     if (!confirm('Deseja realmente resetar a instância? Isso irá desconectar o WhatsApp atual e gerar um novo QR code.')) {
       return;
     }
 
     setResetting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-reset');
+      const { data, error } = await supabase.functions.invoke('evolution-reset', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) {
         toast({
@@ -125,9 +141,20 @@ export default function WhatsAppConnection() {
   };
 
   const handleConnect = async () => {
+    if (!restaurant?.id) {
+      toast({
+        title: "Erro",
+        description: "Nenhum restaurante selecionado.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-connect');
+      const { data, error } = await supabase.functions.invoke('evolution-connect', {
+        body: { restaurant_id: restaurant.id }
+      });
       
       if (error) {
         // Extract error details from response
@@ -251,13 +278,15 @@ export default function WhatsAppConnection() {
   }, [status?.qr?.qrText]);
 
   useEffect(() => {
+    if (!restaurant?.id) return;
+    
     fetchStatus();
     
     // Poll every 10 seconds
     const interval = setInterval(fetchStatus, 10000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [restaurant?.id]);
 
   const handleSendTest = async () => {
     if (!testPhone || !testMessage) {
@@ -269,10 +298,12 @@ export default function WhatsAppConnection() {
       return;
     }
 
+    if (!restaurant?.id) return;
+    
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke('evolution-test-message', {
-        body: { phone: testPhone, message: testMessage },
+        body: { phone: testPhone, message: testMessage, restaurant_id: restaurant.id },
       });
 
       if (error) throw error;
@@ -310,7 +341,7 @@ export default function WhatsAppConnection() {
     }
   };
 
-  if (loading) {
+  if (loading && restaurant?.id) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -318,13 +349,40 @@ export default function WhatsAppConnection() {
     );
   }
 
+  if (!restaurant?.id) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-3xl font-bold">Conexão WhatsApp</h1>
+        </div>
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Nenhum restaurante selecionado. Por favor, selecione ou crie um restaurante primeiro.
+          </AlertDescription>
+        </Alert>
+        <Button className="mt-4" onClick={() => navigate('/dashboard')}>
+          Ir para Dashboard
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Conexão WhatsApp</h1>
-        <p className="text-muted-foreground mt-2">
-          Centro de controlo da integração Evolution API
-        </p>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Conexão WhatsApp</h1>
+          <p className="text-muted-foreground mt-1">
+            {restaurant?.name ? `Configurar WhatsApp para ${restaurant.name}` : 'Centro de controlo da integração Evolution API'}
+          </p>
+        </div>
       </div>
 
       {/* (A) Connection Status Card */}

@@ -17,6 +17,7 @@ import SettingsUnified from "@/pages/SettingsUnified";
 import Messages from "@/pages/Messages";
 import AIConfiguration from "@/pages/AIConfiguration";
 import AILogs from "@/pages/AILogs";
+import WhatsAppConnection from "@/pages/WhatsAppConnection";
 import Admin from "@/pages/Admin";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
@@ -87,6 +88,9 @@ const App = () => (
                   
                   {/* Team Management (for restaurant owners) */}
                   <Route path="/team" element={<TeamManagement />} />
+                  
+                  {/* WhatsApp Connection (standalone page for onboarding flow) */}
+                  <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
                   
                   {/* Admin Routes (Protected by AdminRoute) */}
                   <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
