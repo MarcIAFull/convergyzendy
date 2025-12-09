@@ -89,9 +89,6 @@ const App = () => (
                   {/* Team Management (for restaurant owners) */}
                   <Route path="/team" element={<TeamManagement />} />
                   
-                  {/* WhatsApp Connection (standalone page for onboarding flow) */}
-                  <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
-                  
                   {/* Admin Routes (Protected by AdminRoute) */}
                   <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
                   <Route path="/admin/ai-configuration" element={<AdminRoute><AIConfiguration /></AdminRoute>} />
@@ -99,6 +96,16 @@ const App = () => (
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
                   <Route path="/admin/import-restaurant" element={<AdminRoute><ImportRestaurant /></AdminRoute>} />
                 </Route>
+                
+                {/* WhatsApp Connection - Protected but outside DashboardLayout for cleaner standalone view */}
+                <Route 
+                  path="/whatsapp-connection" 
+                  element={
+                    <ProtectedRoute>
+                      <WhatsAppConnection />
+                    </ProtectedRoute>
+                  } 
+                />
                 
                 {/* 404 Catch-All */}
                 <Route path="*" element={<NotFound />} />
