@@ -125,9 +125,17 @@ const DashboardLayout = () => {
     );
   }
 
-  // Not ready (will redirect automatically)
-  if (!ready) {
-    return null;
+  // Not ready - show loading instead of blank page
+  // This prevents blank screen during restaurant switching or brief state changes
+  if (!ready && !currentRestaurant) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Preparando dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
