@@ -94,16 +94,26 @@ export function WhatsAppTab() {
   };
 
   const handleReset = async () => {
-    if (!restaurant?.id) return;
+    if (!restaurant?.id) {
+      toast({
+        title: "Erro",
+        description: "Nenhum restaurante selecionado.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!confirm('Deseja realmente resetar a instância? Isso irá desconectar o WhatsApp atual e gerar um novo QR code.')) {
       return;
     }
 
+    // Capture stable reference
+    const restaurantId = restaurant.id;
+    
     setResetting(true);
     try {
       const { data, error } = await supabase.functions.invoke('evolution-reset', {
-        body: { restaurant_id: restaurant.id }
+        body: { restaurant_id: restaurantId }
       });
       
       if (error) {
@@ -136,12 +146,22 @@ export function WhatsAppTab() {
   };
 
   const handleConnect = async () => {
-    if (!restaurant?.id) return;
+    if (!restaurant?.id) {
+      toast({
+        title: "Erro",
+        description: "Nenhum restaurante selecionado. Por favor, selecione um restaurante.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Capture stable reference to prevent issues during async operations
+    const restaurantId = restaurant.id;
     
     setConnecting(true);
     try {
       const { data, error } = await supabase.functions.invoke('evolution-connect', {
-        body: { restaurant_id: restaurant.id }
+        body: { restaurant_id: restaurantId }
       });
       
       if (error) {

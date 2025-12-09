@@ -31,7 +31,7 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
   // Track current restaurant ID to detect changes
   const currentRestaurantIdRef = useRef<string | null>(null);
 
-  // Reset ready state when restaurant changes (critical for restaurant switching)
+  // Track restaurant changes but don't reset ready state unnecessarily
   useEffect(() => {
     if (restaurant?.id && restaurant.id !== currentRestaurantIdRef.current) {
       console.log('[useRestaurantGuard] 🔄 Restaurant changed:', {
@@ -39,9 +39,16 @@ export const useRestaurantGuard = (): UseRestaurantGuardResult => {
         to: restaurant.id
       });
       currentRestaurantIdRef.current = restaurant.id;
-      setIsReady(true); // Mark ready immediately when restaurant is set
+      // Mark ready immediately - don't reset to false during transitions
+      if (!isReady) {
+        setIsReady(true);
+      }
     }
-  }, [restaurant?.id]);
+    // Also set ready if restaurant exists and we're not already ready
+    if (restaurant?.id && !isReady) {
+      setIsReady(true);
+    }
+  }, [restaurant?.id, isReady]);
 
   console.log('[useRestaurantGuard] 🔄 Render with state:', {
     authLoading,
