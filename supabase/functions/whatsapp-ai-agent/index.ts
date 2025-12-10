@@ -1576,28 +1576,117 @@ async function executeToolCall(
     
     case 'finalize_order': {
       // ============================================================
-      // CHECKLIST PRÉ-FINALIZAÇÃO (V16)
+      // CHECKLIST PRÉ-FINALIZAÇÃO (V17)
       // Verifica todos os requisitos antes de criar o pedido
       // ============================================================
       console.log('[Tool] 📋 finalize_order - CHECKLIST PRÉ-FINALIZAÇÃO:');
       
+      // ============================================================
+      // AUTO-CONFIRMAR PENDING ITEMS SE EXISTIREM E CARRINHO VAZIO
+      // ============================================================
+      let currentCartItems = [...cartItems];
+      
+      const { data: pendingToAutoConfirm } = await supabase
+        .from('conversation_pending_items')
+        .select(`
+          *,
+          product:products(id, name, price, category_id)
+        `)
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'pending');
+      
+      if (pendingToAutoConfirm && pendingToAutoConfirm.length > 0 && currentCartItems.length === 0) {
+        console.log(`[Tool] 🔄 AUTO-CONFIRM: ${pendingToAutoConfirm.length} pending items encontrados com carrinho vazio`);
+        console.log(`[Tool] 🔄 Confirmando automaticamente para não perder o pedido...`);
+        
+        // Create cart if needed
+        if (!currentActiveCart) {
+          const { data: newCart } = await supabase
+            .from('carts')
+            .insert({
+              restaurant_id: restaurantId,
+              user_phone: customerPhone,
+              status: 'active'
+            })
+            .select()
+            .single();
+          currentActiveCart = newCart;
+          stateUpdate.activeCart = newCart;
+          console.log(`[Tool] 🔄 Carrinho criado: ${newCart?.id}`);
+        }
+        
+        // Move pending items to cart
+        for (const pendingItem of pendingToAutoConfirm) {
+          const { data: cartItem } = await supabase
+            .from('cart_items')
+            .insert({
+              cart_id: currentActiveCart!.id,
+              product_id: pendingItem.product_id,
+              quantity: pendingItem.quantity,
+              notes: pendingItem.notes
+            })
+            .select()
+            .single();
+          
+          // Add addons if any
+          if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
+            const addonInserts = pendingItem.addon_ids.map((addonId: string) => ({
+              cart_item_id: cartItem.id,
+              addon_id: addonId
+            }));
+            await supabase.from('cart_item_addons').insert(addonInserts);
+          }
+          
+          // Update currentCartItems for checklist
+          const product = pendingItem.product || availableProducts.find(p => p.id === pendingItem.product_id);
+          if (product) {
+            currentCartItems.push({
+              product_id: pendingItem.product_id,
+              product_name: product.name,
+              quantity: pendingItem.quantity,
+              total_price: product.price * pendingItem.quantity
+            });
+          }
+          
+          console.log(`[Tool] 🔄 Item movido: ${pendingItem.quantity}x ${product?.name || pendingItem.product_id}`);
+        }
+        
+        // Mark pending items as confirmed
+        await supabase
+          .from('conversation_pending_items')
+          .update({ status: 'confirmed' })
+          .eq('user_phone', customerPhone)
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'pending');
+        
+        console.log(`[Tool] ✅ AUTO-CONFIRM: ${pendingToAutoConfirm.length} itens movidos para o carrinho`);
+        stateUpdate.cartModified = true;
+      } else if (pendingToAutoConfirm && pendingToAutoConfirm.length > 0) {
+        console.log(`[Tool] ⚠️ DIAGNOSTIC: ${pendingToAutoConfirm.length} pending items existem mas carrinho já tem ${currentCartItems.length} itens`);
+      }
+      
       const checklistResults = {
         has_cart: !!currentActiveCart,
-        has_items: cartItems.length > 0,
+        has_items: currentCartItems.length > 0,
         has_address: !!newMetadata.delivery_address,
         has_payment: !!newMetadata.payment_method,
-        items_count: cartItems.length,
+        items_count: currentCartItems.length,
         address: newMetadata.delivery_address || null,
-        payment: newMetadata.payment_method || null
+        payment: newMetadata.payment_method || null,
+        auto_confirmed_pending: (pendingToAutoConfirm?.length || 0) > 0 && cartItems.length === 0
       };
       
       console.log(`[Tool]   ✓ Carrinho existe: ${checklistResults.has_cart}`);
       console.log(`[Tool]   ✓ Itens no carrinho: ${checklistResults.has_items} (${checklistResults.items_count} itens)`);
       console.log(`[Tool]   ✓ Endereço definido: ${checklistResults.has_address} (${checklistResults.address || 'N/A'})`);
       console.log(`[Tool]   ✓ Pagamento definido: ${checklistResults.has_payment} (${checklistResults.payment || 'N/A'})`);
+      if (checklistResults.auto_confirmed_pending) {
+        console.log(`[Tool]   ✓ Auto-confirmados: ${pendingToAutoConfirm?.length} itens pendentes`);
+      }
       
       // Verificação 1: Carrinho
-      if (!currentActiveCart || cartItems.length === 0) {
+      if (!currentActiveCart || currentCartItems.length === 0) {
         console.log('[Tool] ❌ FALHA: Carrinho vazio');
         return {
           output: {
@@ -1641,7 +1730,7 @@ async function executeToolCall(
       console.log('[Tool] ✅ CHECKLIST COMPLETO - Prosseguindo com finalização');
       
       // Calculate total
-      const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
+      const subtotal = currentCartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
       const deliveryFee = newMetadata.delivery_fee || restaurant.delivery_fee || 0;
       const orderTotal = subtotal + deliveryFee;
       
