@@ -176,13 +176,35 @@ serve(async (req) => {
         });
       }
 
-      // Extract phone number (remove @s.whatsapp.net suffix)
+      // Extract phone number - preserve the full remoteJid for @lid support
       const remoteJid = data.key?.remoteJid || '';
-      let from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      let from = remoteJid;
       
-      // Ensure E.164 format (add + if not present)
-      if (from && !from.startsWith('+')) {
-        from = '+' + from;
+      console.log(`[EvolutionWebhook] Raw remoteJid: "${remoteJid}"`);
+      
+      // Detect the type of identifier
+      const isLid = remoteJid.includes('@lid');
+      const isWhatsAppNet = remoteJid.includes('@s.whatsapp.net');
+      const isCUs = remoteJid.includes('@c.us');
+      
+      if (isLid) {
+        // @lid format: preserve full identifier including @lid suffix
+        // This is a Linked ID from WhatsApp Business
+        from = remoteJid.replace(/^\+/, ''); // Just remove + if present
+        console.log(`[EvolutionWebhook] 🔗 LID format detected, preserved: "${from}"`);
+      } else if (isWhatsAppNet || isCUs) {
+        // Standard format: extract number, add + prefix
+        from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+        if (from && !from.startsWith('+')) {
+          from = '+' + from;
+        }
+        console.log(`[EvolutionWebhook] 📱 Standard format, extracted: "${from}"`);
+      } else {
+        // Unknown format - just add + if needed
+        if (from && !from.startsWith('+')) {
+          from = '+' + from;
+        }
+        console.log(`[EvolutionWebhook] ❓ Unknown format, normalized: "${from}"`);
       }
       
       // Extract message text (Evolution supports multiple message types)

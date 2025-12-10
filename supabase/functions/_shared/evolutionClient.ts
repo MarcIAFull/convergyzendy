@@ -76,16 +76,141 @@ async function validateApiConnection(): Promise<void> {
   }
 }
 
+// List of valid international country codes (most common)
+const COUNTRY_CODES = [
+  '351', // Portugal
+  '55',  // Brazil
+  '34',  // Spain
+  '33',  // France
+  '44',  // UK
+  '1',   // USA/Canada
+  '49',  // Germany
+  '39',  // Italy
+  '31',  // Netherlands
+  '32',  // Belgium
+  '41',  // Switzerland
+  '43',  // Austria
+  '353', // Ireland
+  '352', // Luxembourg
+  '356', // Malta
+  '358', // Finland
+  '359', // Bulgaria
+  '370', // Lithuania
+  '371', // Latvia
+  '372', // Estonia
+  '373', // Moldova
+  '374', // Armenia
+  '375', // Belarus
+  '376', // Andorra
+  '377', // Monaco
+  '378', // San Marino
+  '380', // Ukraine
+  '381', // Serbia
+  '382', // Montenegro
+  '383', // Kosovo
+  '385', // Croatia
+  '386', // Slovenia
+  '387', // Bosnia
+  '389', // North Macedonia
+  '420', // Czech Republic
+  '421', // Slovakia
+  '423', // Liechtenstein
+  '48',  // Poland
+  '45',  // Denmark
+  '46',  // Sweden
+  '47',  // Norway
+  '30',  // Greece
+  '36',  // Hungary
+  '40',  // Romania
+  '7',   // Russia
+  '61',  // Australia
+  '64',  // New Zealand
+  '81',  // Japan
+  '82',  // South Korea
+  '86',  // China
+  '91',  // India
+  '52',  // Mexico
+  '54',  // Argentina
+  '56',  // Chile
+  '57',  // Colombia
+  '58',  // Venezuela
+  '212', // Morocco
+  '213', // Algeria
+  '216', // Tunisia
+  '20',  // Egypt
+  '27',  // South Africa
+  '234', // Nigeria
+  '254', // Kenya
+  '255', // Tanzania
+  '256', // Uganda
+  '971', // UAE
+  '966', // Saudi Arabia
+  '965', // Kuwait
+  '974', // Qatar
+  '968', // Oman
+  '973', // Bahrain
+  '962', // Jordan
+  '961', // Lebanon
+  '90',  // Turkey
+  '972', // Israel
+  '60',  // Malaysia
+  '62',  // Indonesia
+  '63',  // Philippines
+  '65',  // Singapore
+  '66',  // Thailand
+  '84',  // Vietnam
+];
+
 export function formatPhoneNumber(phone: string): string {
-  // Remove any non-digit characters
-  let cleaned = phone.replace(/\D/g, '');
+  console.log(`[formatPhoneNumber] Input: "${phone}"`);
   
-  // If it doesn't start with country code, assume Brazil (+55)
-  if (!cleaned.startsWith('55')) {
-    cleaned = '55' + cleaned;
+  // If already has suffix @lid, @s.whatsapp.net or @c.us, preserve exactly as-is
+  // These are WhatsApp internal identifiers that must not be modified
+  if (phone.includes('@lid') || phone.includes('@s.whatsapp.net') || phone.includes('@c.us')) {
+    // Just remove + if present, keep the rest intact
+    const result = phone.replace(/^\+/, '');
+    console.log(`[formatPhoneNumber] Preserved existing format: "${result}"`);
+    return result;
   }
   
-  return cleaned + '@s.whatsapp.net';
+  // Remove any non-digit characters for processing
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // Sort country codes by length descending to match longer codes first (e.g., 351 before 35)
+  const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.length - a.length);
+  
+  // Check if already has a valid country code
+  const hasCountryCode = sortedCodes.some(code => cleaned.startsWith(code));
+  
+  if (!hasCountryCode) {
+    // Try to detect format and apply appropriate country code
+    
+    // Portuguese mobile format: starts with 9, has 9 digits (e.g., 935379572)
+    if (/^9\d{8}$/.test(cleaned)) {
+      cleaned = '351' + cleaned;
+      console.log(`[formatPhoneNumber] Detected Portuguese mobile, added 351`);
+    }
+    // Portuguese landline format: starts with 2, has 9 digits (e.g., 212345678)
+    else if (/^2\d{8}$/.test(cleaned)) {
+      cleaned = '351' + cleaned;
+      console.log(`[formatPhoneNumber] Detected Portuguese landline, added 351`);
+    }
+    // Brazilian format: 10-11 digits, DDD + number (e.g., 11999998888)
+    else if (/^\d{10,11}$/.test(cleaned) && !cleaned.startsWith('0')) {
+      cleaned = '55' + cleaned;
+      console.log(`[formatPhoneNumber] Detected Brazilian format, added 55`);
+    }
+    // Fallback: Don't modify - better to preserve than corrupt
+    else {
+      console.log(`[formatPhoneNumber] Unknown format, preserving as-is: ${cleaned}`);
+    }
+  } else {
+    console.log(`[formatPhoneNumber] Already has country code`);
+  }
+  
+  const result = cleaned + '@s.whatsapp.net';
+  console.log(`[formatPhoneNumber] Output: "${result}"`);
+  return result;
 }
 
 export async function getInstanceStatus(instanceName: string): Promise<InstanceStatus> {
