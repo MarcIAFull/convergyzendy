@@ -12,6 +12,7 @@ import { BehaviorConfigCard } from '@/components/ai-config/BehaviorConfigCard';
 import { RecoveryMessagesCard } from '@/components/ai-config/RecoveryMessagesCard';
 import { OrchestrationRulesEditor } from '@/components/ai-config/OrchestrationRulesEditor';
 import { PromptTemplateGuide } from '@/components/ai-config/PromptTemplateGuide';
+import { TokenOptimizationCard } from '@/components/ai-config/TokenOptimizationCard';
 
 export default function AIConfiguration() {
   const { toast } = useToast();
@@ -354,6 +355,12 @@ export default function AIConfiguration() {
           <div className="space-y-6">
             {/* Guide */}
             <PromptTemplateGuide />
+
+            {/* Token Optimization - NEW */}
+            <TokenOptimizationCard
+              agent={selectedAgent}
+              onUpdate={handleAgentUpdate}
+            />
 
             {/* Model Parameters */}
             <ModelParametersCard 

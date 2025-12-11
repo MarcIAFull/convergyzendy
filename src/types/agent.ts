@@ -17,6 +17,14 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface TokenOptimizationConfig {
+  max_tokens_by_intent: Record<string, number>;
+  history_window_size: number;
+  history_inbound_limit: number;
+  history_outbound_limit: number;
+  history_message_truncate_length: number;
+}
+
 export interface BehaviorConfig {
   customer_profile?: {
     auto_load?: boolean;
@@ -28,6 +36,7 @@ export interface BehaviorConfig {
     allow_multiple?: boolean;
     expiration_minutes?: number;
   };
+  token_optimization?: TokenOptimizationConfig;
 }
 
 export interface OrchestrationConfig {
