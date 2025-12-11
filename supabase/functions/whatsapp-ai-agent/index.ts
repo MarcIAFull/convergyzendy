@@ -569,7 +569,7 @@ ${rawMessage}
     console.log(`[Main AI] Contexto dinâmico: ${dynamicContext.length} chars`);
     console.log(`[Main AI] ✅ Cache hit potencial: ~${Math.round((1 - dynamicContext.length / (conversationalSystemPrompt.length + dynamicContext.length)) * 100)}%`);
 
-    // Log AI request details
+    // Log AI request details - including full dynamic context for debugging
     interactionLog.system_prompt = conversationalSystemPrompt;
     interactionLog.prompt_length = conversationalSystemPrompt.length;
     interactionLog.ai_request = {
@@ -582,7 +582,13 @@ ${rawMessage}
       presence_penalty: conversationalAgent?.presence_penalty,
       cache_optimization: true,
       fixed_prompt_length: conversationalSystemPrompt.length,
-      dynamic_context_length: dynamicContext.length
+      dynamic_context_length: dynamicContext.length,
+      // Full user message sent to OpenAI for debugging
+      user_message_to_ai: dynamicContext,
+      messages_structure: [
+        { role: 'system', content_length: conversationalSystemPrompt.length },
+        { role: 'user', content_length: dynamicContext.length }
+      ]
     };
 
     // PHASE 1.1: Get dynamic max_tokens based on intent
