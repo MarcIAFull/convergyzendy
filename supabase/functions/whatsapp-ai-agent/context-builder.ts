@@ -132,21 +132,22 @@ export async function buildConversationContext(
   console.log(`[Context Builder] Menu: ${availableProducts.length} products`);
 
   // ============================================================
-  // LOAD CONVERSATION HISTORY
+  // LOAD CONVERSATION HISTORY (OPTIMIZED - Phase 1.2)
   // ============================================================
   
-  // Buscar últimas 20 mensagens para garantir histórico completo de ambos os lados
+  // OPTIMIZATION: Limit to 5 messages total (3 user + 2 assistant) to reduce tokens
+  // This saves ~60% of history tokens while maintaining enough context
   const { data: messageHistory } = await supabase
     .from('messages')
     .select('body, direction, timestamp')
     .eq('restaurant_id', restaurantId)
     .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
     .order('timestamp', { ascending: false })
-    .limit(20);
+    .limit(10); // Fetch 10, keep 5
 
-  // Separar e limitar mensagens por direção
-  const inboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'inbound').slice(0, 10);
-  const outboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'outbound').slice(0, 10);
+  // Separar e limitar mensagens por direção (3 user + 2 assistant = 5 total)
+  const inboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'inbound').slice(0, 3);
+  const outboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'outbound').slice(0, 2);
   
   // Combinar e ordenar por timestamp
   const combinedMessages = [...inboundMessages, ...outboundMessages]
@@ -158,7 +159,7 @@ export async function buildConversationContext(
       content: msg.body
     }));
 
-  console.log(`[Context Builder] History: ${conversationHistory.length} messages (${inboundMessages.length} user, ${outboundMessages.length} assistant)`);
+  console.log(`[Context Builder] History: ${conversationHistory.length} messages (${inboundMessages.length} user, ${outboundMessages.length} assistant) [OPTIMIZED]`);
 
   // ============================================================
   // LOAD ACTIVE CART
@@ -344,11 +345,12 @@ export async function buildConversationContext(
     history: formatHistoryForPrompt(conversationHistory),
     pendingItems: formatPendingItemsForPrompt(pendingItems),
     restaurantInfo: formatRestaurantInfoForPrompt(restaurant),    // Operational info
-    localTime: formatLocalTimeForPrompt(restaurant)               // Local time
+    localTime: ''  // OPTIMIZATION Phase 1.3: Removed - breaks cache, not essential
   };
 
   console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
   console.log(`[Context Builder] ✅ RAG Customer format: ${formatted.customer.length} chars`);
+  console.log(`[Context Builder] ✅ History format: ${formatted.history.length} chars (${conversationHistory.length} msgs)`);
   console.log(`[Context Builder] 📉 Token reduction: ${Math.round((1 - formatted.menu.length / Math.max(formatted.menuFull.length, 1)) * 100)}%`);
   console.log('[Context Builder] =============================================\n');
 
@@ -509,12 +511,22 @@ function formatCustomerForPrompt(customer: any | null): string {
   return formatCustomerForRAG(customer, null);
 }
 
+/**
+ * OPTIMIZED: Ultra-compact history format (Phase 3)
+ * Uses arrows instead of labels, truncates long messages
+ */
 function formatHistoryForPrompt(history: any[]): string {
   if (history.length === 0) return 'Sem conversa anterior';
   
-  return history.map(msg => 
-    `${msg.role === 'user' ? 'Cliente' : 'Agente'}: ${msg.content}`
-  ).join('\n');
+  // Ultra-compact format: → for client, ← for agent
+  // Truncate messages > 80 chars to save tokens
+  return history.map(msg => {
+    const prefix = msg.role === 'user' ? '→' : '←';
+    const content = msg.content.length > 80 
+      ? msg.content.substring(0, 77) + '...' 
+      : msg.content;
+    return `${prefix} ${content}`;
+  }).join('\n');
 }
 
 function formatPendingItemsForPrompt(pendingItems: any[]): string {
