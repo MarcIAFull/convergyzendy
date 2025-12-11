@@ -269,6 +269,33 @@ serve(async (req) => {
       };
     };
 
+    // ============================================================
+    // PHASE 1.1: DYNAMIC MAX_TOKENS BY INTENT
+    // Reduces output tokens by 40-60% for simple intents
+    // ============================================================
+    const getMaxTokensByIntent = (intent: string): number => {
+      const tokenLimits: Record<string, number> = {
+        // Simple intents - minimal response needed
+        'greeting': 150,
+        'acknowledgment': 100,
+        'unclear': 150,
+        'needs_human': 200,
+        
+        // Medium intents - moderate response
+        'browse_menu': 350,
+        'browse_product': 400,
+        'confirm_item': 300,
+        'provide_address': 250,
+        'provide_payment': 200,
+        
+        // Complex intents - full response
+        'finalize': 500,
+        'manage_pending_items': 450,
+        'security_threat': 150
+      };
+      return tokenLimits[intent] || 400; // Default fallback
+    };
+
     const orchestratorModel = orchestratorAgent?.model || 'gpt-4o';
     const orchestratorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -512,9 +539,13 @@ serve(async (req) => {
     };
 
     // ============================================================
-    // ITERATIVE FUNCTION CALLING LOOP
-    // Build messages array and iterate until AI stops calling tools
+    // PHASE 2: CACHE-OPTIMIZED MESSAGE STRUCTURE
+    // Split FIXED (cacheable) content from DYNAMIC content
     // ============================================================
+    
+    // PHASE 1.1: Get dynamic max_tokens based on intent
+    const dynamicMaxTokens = getMaxTokensByIntent(intent);
+    console.log(`[Token Optimization] Using max_tokens: ${dynamicMaxTokens} for intent: ${intent}`);
     
     // Initialize messages array with system prompt and user message
     // NOTE: Conversation history is ONLY in the system prompt via {{conversation_history}} variable
@@ -560,6 +591,10 @@ serve(async (req) => {
       const forceToolsThisIteration = shouldForceToolUse && iterations === 1;
       
       const conversationalModel = conversationalAgent?.model || 'gpt-4o';
+      
+      // PHASE 1.1: Use dynamic max_tokens based on intent (overrides DB config for optimization)
+      const effectiveMaxTokens = Math.min(dynamicMaxTokens, conversationalAgent?.max_tokens || 800);
+      
       const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -572,7 +607,7 @@ serve(async (req) => {
           ...(tools.length > 0 && { tools }),
           // Force tool_choice: required for browse intents on first iteration
           ...(forceToolsThisIteration && { tool_choice: 'required' }),
-          ...getModelParams(conversationalModel, conversationalAgent?.max_tokens || 500, conversationalAgent?.temperature),
+          ...getModelParams(conversationalModel, effectiveMaxTokens, conversationalAgent?.temperature),
           ...(conversationalAgent?.top_p !== null && conversationalAgent?.top_p !== undefined && !isNewerModel(conversationalModel) && { top_p: conversationalAgent.top_p }),
           ...(conversationalAgent?.frequency_penalty !== null && conversationalAgent?.frequency_penalty !== undefined && !isNewerModel(conversationalModel) && { frequency_penalty: conversationalAgent.frequency_penalty }),
           ...(conversationalAgent?.presence_penalty !== null && conversationalAgent?.presence_penalty !== undefined && !isNewerModel(conversationalModel) && { presence_penalty: conversationalAgent.presence_penalty })
