@@ -25,6 +25,12 @@ export interface TokenOptimizationConfig {
   history_message_truncate_length: number;
 }
 
+export interface CacheOptimizationConfig {
+  enabled: boolean;
+  fixed_variables?: string[];
+  dynamic_variables?: string[];
+}
+
 export interface BehaviorConfig {
   customer_profile?: {
     auto_load?: boolean;
@@ -37,6 +43,7 @@ export interface BehaviorConfig {
     expiration_minutes?: number;
   };
   token_optimization?: TokenOptimizationConfig;
+  cache_optimization?: CacheOptimizationConfig;
 }
 
 export interface OrchestrationConfig {

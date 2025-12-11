@@ -472,40 +472,38 @@ serve(async (req) => {
       conversationalFallbackPrompt
     );
     
+    // ============================================================
+    // PHASE 2: CACHE-OPTIMIZED MESSAGE STRUCTURE (REAL IMPLEMENTATION)
+    // Split FIXED (cacheable) content from DYNAMIC content
+    // 
+    // FIXED variables (change rarely per restaurant):
+    //   - restaurant_name, menu_categories, menu_url
+    //   - tone, custom_instructions, business_rules, etc.
+    // 
+    // DYNAMIC variables (change every message):
+    //   - current_state, target_state, user_intent
+    //   - cart_summary, pending_items, customer_info
+    //   - conversation_history, user_message
+    // ============================================================
+    
+    // Build menu categories string for RAG
+    const menuCategories = [...new Set(availableProducts.map((p: any) => p.category).filter(Boolean))].join(' | ');
+    
     if (useConversationalDB && conversationalPromptBlocks.length > 0) {
-      // Build menu categories string for RAG
-      const menuCategories = [...new Set(availableProducts.map((p: any) => p.category).filter(Boolean))].join(' | ');
-      
-      // Apply template variables using unified formatted context
-      // CRITICAL: All variables used in agent_prompt_blocks must be passed here!
+      // ============================================================
+      // STEP 1: Apply ONLY FIXED variables to system prompt (CACHEABLE)
+      // ============================================================
       conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
-        // Basic context
+        // Restaurant identity (rarely changes)
         restaurant_name: restaurant.name,
-        user_message: rawMessage,
-        
-        // Restaurant operational info (phone, address, hours, delivery fee)
         restaurant_info: formatted.restaurantInfo,
         
-        // Local time based on restaurant timezone
-        local_time: formatted.localTime,
-        
-        // Menu (RAG)
+        // Menu (changes only when menu is updated)
         menu_products: formatted.menu,
         menu_categories: menuCategories,
         menu_url: context.menuUrl || '',
         
-        // Cart & state
-        cart_summary: formatted.cart,
-        current_state: currentState,
-        user_intent: intent,
-        target_state: targetState,
-        pending_items: formatted.pendingItems,
-        
-        // Customer
-        customer_info: formatted.customer,
-        conversation_history: formatted.history,
-        
-        // Restaurant AI Settings (personalization)
+        // Restaurant AI Settings (changes rarely)
         tone: restaurantAISettings?.tone || 'friendly',
         greeting_message: restaurantAISettings?.greeting_message || '',
         closing_message: restaurantAISettings?.closing_message || '',
@@ -514,17 +512,19 @@ serve(async (req) => {
         business_rules: restaurantAISettings?.business_rules || '',
         faq_responses: restaurantAISettings?.faq_responses || '',
         special_offers_info: restaurantAISettings?.special_offers_info || '',
-        unavailable_items_handling: restaurantAISettings?.unavailable_items_handling || ''
+        unavailable_items_handling: restaurantAISettings?.unavailable_items_handling || '',
+        
+        // Placeholder markers for dynamic content (replaced with marker)
+        current_state: '[VER CONTEXTO DINÂMICO]',
+        target_state: '[VER CONTEXTO DINÂMICO]',
+        user_intent: '[VER CONTEXTO DINÂMICO]',
+        cart_summary: '[VER CONTEXTO DINÂMICO]',
+        pending_items: '[VER CONTEXTO DINÂMICO]',
+        customer_info: '[VER CONTEXTO DINÂMICO]',
+        conversation_history: '[VER CONTEXTO DINÂMICO]',
+        user_message: '[VER CONTEXTO DINÂMICO]',
+        local_time: ''
       });
-      
-      // Log which variables were applied
-      console.log('[Main AI] ✅ Template variables applied:');
-      console.log('[Main AI]   - restaurant_name, user_message, restaurant_info, local_time');
-      console.log('[Main AI]   - menu_products, menu_categories, menu_url');
-      console.log('[Main AI]   - cart_summary, current_state, user_intent, target_state, pending_items');
-      console.log('[Main AI]   - customer_info, conversation_history');
-      console.log('[Main AI]   - tone, greeting_message, closing_message, upsell_aggressiveness');
-      console.log('[Main AI]   - custom_instructions, business_rules, faq_responses, special_offers_info, unavailable_items_handling');
       
       // Apply prompt overrides if any (restaurant-specific customizations)
       if (promptOverrides && promptOverrides.length > 0) {
@@ -535,13 +535,39 @@ serve(async (req) => {
         });
       }
       
-      console.log('[Main AI] ✅ Using database-configured prompt with template variables');
+      console.log('[Main AI] ✅ CACHE OPTIMIZATION: Fixed variables applied to system prompt');
+      console.log('[Main AI]   Fixed: restaurant_name, menu_categories, tone, custom_instructions, etc.');
     } else {
       console.log('[Main AI] ⚠️ Using fallback hard-coded prompt');
     }
     
-    console.log(`[Main AI] Prompt length: ${conversationalSystemPrompt.length} characters`);
-    console.log(`[Main AI] Prompt blocks used: ${conversationalPromptBlocks.length}`);
+    // ============================================================
+    // STEP 2: Build DYNAMIC context (goes in user message)
+    // This changes every message but doesn't invalidate cache
+    // ============================================================
+    const dynamicContext = `
+═══════════════════════════════════════════════════════════════
+📊 CONTEXTO DINÂMICO DA CONVERSA (atualizado a cada mensagem)
+═══════════════════════════════════════════════════════════════
+
+**ESTADO:** ${currentState} → ${targetState}
+**INTENT:** ${intent}
+**CLIENTE:** ${formatted.customer}
+**CARRINHO:** ${formatted.cart}
+**PENDENTES:** ${formatted.pendingItems}
+
+**HISTÓRICO RECENTE:**
+${formatted.history}
+
+═══════════════════════════════════════════════════════════════
+📩 MENSAGEM DO CLIENTE:
+${rawMessage}
+═══════════════════════════════════════════════════════════════
+`.trim();
+
+    console.log(`[Main AI] Prompt fixo (cacheable): ${conversationalSystemPrompt.length} chars`);
+    console.log(`[Main AI] Contexto dinâmico: ${dynamicContext.length} chars`);
+    console.log(`[Main AI] ✅ Cache hit potencial: ~${Math.round((1 - dynamicContext.length / (conversationalSystemPrompt.length + dynamicContext.length)) * 100)}%`);
 
     // Log AI request details
     interactionLog.system_prompt = conversationalSystemPrompt;
@@ -553,24 +579,23 @@ serve(async (req) => {
       max_tokens: conversationalAgent?.max_tokens || 1000,
       top_p: conversationalAgent?.top_p,
       frequency_penalty: conversationalAgent?.frequency_penalty,
-      presence_penalty: conversationalAgent?.presence_penalty
+      presence_penalty: conversationalAgent?.presence_penalty,
+      cache_optimization: true,
+      fixed_prompt_length: conversationalSystemPrompt.length,
+      dynamic_context_length: dynamicContext.length
     };
 
-    // ============================================================
-    // PHASE 2: CACHE-OPTIMIZED MESSAGE STRUCTURE
-    // Split FIXED (cacheable) content from DYNAMIC content
-    // ============================================================
-    
     // PHASE 1.1: Get dynamic max_tokens based on intent
     const dynamicMaxTokens = getMaxTokensByIntent(intent);
     console.log(`[Token Optimization] Using max_tokens: ${dynamicMaxTokens} for intent: ${intent}`);
     
-    // Initialize messages array with system prompt and user message
-    // NOTE: Conversation history is ONLY in the system prompt via {{conversation_history}} variable
-    // This avoids duplication and reduces token usage
+    // ============================================================
+    // STEP 3: Build messages array with FIXED system + DYNAMIC user
+    // This structure maximizes OpenAI prompt cache hit rate
+    // ============================================================
     const messages: any[] = [
-      { role: 'system', content: conversationalSystemPrompt },
-      { role: 'user', content: rawMessage }
+      { role: 'system', content: conversationalSystemPrompt },  // FIXED - cacheable!
+      { role: 'user', content: dynamicContext }                  // DYNAMIC - changes each message
     ];
     
     let finalResponse = '';

@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, ChevronRight, Zap, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Zap, Info, Database, RefreshCw } from 'lucide-react';
 import { Agent, TokenOptimizationConfig } from '@/types/agent';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 
 interface TokenOptimizationCardProps {
   agent: Agent;
@@ -36,11 +38,26 @@ const DEFAULT_OPTIMIZATION_CONFIG: TokenOptimizationConfig = {
   history_message_truncate_length: 80,
 };
 
+// Cache optimization variables
+const FIXED_VARIABLES = [
+  'restaurant_name', 'restaurant_info', 'menu_categories', 'menu_url',
+  'tone', 'greeting_message', 'closing_message', 'upsell_aggressiveness',
+  'custom_instructions', 'business_rules', 'faq_responses', 
+  'special_offers_info', 'unavailable_items_handling'
+];
+
+const DYNAMIC_VARIABLES = [
+  'current_state', 'target_state', 'user_intent',
+  'cart_summary', 'pending_items', 'customer_info',
+  'conversation_history', 'user_message'
+];
+
 export function TokenOptimizationCard({ agent, onUpdate }: TokenOptimizationCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Get current optimization config from behavior_config
   const optimizationConfig: TokenOptimizationConfig = agent.behavior_config?.token_optimization || DEFAULT_OPTIMIZATION_CONFIG;
+  const cacheConfig = agent.behavior_config?.cache_optimization || { enabled: true };
 
   const handleIntentTokenChange = (intent: string, value: number) => {
     const newMaxTokens = {
@@ -71,7 +88,19 @@ export function TokenOptimizationCard({ agent, onUpdate }: TokenOptimizationCard
     });
   };
 
-  const totalEstimatedSavings = "35-45%";
+  const handleCacheToggle = (enabled: boolean) => {
+    onUpdate({
+      behavior_config: {
+        ...agent.behavior_config,
+        cache_optimization: {
+          ...cacheConfig,
+          enabled
+        }
+      }
+    });
+  };
+
+  const totalEstimatedSavings = "40-60%";
 
   return (
     <Card className="border-green-500/20 bg-green-500/5">
@@ -91,6 +120,66 @@ export function TokenOptimizationCard({ agent, onUpdate }: TokenOptimizationCard
 
       {expanded && (
         <CardContent className="space-y-6">
+          {/* Cache Optimization Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-blue-500" />
+                <h4 className="font-medium">Cache de Prompt (Fase 2)</h4>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Separa variáveis fixas (cacheable) das dinâmicas. OpenAI mantém o system prompt em cache quando não muda, reduzindo tokens de input em ~60%.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">Ativo</Label>
+                <Switch 
+                  checked={cacheConfig.enabled !== false}
+                  onCheckedChange={handleCacheToggle}
+                />
+              </div>
+            </div>
+            
+            {cacheConfig.enabled !== false && (
+              <div className="grid grid-cols-2 gap-4 p-3 bg-muted/30 rounded-lg">
+                <div>
+                  <div className="flex items-center gap-1 mb-2">
+                    <RefreshCw className="h-3 w-3 text-green-500" />
+                    <Label className="text-xs font-medium text-green-600">FIXAS (Cacheable)</Label>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {FIXED_VARIABLES.map(v => (
+                      <Badge key={v} variant="secondary" className="text-[10px] px-1.5 py-0 bg-green-500/10 text-green-700 border-green-500/20">
+                        {v}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 mb-2">
+                    <RefreshCw className="h-3 w-3 text-orange-500 animate-spin" style={{ animationDuration: '3s' }} />
+                    <Label className="text-xs font-medium text-orange-600">DINÂMICAS (User Message)</Label>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {DYNAMIC_VARIABLES.map(v => (
+                      <Badge key={v} variant="secondary" className="text-[10px] px-1.5 py-0 bg-orange-500/10 text-orange-700 border-orange-500/20">
+                        {v}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
           {/* History Window Settings */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -142,6 +231,8 @@ export function TokenOptimizationCard({ agent, onUpdate }: TokenOptimizationCard
             </div>
           </div>
 
+          <Separator />
+
           {/* Max Tokens per Intent */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -182,11 +273,14 @@ export function TokenOptimizationCard({ agent, onUpdate }: TokenOptimizationCard
             <ul className="space-y-1 text-muted-foreground">
               <li>✅ <strong>Fase 1:</strong> Max tokens dinâmico por intent</li>
               <li>✅ <strong>Fase 1:</strong> Histórico limitado a {optimizationConfig.history_inbound_limit + optimizationConfig.history_outbound_limit} mensagens</li>
-              <li>✅ <strong>Fase 2:</strong> Estrutura de mensagens otimizada para cache</li>
+              <li>✅ <strong>Fase 2:</strong> Cache de prompt (variáveis fixas no system, dinâmicas no user)</li>
               <li>✅ <strong>Fase 3:</strong> Formato compacto de histórico (→/←)</li>
               <li>⏳ <strong>Fase 4:</strong> Bypass de LLM para intents simples (pendente)</li>
               <li>⏳ <strong>Fase 5:</strong> Alertas de uso (pendente)</li>
             </ul>
+            <p className="mt-3 text-xs text-green-600 font-medium">
+              💡 Cache hit esperado: ~60-80% em conversas multi-turno
+            </p>
           </div>
         </CardContent>
       )}
