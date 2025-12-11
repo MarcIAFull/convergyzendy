@@ -977,6 +977,19 @@ serve(async (req) => {
       
       await supabase.from('ai_interaction_logs').insert(interactionLog);
       console.log('[Logging] ✅ Interaction log saved to database');
+      
+      // Increment subscription token usage
+      if (totalTokensUsed > 0) {
+        try {
+          await supabase.rpc('increment_subscription_tokens', {
+            p_restaurant_id: restaurantId,
+            p_tokens: totalTokensUsed
+          });
+          console.log(`[Tokens] ✅ Subscription tokens incremented by ${totalTokensUsed}`);
+        } catch (tokenError) {
+          console.error('[Tokens] ⚠️ Failed to increment subscription tokens:', tokenError);
+        }
+      }
     } catch (logError) {
       console.error('[Logging] ❌ Failed to save interaction log:', logError);
     }

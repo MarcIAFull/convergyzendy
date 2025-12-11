@@ -1569,6 +1569,10 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_price_id: string
           stripe_subscription_id: string | null
+          token_alerts_sent: Json | null
+          tokens_limit: number | null
+          tokens_reset_at: string | null
+          tokens_used: number | null
           trial_end: string | null
           trial_start: string | null
           updated_at: string | null
@@ -1589,6 +1593,10 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_price_id: string
           stripe_subscription_id?: string | null
+          token_alerts_sent?: Json | null
+          tokens_limit?: number | null
+          tokens_reset_at?: string | null
+          tokens_used?: number | null
           trial_end?: string | null
           trial_start?: string | null
           updated_at?: string | null
@@ -1609,6 +1617,10 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_price_id?: string
           stripe_subscription_id?: string | null
+          token_alerts_sent?: Json | null
+          tokens_limit?: number | null
+          tokens_reset_at?: string | null
+          tokens_used?: number | null
           trial_end?: string | null
           trial_start?: string | null
           updated_at?: string | null
@@ -1778,6 +1790,59 @@ export type Database = {
             foreignKeyName: "tenant_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_usage_daily: {
+        Row: {
+          avg_tokens_per_interaction: number | null
+          completion_tokens: number | null
+          created_at: string | null
+          date: string
+          estimated_cost_usd: number | null
+          id: string
+          prompt_tokens: number | null
+          restaurant_id: string
+          tokens_by_model: Json | null
+          total_interactions: number | null
+          total_tokens: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          avg_tokens_per_interaction?: number | null
+          completion_tokens?: number | null
+          created_at?: string | null
+          date: string
+          estimated_cost_usd?: number | null
+          id?: string
+          prompt_tokens?: number | null
+          restaurant_id: string
+          tokens_by_model?: Json | null
+          total_interactions?: number | null
+          total_tokens?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          avg_tokens_per_interaction?: number | null
+          completion_tokens?: number | null
+          created_at?: string | null
+          date?: string
+          estimated_cost_usd?: number | null
+          id?: string
+          prompt_tokens?: number | null
+          restaurant_id?: string
+          tokens_by_model?: Json | null
+          total_interactions?: number | null
+          total_tokens?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_usage_daily_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1997,6 +2062,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aggregate_daily_token_usage: {
+        Args: { p_date?: string }
+        Returns: undefined
+      }
       cleanup_expired_caches: { Args: never; Returns: undefined }
       create_restaurant_with_owner: {
         Args: {
@@ -2066,6 +2135,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_subscription_tokens: {
+        Args: { p_restaurant_id: string; p_tokens: number }
+        Returns: undefined
       }
       upsert_debounce_message: {
         Args: {
