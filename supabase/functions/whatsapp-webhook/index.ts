@@ -310,22 +310,31 @@ serve(async (req) => {
 
       // Add message to debounce queue and schedule processing
       console.log('[whatsapp-webhook] Adding message to debounce queue');
+      let result: { id: string; action: string; message_count: number } | null = null;
       try {
-        const queueId = await addToDebounceQueue(
+        result = await addToDebounceQueue(
           supabase,
           restaurant.id,
           from,
           messageBody,
           instanceName
         );
+        const queueId = result?.id;
 
         if (queueId) {
-          console.log(`[whatsapp-webhook] Message added to debounce queue: ${queueId}`);
+          const action = result?.action || 'unknown';
+          console.log(`[whatsapp-webhook] Message added to debounce queue: ${queueId} (action: ${action})`);
           
-          // Schedule processing using background task
-          EdgeRuntime.waitUntil(
-            scheduleProcessing(supabase, queueId)
-          );
+          // CORREÇÃO: Só agendar processamento quando queue é CRIADA, não atualizada
+          // Isso evita múltiplos timers para o mesmo queueId
+          if (action === 'created') {
+            console.log(`[whatsapp-webhook] Queue CREATED - starting single timer for ${queueId}`);
+            EdgeRuntime.waitUntil(
+              scheduleProcessing(supabase, queueId)
+            );
+          } else {
+            console.log(`[whatsapp-webhook] Queue UPDATED - timer already running for ${queueId}`);
+          }
         }
       } catch (debounceError) {
         console.error('[whatsapp-webhook] Debounce error:', debounceError);
@@ -364,22 +373,15 @@ serve(async (req) => {
 });
 
 // Debounce queue management functions
+const DEBOUNCE_SECONDS = 5;
+
 async function addToDebounceQueue(
   supabase: any,
   restaurantId: string,
   customerPhone: string,
   messageBody: string,
   instanceName: string
-): Promise<string | null> {
-  const DEBOUNCE_SECONDS = 5;
-  const now = new Date();
-  const scheduledProcessAt = new Date(now.getTime() + DEBOUNCE_SECONDS * 1000);
-  
-  const messageEntry = {
-    body: messageBody,
-    timestamp: now.toISOString(),
-  };
-
+): Promise<{ id: string; action: string; message_count: number } | null> {
   console.log(`[addToDebounceQueue] Attempting to add/update queue for ${customerPhone}`);
 
   // ATOMIC UPSERT: Try to insert, if unique constraint violated, update instead
@@ -403,27 +405,82 @@ async function addToDebounceQueue(
 
   console.log(`[addToDebounceQueue] ${action} queue entry ${queueId} (${messageCount} messages)`);
 
-  return queueId;
+  return { id: queueId, action, message_count: messageCount };
 }
 
 async function scheduleProcessing(supabase: any, queueId: string) {
-  // Wait 5 seconds before processing
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  const MAX_RETRIES = 12; // Máximo 60 segundos de espera total (12 * 5s)
   
-  console.log(`[scheduleProcessing] Processing queue entry: ${queueId}`);
+  for (let retry = 0; retry < MAX_RETRIES; retry++) {
+    // Esperar DEBOUNCE_SECONDS antes de verificar
+    await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SECONDS * 1000));
+    
+    console.log(`[scheduleProcessing] Attempt ${retry + 1}/${MAX_RETRIES} for queue entry: ${queueId}`);
+    
+    try {
+      // Verificar status atual da queue
+      const { data: queueEntry, error: fetchError } = await supabase
+        .from('message_debounce_queue')
+        .select('status, last_message_at, messages')
+        .eq('id', queueId)
+        .single();
+      
+      if (fetchError || !queueEntry) {
+        console.log(`[scheduleProcessing] Queue entry not found or error: ${fetchError?.message}`);
+        return;
+      }
+      
+      // Se já foi processado, sair
+      if (queueEntry.status !== 'pending') {
+        console.log(`[scheduleProcessing] Queue already ${queueEntry.status}, exiting`);
+        return;
+      }
+      
+      // Verificar se passaram DEBOUNCE_SECONDS desde última mensagem
+      const lastMessageTime = new Date(queueEntry.last_message_at).getTime();
+      const now = Date.now();
+      const timeSinceLastMessage = (now - lastMessageTime) / 1000;
+      
+      console.log(`[scheduleProcessing] Time since last message: ${timeSinceLastMessage.toFixed(1)}s (need ${DEBOUNCE_SECONDS}s)`);
+      
+      if (timeSinceLastMessage >= DEBOUNCE_SECONDS) {
+        // Hora de processar! Todas as mensagens foram coletadas
+        const messageCount = Array.isArray(queueEntry.messages) ? queueEntry.messages.length : 0;
+        console.log(`[scheduleProcessing] ✅ Processing queue entry: ${queueId} with ${messageCount} messages`);
+        
+        const { data, error } = await supabase.functions.invoke('process-debounced-messages', {
+          body: { queueId },
+        });
+
+        if (error) {
+          console.error('[scheduleProcessing] Error invoking processor:', error);
+        } else {
+          console.log('[scheduleProcessing] Processor response:', data);
+        }
+        return;
+      } else {
+        // Nova mensagem chegou dentro do período de debounce, esperar mais
+        console.log(`[scheduleProcessing] ⏳ New message arrived, waiting again... (${timeSinceLastMessage.toFixed(1)}s < ${DEBOUNCE_SECONDS}s)`);
+        // Continua o loop para esperar mais
+      }
+    } catch (error) {
+      console.error('[scheduleProcessing] Exception:', error);
+      return;
+    }
+  }
   
+  console.error(`[scheduleProcessing] ❌ Max retries (${MAX_RETRIES}) reached for queue ${queueId}, forcing processing`);
+  
+  // Fallback: processar mesmo assim após max retries para não perder mensagens
   try {
     const { data, error } = await supabase.functions.invoke('process-debounced-messages', {
       body: { queueId },
     });
-
     if (error) {
-      console.error('[scheduleProcessing] Error invoking processor:', error);
-    } else {
-      console.log('[scheduleProcessing] Processor response:', data);
+      console.error('[scheduleProcessing] Fallback processor error:', error);
     }
   } catch (error) {
-    console.error('[scheduleProcessing] Exception:', error);
+    console.error('[scheduleProcessing] Fallback exception:', error);
   }
 }
 
