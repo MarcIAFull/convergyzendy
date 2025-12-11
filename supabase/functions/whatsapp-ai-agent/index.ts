@@ -110,6 +110,16 @@ serve(async (req) => {
     const useConversationalDB = !!conversationalAgent;
     console.log(`[Agent Config] Conversational: ${useConversationalDB ? `✅ Loaded from DB (ID: ${conversationalAgent.id}, Model: ${conversationalAgent.model})` : '⚠️ Using fallback (hard-coded)'}`);
     
+    // Extract token optimization config early (needed for context builder)
+    const tokenOptimizationConfig = conversationalAgent?.behavior_config?.token_optimization || null;
+    if (tokenOptimizationConfig) {
+      console.log(`[Agent Config] Token Optimization: ✅ Loaded from DB`);
+      console.log(`[Agent Config]   - History: ${tokenOptimizationConfig.history_inbound_limit || 3} inbound + ${tokenOptimizationConfig.history_outbound_limit || 2} outbound`);
+      console.log(`[Agent Config]   - Truncate: ${tokenOptimizationConfig.history_message_truncate_length || 80} chars`);
+    } else {
+      console.log(`[Agent Config] Token Optimization: ⚠️ Using defaults (no DB config)`);
+    }
+    
     // Load Orchestrator Prompt Blocks
     let orchestratorPromptBlocks: any[] = [];
     if (orchestratorAgent) {
@@ -160,7 +170,8 @@ serve(async (req) => {
       supabase,
       restaurantId,
       customerPhone,
-      rawMessage
+      rawMessage,
+      tokenOptimizationConfig  // Pass token optimization config
     );
     
     // Destructure for easier access
@@ -271,10 +282,13 @@ serve(async (req) => {
 
     // ============================================================
     // PHASE 1.1: DYNAMIC MAX_TOKENS BY INTENT
-    // Reduces output tokens by 40-60% for simple intents
+    // Uses tokenOptimizationConfig extracted earlier (line ~114)
+    // Falls back to defaults if not configured
     // ============================================================
+    
     const getMaxTokensByIntent = (intent: string): number => {
-      const tokenLimits: Record<string, number> = {
+      // Default token limits
+      const defaultLimits: Record<string, number> = {
         // Simple intents - minimal response needed
         'greeting': 150,
         'acknowledgment': 100,
@@ -291,9 +305,13 @@ serve(async (req) => {
         // Complex intents - full response
         'finalize': 500,
         'manage_pending_items': 450,
+        'prefilled_order': 400,
         'security_threat': 150
       };
-      return tokenLimits[intent] || 400; // Default fallback
+      
+      // Use database config if available, otherwise use defaults
+      const configuredLimits = tokenOptimizationConfig?.max_tokens_by_intent || defaultLimits;
+      return configuredLimits[intent] || defaultLimits[intent] || 400;
     };
 
     const orchestratorModel = orchestratorAgent?.model || 'gpt-4o';

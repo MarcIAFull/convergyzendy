@@ -43,6 +43,15 @@ export interface ConversationContext {
   };
 }
 
+// Token optimization config interface
+export interface TokenOptimizationConfig {
+  max_tokens_by_intent?: Record<string, number>;
+  history_window_size?: number;
+  history_inbound_limit?: number;
+  history_outbound_limit?: number;
+  history_message_truncate_length?: number;
+}
+
 /**
  * Build complete conversation context from database
  */
@@ -50,7 +59,8 @@ export async function buildConversationContext(
   supabase: any,
   restaurantId: string,
   customerPhone: string,
-  rawMessage: string
+  rawMessage: string,
+  tokenOptConfig?: TokenOptimizationConfig | null
 ): Promise<ConversationContext> {
   console.log('[Context Builder] ========== LOADING UNIFIED CONTEXT ==========');
   
@@ -133,21 +143,27 @@ export async function buildConversationContext(
 
   // ============================================================
   // LOAD CONVERSATION HISTORY (OPTIMIZED - Phase 1.2)
+  // Reads limits from tokenOptConfig if available
   // ============================================================
   
-  // OPTIMIZATION: Limit to 5 messages total (3 user + 2 assistant) to reduce tokens
-  // This saves ~60% of history tokens while maintaining enough context
+  // Get limits from config or use defaults
+  const historyInboundLimit = tokenOptConfig?.history_inbound_limit || 3;
+  const historyOutboundLimit = tokenOptConfig?.history_outbound_limit || 2;
+  const totalHistoryLimit = (historyInboundLimit + historyOutboundLimit) * 2; // Fetch 2x to ensure we get enough
+  
+  console.log(`[Context Builder] History config: ${historyInboundLimit} inbound + ${historyOutboundLimit} outbound = ${historyInboundLimit + historyOutboundLimit} total`);
+  
   const { data: messageHistory } = await supabase
     .from('messages')
     .select('body, direction, timestamp')
     .eq('restaurant_id', restaurantId)
     .or(`from_number.eq.${customerPhone},to_number.eq.${customerPhone}`)
     .order('timestamp', { ascending: false })
-    .limit(10); // Fetch 10, keep 5
+    .limit(totalHistoryLimit);
 
-  // Separar e limitar mensagens por direção (3 user + 2 assistant = 5 total)
-  const inboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'inbound').slice(0, 3);
-  const outboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'outbound').slice(0, 2);
+  // Separate and limit messages by direction
+  const inboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'inbound').slice(0, historyInboundLimit);
+  const outboundMessages = (messageHistory || []).filter((msg: any) => msg.direction === 'outbound').slice(0, historyOutboundLimit);
   
   // Combinar e ordenar por timestamp
   const combinedMessages = [...inboundMessages, ...outboundMessages]
@@ -336,13 +352,15 @@ export async function buildConversationContext(
   // ============================================================
   // FORMAT ALL CONTEXT DATA (RAG OPTIMIZED)
   // ============================================================
+  // Get truncation length from config or use default
+  const historyTruncateLength = tokenOptConfig?.history_message_truncate_length || 80;
   
   const formatted = {
     menu: formatMenuForRAG(availableProducts, menuUrl),           // OPTIMIZED: ~500 chars
     menuFull: formatMenuForPromptFull(availableProducts),         // FULL: for search_menu tool
     cart: formatCartForPrompt(cartItems, cartTotal),
     customer: formatCustomerForRAG(customer, customerInsights),   // RAG: minimal status
-    history: formatHistoryForPrompt(conversationHistory),
+    history: formatHistoryForPrompt(conversationHistory, historyTruncateLength),
     pendingItems: formatPendingItemsForPrompt(pendingItems),
     restaurantInfo: formatRestaurantInfoForPrompt(restaurant),    // Operational info
     localTime: ''  // OPTIMIZATION Phase 1.3: Removed - breaks cache, not essential
@@ -514,16 +532,18 @@ function formatCustomerForPrompt(customer: any | null): string {
 /**
  * OPTIMIZED: Ultra-compact history format (Phase 3)
  * Uses arrows instead of labels, truncates long messages
+ * @param history - Conversation history array
+ * @param truncateLength - Max characters before truncation (default 80)
  */
-function formatHistoryForPrompt(history: any[]): string {
+function formatHistoryForPrompt(history: any[], truncateLength: number = 80): string {
   if (history.length === 0) return 'Sem conversa anterior';
   
   // Ultra-compact format: → for client, ← for agent
-  // Truncate messages > 80 chars to save tokens
+  // Truncate messages > truncateLength chars to save tokens
   return history.map(msg => {
     const prefix = msg.role === 'user' ? '→' : '←';
-    const content = msg.content.length > 80 
-      ? msg.content.substring(0, 77) + '...' 
+    const content = msg.content.length > truncateLength 
+      ? msg.content.substring(0, truncateLength - 3) + '...' 
       : msg.content;
     return `${prefix} ${content}`;
   }).join('\n');
