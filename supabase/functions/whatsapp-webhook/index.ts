@@ -187,11 +187,16 @@ serve(async (req) => {
       const isWhatsAppNet = remoteJid.includes('@s.whatsapp.net');
       const isCUs = remoteJid.includes('@c.us');
       
+      // ============================================================
+      // FASE 1: @LID DETECTION - Force manual mode immediately
+      // @lid identifiers cannot receive replies, must escalate to human
+      // ============================================================
       if (isLid) {
         // @lid format: preserve full identifier including @lid suffix
-        // This is a Linked ID from WhatsApp Business
+        // This is a Linked ID from WhatsApp Business - CANNOT RECEIVE REPLIES
         from = remoteJid.replace(/^\+/, ''); // Just remove + if present
         console.log(`[EvolutionWebhook] 🔗 LID format detected, preserved: "${from}"`);
+        console.log(`[EvolutionWebhook] ⚠️ @lid numbers cannot receive AI replies - forcing manual mode`);
       } else if (isWhatsAppNet || isCUs) {
         // Standard format: extract number, add + prefix
         from = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
@@ -255,6 +260,63 @@ serve(async (req) => {
       }
 
       console.log(`[whatsapp-webhook] Processing message from ${from} for restaurant ${restaurantId}`);
+
+      // ============================================================
+      // FASE 1: @LID DETECTION - Skip AI, force manual mode
+      // ============================================================
+      if (isLid) {
+        console.log(`[whatsapp-webhook] ⚠️ @lid detected - skipping AI, forcing manual mode`);
+        
+        // Save message to database first (use restaurantId since we don't have restaurant phone yet)
+        await supabase
+          .from('messages')
+          .insert({
+            restaurant_id: restaurantId,
+            from_number: from,
+            to_number: 'unknown', // We don't have restaurant phone at this point
+            body: messageBody,
+            direction: 'inbound',
+          });
+        
+        // Force manual mode for this conversation
+        await supabase
+          .from('conversation_mode')
+          .upsert({
+            restaurant_id: restaurantId,
+            user_phone: from,
+            mode: 'manual',
+            handoff_reason: '@lid_number_detected',
+            handoff_summary: `Número @lid detectado: ${from}. Não é possível enviar respostas automáticas para este número. Requer atendimento manual.`,
+            taken_over_at: new Date().toISOString(),
+          }, {
+            onConflict: 'restaurant_id,user_phone'
+          });
+        
+        // Create urgent system log for staff notification
+        await supabase
+          .from('system_logs')
+          .insert({
+            restaurant_id: restaurantId,
+            log_type: 'lid_customer_alert',
+            severity: 'warn',
+            message: `⚠️ Cliente com número @lid detectado: ${from}. Mensagem: "${messageBody.substring(0, 100)}..."`,
+            metadata: { 
+              customer_phone: from, 
+              message_preview: messageBody.substring(0, 200),
+              requires_manual_attention: true
+            }
+          });
+        
+        return new Response(JSON.stringify({ 
+          ok: true, 
+          skipped: true,
+          reason: 'lid_number_cannot_receive_replies',
+          message: 'Número @lid detectado - conversa movida para modo manual'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
+      }
 
       // Rate limiting check
       const rateLimitKey = createRateLimitIdentifier('webhook', restaurantId, from);
@@ -373,7 +435,8 @@ serve(async (req) => {
 });
 
 // Debounce queue management functions
-const DEBOUNCE_SECONDS = 5;
+// FASE 1: Increased from 5 to 8 seconds for better message grouping
+const DEBOUNCE_SECONDS = 8;
 
 async function addToDebounceQueue(
   supabase: any,

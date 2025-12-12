@@ -1645,28 +1645,69 @@ async function executeToolCall(
     }
     
     case 'set_payment_method': {
-      const { method } = args;
+      let { method } = args;
+      
+      // ============================================================
+      // FASE 1: PAYMENT METHOD NORMALIZATION
+      // Map common Portuguese terms to valid payment methods
+      // ============================================================
+      const paymentNormalizationMap: Record<string, string> = {
+        // Cash variants
+        'cash': 'cash',
+        'dinheiro': 'cash',
+        'numerário': 'cash',
+        'numerario': 'cash',
+        'espécie': 'cash',
+        'especie': 'cash',
+        
+        // Card variants
+        'card': 'card',
+        'cartão': 'card',
+        'cartao': 'card',
+        'multibanco': 'card',
+        'visa': 'card',
+        'mastercard': 'card',
+        'débito': 'card',
+        'debito': 'card',
+        'crédito': 'card',
+        'credito': 'card',
+        'terminal': 'card',
+        'máquina': 'card',
+        'maquina': 'card',
+        
+        // MBWay variants
+        'mbway': 'mbway',
+        'mb way': 'mbway',
+        'mb-way': 'mbway',
+      };
+      
+      // Normalize the method
+      const normalizedMethod = paymentNormalizationMap[method?.toLowerCase()?.trim()] || method;
+      
+      console.log(`[Tool] 🔄 Payment normalization: "${method}" → "${normalizedMethod}"`);
       
       const validMethods = ['cash', 'card', 'mbway'];
-      if (!validMethods.includes(method)) {
+      if (!validMethods.includes(normalizedMethod)) {
+        console.log(`[Tool] ❌ Invalid payment method: "${method}" (normalized: "${normalizedMethod}")`);
         return {
           output: {
             success: false,
-            error: `Método de pagamento inválido. Opções: ${validMethods.join(', ')}`
+            error: `Método de pagamento inválido: "${method}". Opções: dinheiro, cartão/multibanco, ou MBWay`
           }
         };
       }
       
-      stateUpdate.newMetadata = { payment_method: method };
+      stateUpdate.newMetadata = { payment_method: normalizedMethod };
       stateUpdate.newState = 'ready_to_order';
       
-      console.log(`[Tool] ✅ Payment method set: ${method}`);
+      console.log(`[Tool] ✅ Payment method set: ${normalizedMethod}`);
       
       return {
         output: {
           success: true,
-          method,
-          message: `Pagamento definido: ${method}`
+          method: normalizedMethod,
+          original_input: method,
+          message: `Pagamento definido: ${normalizedMethod === 'cash' ? 'dinheiro' : normalizedMethod === 'card' ? 'cartão' : 'MBWay'}`
         },
         stateUpdate
       };

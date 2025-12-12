@@ -57,6 +57,27 @@ const COMMON_SYNONYMS: Record<string, string[]> = {
   'pepperoni': ['peperoni', 'pepperonis'],
 };
 
+// ============================================================
+// FASE 1: Pizza size mapping (Portuguese colloquial → DB product names)
+// ============================================================
+const PIZZA_SIZE_SYNONYMS: Record<string, string[]> = {
+  // Pequena/Individual → 4 Pedaços
+  '4 pedaços': ['pequena', 'individual', 'pequeno', 'mini', 'p', '4 fatias', '4pedacos'],
+  '4 pedacos': ['pequena', 'individual', 'pequeno', 'mini', 'p', '4 fatias'],
+  
+  // Média/Normal → 6 Pedaços  
+  '6 pedaços': ['média', 'media', 'normal', 'm', '6 fatias', '6pedacos'],
+  '6 pedacos': ['média', 'media', 'normal', 'm', '6 fatias'],
+  
+  // Grande/Família → 8 Pedaços
+  '8 pedaços': ['grande', 'familia', 'família', 'g', '8 fatias', '8pedacos', 'inteira'],
+  '8 pedacos': ['grande', 'familia', 'família', 'g', '8 fatias', 'inteira'],
+  
+  // Gigante → Maracanã/Golias
+  'maracanã': ['gigante', 'maracana', '16 pedaços', '16pedacos', 'enorme'],
+  'golias': ['mega', 'super grande', '38 pedaços', '38pedacos'],
+};
+
 /**
  * Normalizes text for comparison
  * - Lowercase
@@ -149,7 +170,7 @@ function fuzzyTokenMatch(queryTokens: string[], productTokens: string[]): number
 }
 
 /**
- * Expands query using synonyms (database + hardcoded)
+ * Expands query using synonyms (database + hardcoded + pizza sizes)
  */
 function expandWithSynonyms(query: string, synonyms: Synonym[]): string[] {
   const normalizedQuery = normalizeText(query);
@@ -172,6 +193,22 @@ function expandWithSynonyms(query: string, synonyms: Synonym[]): string[] {
     
     if (normalizedQuery === normalizedOriginal || syns.some(s => normalizeText(s) === normalizedQuery)) {
       expanded.add(normalizedOriginal);
+      syns.forEach(s => expanded.add(normalizeText(s)));
+    }
+  }
+  
+  // FASE 1: Check pizza size synonyms
+  for (const [original, syns] of Object.entries(PIZZA_SIZE_SYNONYMS)) {
+    const normalizedOriginal = normalizeText(original);
+    
+    // If query matches a size synonym, expand to include the DB product name
+    if (syns.some(s => normalizeText(s) === normalizedQuery || normalizedQuery.includes(normalizeText(s)))) {
+      expanded.add(normalizedOriginal);
+      console.log(`[SmartSearch] Pizza size mapping: "${normalizedQuery}" → "${normalizedOriginal}"`);
+    }
+    
+    // If query matches the DB name, add the colloquial synonyms too
+    if (normalizedQuery === normalizedOriginal || normalizedQuery.includes(normalizedOriginal)) {
       syns.forEach(s => expanded.add(normalizeText(s)));
     }
   }
