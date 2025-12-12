@@ -1221,6 +1221,38 @@ export type Database = {
           },
         ]
       }
+      product_synonyms: {
+        Row: {
+          created_at: string | null
+          id: string
+          original_term: string
+          restaurant_id: string
+          synonym: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          original_term: string
+          restaurant_id: string
+          synonym: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          original_term?: string
+          restaurant_id?: string
+          synonym?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_synonyms_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           allergens: string[] | null
@@ -1230,12 +1262,14 @@ export type Database = {
           display_order: number | null
           id: string
           image_url: string | null
+          ingredients: string[] | null
           is_available: boolean
           is_featured: boolean | null
           name: string
           nutritional_info: Json | null
           price: number
           restaurant_id: string
+          search_keywords: string[] | null
           updated_at: string
         }
         Insert: {
@@ -1246,12 +1280,14 @@ export type Database = {
           display_order?: number | null
           id?: string
           image_url?: string | null
+          ingredients?: string[] | null
           is_available?: boolean
           is_featured?: boolean | null
           name: string
           nutritional_info?: Json | null
           price: number
           restaurant_id: string
+          search_keywords?: string[] | null
           updated_at?: string
         }
         Update: {
@@ -1262,12 +1298,14 @@ export type Database = {
           display_order?: number | null
           id?: string
           image_url?: string | null
+          ingredients?: string[] | null
           is_available?: boolean
           is_featured?: boolean | null
           name?: string
           nutritional_info?: Json | null
           price?: number
           restaurant_id?: string
+          search_keywords?: string[] | null
           updated_at?: string
         }
         Relationships: [

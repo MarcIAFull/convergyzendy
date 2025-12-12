@@ -16,6 +16,9 @@ REGRAS IMPORTANTES:
 4. Use preços em formato numérico (ex: 12.50, não "12,50€")
 5. Se houver variações de tamanho, crie produtos separados (ex: "Pizza Margherita - Média", "Pizza Margherita - Grande")
 6. Marque como is_featured: true os produtos que parecem ser destaques ou mais vendidos
+7. Para cada produto, gere:
+   - "search_keywords": palavras alternativas, abreviações, variantes de nome que clientes podem usar para buscar
+   - "ingredients": lista de ingredientes principais identificados na descrição ou nome
 
 IMPORTANTE: Retorne APENAS o JSON válido, sem markdown, sem explicações.
 
@@ -31,6 +34,8 @@ Formato de resposta JSON:
           "description": "Descrição detalhada com ingredientes",
           "price": 12.50,
           "is_featured": false,
+          "search_keywords": ["abreviação", "variante", "nome alternativo"],
+          "ingredients": ["ingrediente1", "ingrediente2", "ingrediente3"],
           "addons": [
             {"name": "Extra queijo", "price": 2.00}
           ]

@@ -222,6 +222,8 @@ export const useMenuStore = create<MenuState>((set, get) => ({
           ...product,
           name: product.name.trim(),
           description: product.description?.trim() || null,
+          search_keywords: product.search_keywords || [],
+          ingredients: product.ingredients || [],
         })
         .select()
         .single();
@@ -242,16 +244,18 @@ export const useMenuStore = create<MenuState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       // Sanitize updates
-      const sanitizedUpdates = {
+      const sanitizedUpdates: Record<string, any> = {
         ...updates,
         name: updates.name ? updates.name.trim() : undefined,
         description: updates.description ? updates.description.trim() : updates.description === '' ? null : undefined,
       };
 
-      // Remove undefined values
-      Object.keys(sanitizedUpdates).forEach(key => 
-        sanitizedUpdates[key as keyof typeof sanitizedUpdates] === undefined && delete sanitizedUpdates[key as keyof typeof sanitizedUpdates]
-      );
+      // Remove undefined values (but keep arrays even if empty)
+      Object.keys(sanitizedUpdates).forEach(key => {
+        if (sanitizedUpdates[key] === undefined && !Array.isArray(sanitizedUpdates[key])) {
+          delete sanitizedUpdates[key];
+        }
+      });
 
       const { error } = await supabase
         .from('products')

@@ -50,6 +50,8 @@ export interface Product {
   price: number;
   image_url: string | null;
   is_available: boolean;
+  search_keywords: string[];
+  ingredients: string[];
   created_at: string;
   updated_at: string;
 }

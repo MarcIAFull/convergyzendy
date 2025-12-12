@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import type { CategoryWithProducts, Product, Addon } from '@/types/database';
 import { uploadImage, deleteImage, validateImageFile, extractPathFromUrl } from '@/lib/imageUpload';
+import { TagsInput } from '@/components/menu/TagsInput';
 
 const MenuManagement = () => {
   const { restaurant } = useRestaurantGuard();
@@ -63,7 +64,7 @@ const MenuManagement = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [categoryName, setCategoryName] = useState('');
-  const [productForm, setProductForm] = useState({ name: '', description: '', price: '', image_url: '', is_available: true });
+  const [productForm, setProductForm] = useState({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [] as string[], ingredients: [] as string[] });
   const [productImageFile, setProductImageFile] = useState<File | null>(null);
   const [productImagePreview, setProductImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -119,7 +120,7 @@ const MenuManagement = () => {
   const handleAddProduct = (categoryId: string) => {
     setEditingProduct(null);
     setSelectedCategoryId(categoryId);
-    setProductForm({ name: '', description: '', price: '', image_url: '', is_available: true });
+    setProductForm({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [], ingredients: [] });
     setProductImageFile(null);
     setProductImagePreview('');
     setProductDialog(true);
@@ -134,6 +135,8 @@ const MenuManagement = () => {
       price: String(product.price),
       image_url: product.image_url || '',
       is_available: product.is_available,
+      search_keywords: product.search_keywords || [],
+      ingredients: product.ingredients || [],
     });
     setProductImageFile(null);
     setProductImagePreview(product.image_url || '');
@@ -210,6 +213,8 @@ const MenuManagement = () => {
         price: parseFloat(productForm.price),
         image_url: imageUrl || null,
         is_available: productForm.is_available,
+        search_keywords: productForm.search_keywords,
+        ingredients: productForm.ingredients,
       };
 
       if (editingProduct) {
@@ -560,6 +565,27 @@ const MenuManagement = () => {
                   Supported formats: JPEG, PNG, WebP. Max size: 5MB
                 </p>
               </div>
+            </div>
+            
+            {/* Search Optimization Fields */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="text-sm font-medium text-muted-foreground">Otimização de Busca (Opcional)</h4>
+              
+              <TagsInput
+                label="Palavras-chave de Busca"
+                value={productForm.search_keywords}
+                onChange={(tags) => setProductForm({ ...productForm, search_keywords: tags })}
+                placeholder="Ex: marg, pizza basica..."
+                suggestions={['pizza', 'hamburguer', 'bebida', 'combo', 'promoção']}
+              />
+              
+              <TagsInput
+                label="Ingredientes"
+                value={productForm.ingredients}
+                onChange={(tags) => setProductForm({ ...productForm, ingredients: tags })}
+                placeholder="Ex: queijo, tomate, bacon..."
+                suggestions={['queijo', 'presunto', 'bacon', 'cebola', 'tomate', 'alface']}
+              />
             </div>
           </div>
           <DialogFooter>
