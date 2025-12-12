@@ -93,14 +93,14 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     type: "function",
     function: {
       name: "set_payment_method",
-      description: "Set the payment method for the order",
+      description: "Set the payment method for the order. Accepts common Portuguese terms: 'dinheiro'/'cash' → cash, 'cartão'/'multibanco'/'card' → card, 'mbway'/'mb way' → mbway",
       parameters: {
         type: "object",
         properties: {
           method: {
             type: "string",
             enum: ["cash", "card", "mbway"],
-            description: "Payment method"
+            description: "Payment method - normalize customer input: dinheiro/cash→cash, cartão/multibanco/card→card, mbway→mbway"
           }
         },
         required: ["method"]
