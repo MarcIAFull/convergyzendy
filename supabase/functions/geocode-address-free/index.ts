@@ -72,11 +72,13 @@ async function tryGoogleGeocoding(address: string): Promise<GeocodingResult | nu
 }
 
 // Provider 1: Photon (Komoot) - More accurate, free
-async function tryPhoton(address: string): Promise<GeocodingResult | null> {
+async function tryPhoton(address: string, cityContext?: string): Promise<GeocodingResult | null> {
   try {
     // Photon works better with more complete addresses
-    // Try with Portugal bias first, then without
+    // PHASE 2: Try with city context (Quarteira/Algarve) first for better accuracy
+    const contextSuffix = cityContext || 'Quarteira, Algarve, Portugal';
     const urls = [
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ', ' + contextSuffix)}&limit=1&lang=pt`,
       `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ' Portugal')}&limit=1&lang=pt`,
       `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=pt`
     ];
@@ -276,31 +278,37 @@ serve(async (req) => {
     console.log('Cache miss or force refresh, trying providers...');
 
     // Try providers in order of accuracy with multiple strategies
+    // PHASE 2: Added Quarteira/Algarve context for better local accuracy
     console.log('--- Strategy 0: Google Geocoding API ---');
     let result = await tryGoogleGeocoding(normalizedAddress);
     
     if (!result) {
-      console.log('--- Strategy 1: Photon ---');
+      console.log('--- Strategy 1: Photon with Quarteira/Algarve context ---');
+      result = await tryPhoton(normalizedAddress, 'Quarteira, Algarve, Portugal');
+    }
+    
+    if (!result) {
+      console.log('--- Strategy 2: Photon without context ---');
       result = await tryPhoton(normalizedAddress);
     }
     
     if (!result) {
-      console.log('--- Strategy 2: Nominatim PT + Portugal suffix ---');
+      console.log('--- Strategy 3: Nominatim PT + Portugal suffix ---');
       result = await tryNominatim(normalizedAddress, true, true);
     }
     
     if (!result) {
-      console.log('--- Strategy 3: Nominatim PT only ---');
+      console.log('--- Strategy 4: Nominatim PT only ---');
       result = await tryNominatim(normalizedAddress, true, false);
     }
     
     if (!result) {
-      console.log('--- Strategy 4: Nominatim no filter + Portugal ---');
+      console.log('--- Strategy 5: Nominatim no filter + Portugal ---');
       result = await tryNominatim(normalizedAddress, false, true);
     }
     
     if (!result) {
-      console.log('--- Strategy 5: Nominatim no filter ---');
+      console.log('--- Strategy 6: Nominatim no filter ---');
       result = await tryNominatim(normalizedAddress, false, false);
     }
     
