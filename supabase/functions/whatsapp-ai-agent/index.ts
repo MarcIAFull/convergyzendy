@@ -7,6 +7,7 @@ import { sendWhatsAppMessage } from '../_shared/evolutionClient.ts';
 import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 import { updateCustomerInsightsAfterOrder, getCustomerInsights } from '../_shared/customerInsights.ts';
 import { buildConversationContext } from './context-builder.ts';
+import { smartSearchProducts } from './smart-search.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1204,8 +1205,8 @@ async function executeToolCall(
         };
       }
       
-      // Perform search
-      const results = searchProducts(availableProducts, query, category, max_results);
+      // Perform smart search with synonyms support
+      const results = smartSearchProducts(availableProducts, query, category, [], { maxResults: max_results });
       
       // Save results for positional selection
       if (results.length > 0) {
