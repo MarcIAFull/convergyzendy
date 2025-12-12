@@ -1509,6 +1509,20 @@ async function executeToolCall(
       
       console.log(`[Tool] 🗺️ Validating address: ${address || 'GPS Location'}`);
       
+      // PHASE 2: Check if cart is empty before asking for address
+      const totalItems = cartItems.length + pendingItems.length;
+      if (totalItems === 0) {
+        console.log(`[Tool] ⚠️ Cart empty - cannot proceed with address validation`);
+        return {
+          output: {
+            valid: false,
+            success: false,
+            cart_empty: true,
+            message: 'Ainda não tens itens no carrinho. O que gostarias de pedir?'
+          }
+        };
+      }
+      
       try {
         let lat: number;
         let lng: number;

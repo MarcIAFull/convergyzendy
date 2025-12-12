@@ -147,8 +147,9 @@ export async function buildConversationContext(
   // ============================================================
   
   // Get limits from config or use defaults
-  const historyInboundLimit = tokenOptConfig?.history_inbound_limit || 3;
-  const historyOutboundLimit = tokenOptConfig?.history_outbound_limit || 2;
+  // PHASE 2: Increased from 3+2=5 to 5+5=10 messages for better context
+  const historyInboundLimit = tokenOptConfig?.history_inbound_limit || 5;
+  const historyOutboundLimit = tokenOptConfig?.history_outbound_limit || 5;
   const totalHistoryLimit = (historyInboundLimit + historyOutboundLimit) * 2; // Fetch 2x to ensure we get enough
   
   console.log(`[Context Builder] History config: ${historyInboundLimit} inbound + ${historyOutboundLimit} outbound = ${historyInboundLimit + historyOutboundLimit} total`);
