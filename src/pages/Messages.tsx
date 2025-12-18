@@ -99,6 +99,7 @@ export default function Messages() {
               mode={selectedConversation.mode}
               restaurantId={restaurant.id}
               onToggleMode={(mode) => toggleMode(selectedPhone, restaurant.id, mode)}
+              cart={customerDetails?.cart}
             />
           ) : (
             <div className="h-full flex items-center justify-center">

@@ -392,6 +392,126 @@ serve(async (req) => {
     interactionLog.orchestrator_reasoning = decision.reasoning;
 
     // ============================================================
+    // FASE 3: AUTO-ESCALAÇÃO - 3+ intents com confidence < 0.5
+    // ============================================================
+    
+    const LOW_CONFIDENCE_THRESHOLD = 0.5;
+    const MAX_LOW_CONFIDENCE_COUNT = 3;
+    
+    // Get current low confidence count from metadata
+    let lowConfidenceCount = stateMetadata?.low_confidence_count || 0;
+    
+    if (decision.confidence < LOW_CONFIDENCE_THRESHOLD) {
+      lowConfidenceCount++;
+      console.log(`[Auto-Escalation] ⚠️ Low confidence detected (${decision.confidence}). Count: ${lowConfidenceCount}/${MAX_LOW_CONFIDENCE_COUNT}`);
+      
+      if (lowConfidenceCount >= MAX_LOW_CONFIDENCE_COUNT) {
+        console.log(`[Auto-Escalation] 🚨 TRIGGERING AUTOMATIC HANDOFF - ${lowConfidenceCount} consecutive low confidence responses`);
+        
+        // Force handoff to human
+        await supabase
+          .from('conversation_mode')
+          .upsert({
+            restaurant_id: restaurantId,
+            user_phone: customerPhone,
+            mode: 'manual',
+            handoff_reason: 'repeated_confusion',
+            handoff_summary: `Auto-escalação: ${lowConfidenceCount} respostas consecutivas com baixa confiança (<${LOW_CONFIDENCE_THRESHOLD}). Última mensagem: "${rawMessage}"`,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'restaurant_id,user_phone' });
+        
+        // Create system log for alert
+        await supabase
+          .from('system_logs')
+          .insert({
+            restaurant_id: restaurantId,
+            log_type: 'auto_escalation',
+            severity: 'warning',
+            message: `Auto-escalação ativada para ${customerPhone}`,
+            metadata: {
+              customer_phone: customerPhone,
+              low_confidence_count: lowConfidenceCount,
+              last_intent: decision.intent,
+              last_confidence: decision.confidence,
+              last_message: rawMessage
+            }
+          });
+        
+        // Reset count in metadata
+        lowConfidenceCount = 0;
+        
+        // Send notification message and skip AI processing
+        const handoffMessage = 'Um momento, vou transferir para um atendente humano que vai te ajudar melhor! 👋';
+        
+        // Save handoff message
+        await supabase.from('messages').insert({
+          restaurant_id: restaurantId,
+          from_number: restaurant.phone,
+          to_number: customerPhone,
+          body: handoffMessage,
+          direction: 'outbound',
+          sent_by: 'ai',
+          timestamp: new Date().toISOString()
+        });
+        
+        // Get WhatsApp instance name for sending
+        const { data: whatsappInstanceData } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_name')
+          .eq('restaurant_id', restaurantId)
+          .single();
+        
+        const handoffInstanceName = whatsappInstanceData?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
+        
+        // Send via WhatsApp
+        await sendWhatsAppMessage(handoffInstanceName, customerPhone, handoffMessage);
+        
+        // Update metadata
+        await supabase
+          .from('conversation_state')
+          .update({
+            metadata: { ...stateMetadata, low_confidence_count: 0 },
+            updated_at: new Date().toISOString()
+          })
+          .eq('restaurant_id', restaurantId)
+          .eq('user_phone', customerPhone);
+        
+        // Save interaction log
+        interactionLog.final_response = handoffMessage;
+        interactionLog.state_after = 'manual_handoff';
+        interactionLog.tokens_used = orchestratorTokens;
+        
+        const processingTime = Date.now() - startTime;
+        interactionLog.processing_time_ms = processingTime;
+        
+        await supabase.from('ai_interaction_logs').insert(interactionLog);
+        
+        console.log(`[Auto-Escalation] ✅ Handoff complete. Processing time: ${processingTime}ms`);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            auto_escalated: true,
+            message: handoffMessage
+          }), 
+          { 
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    } else {
+      // Reset count on successful high confidence response
+      if (lowConfidenceCount > 0) {
+        console.log(`[Auto-Escalation] ✅ High confidence response - resetting low confidence count`);
+        lowConfidenceCount = 0;
+      }
+    }
+    
+    // Store updated count in metadata for next message
+    stateMetadata.low_confidence_count = lowConfidenceCount;
+
+    // ============================================================
     // STEP 3: ITERATIVE FUNCTION CALLING LOOP
     // ============================================================
     
