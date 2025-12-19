@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useUserRestaurantsStore } from '@/stores/userRestaurantsStore';
-import { Loader2, CheckCircle2, XCircle, Copy } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INVITATION_TOKEN_KEY = 'pending_invitation_token';
@@ -38,24 +38,59 @@ export function getAndClearJustAcceptedInvitation(): boolean {
   return false;
 }
 
+interface InvitationData {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  restaurant_id: string;
+  restaurants: {
+    id: string;
+    name: string;
+    phone: string;
+    address: string;
+    delivery_fee: number;
+    is_open: boolean;
+    opening_hours: any;
+    slug: string | null;
+    created_at: string;
+    updated_at: string;
+    user_id: string;
+    latitude: number | null;
+    longitude: number | null;
+    google_place_id: string | null;
+    stripe_customer_id: string | null;
+  } | null;
+}
+
 export default function AcceptInvitation() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const setRestaurant = useRestaurantStore(state => state.setRestaurant);
   const addRestaurant = useUserRestaurantsStore(state => state.addRestaurant);
+  
   const [loading, setLoading] = useState(true);
-  const [invitation, setInvitation] = useState<any>(null);
+  const [accepting, setAccepting] = useState(false);
+  const [invitation, setInvitation] = useState<InvitationData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Fetch invitation details on mount
   useEffect(() => {
     if (token) {
-      // Save token so we can return after login/signup
       savePendingInvitationToken(token);
       fetchInvitation();
     }
   }, [token]);
+
+  // Auto-accept when user is logged in and email matches
+  useEffect(() => {
+    if (!authLoading && user && invitation && user.email?.toLowerCase() === invitation.email.toLowerCase() && !accepting && !success) {
+      handleAccept();
+    }
+  }, [user, authLoading, invitation, accepting, success]);
 
   const fetchInvitation = async () => {
     if (!token) return;
@@ -96,7 +131,7 @@ export default function AcceptInvitation() {
         .maybeSingle();
 
       if (fetchError) {
-        console.error('Error fetching invitation:', fetchError);
+        console.error('[AcceptInvitation] Error fetching invitation:', fetchError);
         setError('Erro ao carregar convite');
         return;
       }
@@ -113,103 +148,74 @@ export default function AcceptInvitation() {
         return;
       }
 
-      setInvitation(data);
-
-      // If user is logged in and email matches, auto-accept
-      if (user && user.email === data.email) {
-        await handleAccept(data);
-      }
+      setInvitation(data as InvitationData);
 
     } catch (error: any) {
-      console.error('Error fetching invitation:', error);
+      console.error('[AcceptInvitation] Error:', error);
       setError(error.message || 'Erro ao carregar convite');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAccept = async (invitationData?: any) => {
-    if (!token) return;
-
-    const currentInvitation = invitationData || invitation;
+  const handleAccept = async () => {
+    if (!token || !user || accepting) return;
 
     try {
-      setLoading(true);
+      setAccepting(true);
       setError(null);
 
       const { data, error: acceptError } = await supabase.functions.invoke(
         'accept-team-invitation',
-        {
-          body: { token },
-        }
+        { body: { token } }
       );
 
       if (acceptError) {
-        console.error('Error invoking accept function:', acceptError);
-        throw acceptError;
+        console.error('[AcceptInvitation] Function error:', acceptError);
+        throw new Error(acceptError.message || 'Erro ao aceitar convite');
       }
 
       if (data?.error) {
         throw new Error(data.error);
       }
 
-      // Get the full restaurant data from the invitation we already fetched
-      const restaurant = currentInvitation?.restaurants;
+      // Get restaurant from response or from invitation
+      const restaurant = data?.restaurant || invitation?.restaurants;
       
       if (restaurant) {
-        console.log('[AcceptInvitation] Setting restaurant in stores:', restaurant.name);
-        
-        // Update userRestaurantsStore
+        console.log('[AcceptInvitation] Setting restaurant:', restaurant.name);
         addRestaurant(restaurant);
-        
-        // Set as active restaurant in restaurantStore
         setRestaurant(restaurant);
-        
-        // Also save to localStorage for persistence
         localStorage.setItem(ACTIVE_RESTAURANT_KEY, restaurant.id);
       }
 
-      // Set flag so ProtectedRoute knows to skip restaurant check
       setJustAcceptedInvitation();
-      
-      // Clear pending token after successful acceptance
       clearPendingInvitationToken();
-      
       setSuccess(true);
-      toast.success('Convite aceito com sucesso!');
+      
+      toast.success(data?.alreadyMember ? 'Você já era membro!' : 'Convite aceito com sucesso!');
       
       setTimeout(() => {
         navigate('/dashboard');
       }, 1500);
 
     } catch (error: any) {
-      console.error('Error accepting invitation:', error);
+      console.error('[AcceptInvitation] Error accepting:', error);
       setError(error.message || 'Erro ao aceitar convite');
-      setLoading(false);
+      setAccepting(false);
     }
   };
 
   const handleGoToLogin = () => {
-    // Token is already saved in localStorage
     navigate('/login');
   };
 
   const handleGoToSignup = () => {
-    // Token is already saved, navigate to signup tab
     navigate('/login?tab=signup&invite=true');
   };
 
-  const copyInvitationLink = async () => {
-    try {
-      const url = window.location.href;
-      await navigator.clipboard.writeText(url);
-      toast.success('Link copiado!');
-    } catch (error) {
-      toast.error('Erro ao copiar link');
-    }
-  };
-
-  if (loading) {
+  // Loading state
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
@@ -224,6 +230,7 @@ export default function AcceptInvitation() {
     );
   }
 
+  // Success state
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -244,6 +251,7 @@ export default function AcceptInvitation() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -255,14 +263,9 @@ export default function AcceptInvitation() {
                 <h2 className="text-2xl font-bold">Erro</h2>
                 <p className="text-muted-foreground">{error}</p>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={() => navigate('/login')} variant="outline">
-                  Ir para Login
-                </Button>
-                <Button onClick={copyInvitationLink} variant="ghost" size="icon">
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button onClick={() => navigate('/login')} variant="outline">
+                Ir para Login
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -270,6 +273,7 @@ export default function AcceptInvitation() {
     );
   }
 
+  // No user - show login/signup options
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -288,11 +292,7 @@ export default function AcceptInvitation() {
               <Button onClick={handleGoToLogin} className="w-full">
                 Fazer Login para Aceitar
               </Button>
-              <Button
-                onClick={handleGoToSignup}
-                variant="outline"
-                className="w-full"
-              >
+              <Button onClick={handleGoToSignup} variant="outline" className="w-full">
                 Criar Conta
               </Button>
             </div>
@@ -302,18 +302,22 @@ export default function AcceptInvitation() {
     );
   }
 
-  if (user.email !== invitation?.email) {
+  // User logged in but email doesn't match
+  if (user.email?.toLowerCase() !== invitation?.email.toLowerCase()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center space-y-4">
-              <XCircle className="h-16 w-16 text-destructive" />
+              <AlertCircle className="h-16 w-16 text-yellow-500" />
               <div className="text-center space-y-2">
-                <h2 className="text-2xl font-bold">Email Incorreto</h2>
+                <h2 className="text-2xl font-bold">Email Diferente</h2>
                 <p className="text-muted-foreground">
-                  Este convite foi enviado para {invitation?.email}, mas você está logado como{' '}
-                  {user.email}
+                  Este convite foi enviado para <strong>{invitation?.email}</strong>, 
+                  mas você está logado como <strong>{user.email}</strong>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Por favor, faça logout e entre com a conta correta.
                 </p>
               </div>
               <Button onClick={() => navigate('/dashboard')} variant="outline">
@@ -326,6 +330,23 @@ export default function AcceptInvitation() {
     );
   }
 
+  // Accepting state
+  if (accepting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Aceitando convite...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Manual accept (shouldn't normally reach here due to auto-accept)
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md">
@@ -337,15 +358,11 @@ export default function AcceptInvitation() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2 text-sm">
-            <p>
-              <strong>Email:</strong> {invitation?.email}
-            </p>
-            <p>
-              <strong>Cargo:</strong> {invitation?.role}
-            </p>
+            <p><strong>Email:</strong> {invitation?.email}</p>
+            <p><strong>Cargo:</strong> {invitation?.role}</p>
           </div>
-          <Button onClick={() => handleAccept()} className="w-full" disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button onClick={handleAccept} className="w-full" disabled={accepting}>
+            {accepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Aceitar Convite
           </Button>
         </CardContent>
