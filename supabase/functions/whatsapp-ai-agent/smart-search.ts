@@ -105,11 +105,13 @@ export function normalizeText(text: string): string {
 
 /**
  * Tokenizes text into words
+ * Note: Allow single-char tokens for known important chars like 'x' (x-tudo, x-bacon)
  */
 function tokenize(text: string): string[] {
+  const IMPORTANT_SINGLE_CHARS = ['x', 'p', 'm', 'g']; // x-tudo, pizza P/M/G sizes
   return normalizeText(text)
     .split(/[\s\-_,\.]+/)
-    .filter(word => word.length > 1);
+    .filter(word => word.length > 1 || IMPORTANT_SINGLE_CHARS.includes(word));
 }
 
 /**
@@ -328,6 +330,12 @@ export function smartSearchProducts(
   console.log(`[SmartSearch] Query: "${query}" → Normalized: "${normalizedQuery}"`);
   console.log(`[SmartSearch] Tokens: [${queryTokens.join(', ')}]`);
   console.log(`[SmartSearch] Expanded: [${expandedQueries.join(', ')}]`);
+  console.log(`[SmartSearch] Products to search: ${filtered.length} (available: ${products.filter(p => p.is_available).length}, total input: ${products.length})`);
+  
+  // DEBUG: Log first few product names to verify data
+  if (filtered.length > 0) {
+    console.log(`[SmartSearch] Sample products: ${filtered.slice(0, 5).map(p => p.name).join(', ')}`);
+  }
   
   const scored: SearchResult[] = [];
   
