@@ -135,6 +135,7 @@ export async function buildConversationContext(
         price: p.price,
         description: p.description,
         category: cat.name,
+        is_available: p.is_available ?? true, // CRITICAL: Include is_available for smart search
         addons: p.addons || []
       }))
   ) || [];

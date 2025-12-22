@@ -18,6 +18,7 @@ import Messages from "@/pages/Messages";
 import AIConfiguration from "@/pages/AIConfiguration";
 import AILogs from "@/pages/AILogs";
 import WhatsAppConnection from "@/pages/WhatsAppConnection";
+import TestWhatsApp from "@/pages/TestWhatsApp";
 import Admin from "@/pages/Admin";
 import SystemCheck from "@/pages/SystemCheck";
 import DeliveryZones from "@/pages/DeliveryZones";
@@ -95,6 +96,7 @@ const App = () => (
                   <Route path="/admin/ai-logs" element={<AdminRoute><AILogs /></AdminRoute>} />
                   <Route path="/admin/system-check" element={<AdminRoute><SystemCheck /></AdminRoute>} />
                   <Route path="/admin/import-restaurant" element={<AdminRoute><ImportRestaurant /></AdminRoute>} />
+                  <Route path="/admin/test-whatsapp" element={<AdminRoute><TestWhatsApp /></AdminRoute>} />
                 </Route>
                 
                 {/* WhatsApp Connection - Protected but outside DashboardLayout for cleaner standalone view */}
