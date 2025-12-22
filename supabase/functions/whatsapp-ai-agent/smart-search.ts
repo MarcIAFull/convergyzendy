@@ -55,6 +55,16 @@ const COMMON_SYNONYMS: Record<string, string[]> = {
   'portuguesa': ['portuga'],
   'quatro queijos': ['4 queijos', '4queijos', 'four cheese'],
   'pepperoni': ['peperoni', 'pepperonis'],
+  // PHASE 3: Hamburger/lanche synonyms
+  'x-tudo': ['x tudo', 'xtudo', 'completo', 'tudo'],
+  'x-bacon': ['x bacon', 'xbacon', 'bacon'],
+  'hambúrguer': ['hamburger', 'hamburguer', 'burger', 'lanche', 'sanduiche', 'sanduíche'],
+  'cachorro': ['hot dog', 'hotdog', 'dog', 'cachorro quente'],
+  'açaí': ['acai', 'açai'],
+  'batata frita': ['batatas', 'fritas', 'fries'],
+  'tradicional': ['simples', 'normal', 'classico', 'clássico'],
+  'supremo': ['especial', 'premium', 'top'],
+  'kids': ['infantil', 'criança', 'crianca'],
 };
 
 // ============================================================
@@ -346,12 +356,38 @@ export function smartSearchProducts(
         }
       }
       
+      // 2b. PHASE 3 FIX: Name contains query WITH hyphen/space normalization
+      // "x-tudo" should match "x tudo" and vice versa
+      const normalizedNameNoHyphen = normalizedName.replace(/-/g, ' ').replace(/\s+/g, ' ');
+      const expandedQueryNoHyphen = expandedQuery.replace(/-/g, ' ').replace(/\s+/g, ' ');
+      
+      if (normalizedNameNoHyphen.includes(expandedQueryNoHyphen) || 
+          expandedQueryNoHyphen.includes(normalizedNameNoHyphen)) {
+        if (score < 0.88) {
+          score = 0.88;
+          matchType = 'name';
+        }
+      }
+      
       // 3. Query contains product name (useful for long queries)
       if (expandedQuery.includes(normalizedName) && normalizedName.length >= 3) {
         if (score < 0.85) {
           score = 0.85;
           matchType = 'name';
         }
+      }
+      
+      // 3b. PHASE 3: Check if any query token matches any name token exactly
+      const queryTokensForMatch = tokenize(expandedQuery);
+      const nameTokensForMatch = tokenize(normalizedName);
+      
+      const tokenExactMatch = queryTokensForMatch.some(qt => 
+        nameTokensForMatch.some(nt => qt === nt && qt.length >= 3)
+      );
+      
+      if (tokenExactMatch && score < 0.82) {
+        score = 0.82;
+        matchType = 'name';
       }
     }
     

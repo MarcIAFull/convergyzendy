@@ -1325,8 +1325,23 @@ async function executeToolCall(
         };
       }
       
+      // PHASE 3 FIX: Load product synonyms from database
+      let dbSynonyms: any[] = [];
+      try {
+        const { data: synonymsData } = await supabase
+          .from('product_synonyms')
+          .select('original_term, synonym')
+          .eq('restaurant_id', restaurantId);
+        dbSynonyms = synonymsData || [];
+        if (dbSynonyms.length > 0) {
+          console.log(`[Tool] 📚 Loaded ${dbSynonyms.length} custom synonyms from database`);
+        }
+      } catch (e) {
+        console.warn('[Tool] ⚠️ Failed to load synonyms:', e);
+      }
+      
       // Perform smart search with synonyms support
-      const results = smartSearchProducts(availableProducts, query, category, [], { maxResults: max_results });
+      const results = smartSearchProducts(availableProducts, query, category, dbSynonyms, { maxResults: max_results });
       
       // Save results for positional selection
       if (results.length > 0) {
