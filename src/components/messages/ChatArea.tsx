@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, Loader2, User, Info } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Send, Bot, Loader2, User, Info, ChevronUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { CartWithItems } from '@/types/conversation';
+
+const MESSAGES_PER_PAGE = 20;
 
 interface Message {
   id: string;
@@ -35,11 +37,106 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isTogglingMode, setIsTogglingMode] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoad = useRef(true);
   const { toast } = useToast();
 
+  // Load initial messages (last N)
+  const loadInitialMessages = useCallback(async () => {
+    isInitialLoad.current = true;
+    
+    // First get total count
+    const { count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .or(`from_number.eq.${selectedPhone},to_number.eq.${selectedPhone}`);
+    
+    setTotalCount(count || 0);
+    
+    // Then get last N messages
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .or(`from_number.eq.${selectedPhone},to_number.eq.${selectedPhone}`)
+      .order('timestamp', { ascending: false })
+      .limit(MESSAGES_PER_PAGE);
+
+    if (error) {
+      console.error('Error loading messages:', error);
+      return;
+    }
+
+    const sortedMessages = (data || []).reverse();
+    setMessages(sortedMessages);
+    setHasMoreMessages((count || 0) > MESSAGES_PER_PAGE);
+  }, [restaurantId, selectedPhone]);
+
+  // Load more messages when scrolling up
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages || messages.length === 0) return;
+    
+    setIsLoadingMore(true);
+    const container = messagesContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight || 0;
+    
+    // Get oldest message timestamp we have
+    const oldestTimestamp = messages[0]?.timestamp;
+    
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .or(`from_number.eq.${selectedPhone},to_number.eq.${selectedPhone}`)
+      .lt('timestamp', oldestTimestamp)
+      .order('timestamp', { ascending: false })
+      .limit(MESSAGES_PER_PAGE);
+
+    if (error) {
+      console.error('Error loading more messages:', error);
+      setIsLoadingMore(false);
+      return;
+    }
+
+    const olderMessages = (data || []).reverse();
+    
+    if (olderMessages.length < MESSAGES_PER_PAGE) {
+      setHasMoreMessages(false);
+    }
+    
+    if (olderMessages.length > 0) {
+      setMessages(prev => [...olderMessages, ...prev]);
+      
+      // Maintain scroll position after prepending
+      requestAnimationFrame(() => {
+        if (container) {
+          const newScrollHeight = container.scrollHeight;
+          container.scrollTop = newScrollHeight - previousScrollHeight;
+        }
+      });
+    }
+    
+    setIsLoadingMore(false);
+  }, [isLoadingMore, hasMoreMessages, messages, restaurantId, selectedPhone]);
+
+  // Handle scroll to detect when user scrolls to top
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    // If scrolled near top (within 50px), load more
+    if (container.scrollTop < 50 && hasMoreMessages && !isLoadingMore) {
+      loadMoreMessages();
+    }
+  }, [hasMoreMessages, isLoadingMore, loadMoreMessages]);
+
   useEffect(() => {
-    loadMessages();
+    loadInitialMessages();
 
     // Create unique channel name per conversation
     const channelName = `chat-messages-${restaurantId}-${selectedPhone.replace(/\+/g, '')}`;
@@ -63,6 +160,7 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
             newMsg.to_number === selectedPhone
           ) {
             setMessages((prev) => [...prev, newMsg]);
+            setTotalCount(prev => prev + 1);
           }
         }
       )
@@ -74,27 +172,24 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
       console.log('[ChatArea] Cleaning up subscription:', channelName);
       supabase.removeChannel(channel);
     };
-  }, [selectedPhone, restaurantId]);
+  }, [selectedPhone, restaurantId, loadInitialMessages]);
 
+  // Scroll to bottom on initial load and new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const loadMessages = async () => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .or(`from_number.eq.${selectedPhone},to_number.eq.${selectedPhone}`)
-      .order('timestamp', { ascending: true });
-
-    if (error) {
-      console.error('Error loading messages:', error);
-      return;
+    if (isInitialLoad.current && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      isInitialLoad.current = false;
+    } else if (!isInitialLoad.current && messages.length > 0) {
+      // Only scroll on new messages (not when loading older)
+      const container = messagesContainerRef.current;
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        if (isNearBottom) {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
     }
-
-    setMessages(data || []);
-  };
+  }, [messages]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || isSending) return;
@@ -151,6 +246,7 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
 
   const displayName = customerName || selectedPhone;
   const cartItemCount = cart?.items?.length || 0;
+  const loadedCount = messages.length;
 
   return (
     <div className="flex flex-col h-full">
@@ -201,7 +297,33 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-2"
+      >
+        {/* Load More Indicator */}
+        {hasMoreMessages && (
+          <div className="flex justify-center py-2">
+            {isLoadingMore ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                A carregar...
+              </div>
+            ) : (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={loadMoreMessages}
+                className="text-xs text-muted-foreground h-auto py-1"
+              >
+                <ChevronUp className="h-3 w-3 mr-1" />
+                Carregar anteriores ({loadedCount} de {totalCount})
+              </Button>
+            )}
+          </div>
+        )}
+
         {messages.map((msg) => {
           const isOutgoing = msg.direction === 'outbound';
           return (
