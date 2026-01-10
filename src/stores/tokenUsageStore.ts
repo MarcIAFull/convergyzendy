@@ -55,6 +55,7 @@ export const useTokenUsageStore = create<TokenUsageState>((set) => ({
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
+      // Primeiro tenta buscar da tabela agregada
       const { data, error } = await supabase
         .from('token_usage_daily')
         .select('*')
@@ -63,6 +64,47 @@ export const useTokenUsageStore = create<TokenUsageState>((set) => ({
         .order('date', { ascending: true });
 
       if (error) throw error;
+
+      // Se não tem dados na tabela agregada, buscar diretamente dos logs
+      if (!data || data.length === 0) {
+        const { data: logsData, error: logsError } = await supabase
+          .from('ai_interaction_logs')
+          .select('created_at, tokens_used')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', startDate.toISOString())
+          .not('tokens_used', 'is', null);
+
+        if (logsError) throw logsError;
+
+        // Agregar manualmente por dia
+        const dailyMap = new Map<string, { tokens: number; interactions: number }>();
+        
+        (logsData || []).forEach(log => {
+          const date = log.created_at.split('T')[0];
+          const current = dailyMap.get(date) || { tokens: 0, interactions: 0 };
+          dailyMap.set(date, {
+            tokens: current.tokens + (log.tokens_used || 0),
+            interactions: current.interactions + 1,
+          });
+        });
+
+        const fallbackData = Array.from(dailyMap.entries()).map(([date, values]) => ({
+          id: date,
+          restaurant_id: restaurantId,
+          date,
+          total_tokens: values.tokens,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_interactions: values.interactions,
+          avg_tokens_per_interaction: values.interactions > 0 ? values.tokens / values.interactions : 0,
+          // GPT-4o mini: 80% input @ $0.15/1M, 20% output @ $0.60/1M
+          estimated_cost_usd: (values.tokens * 0.8 * 0.15 / 1000000) + (values.tokens * 0.2 * 0.60 / 1000000),
+          tokens_by_model: {},
+        })).sort((a, b) => a.date.localeCompare(b.date));
+
+        set({ dailyUsage: fallbackData, loading: false });
+        return;
+      }
 
       set({ 
         dailyUsage: (data || []).map(d => ({

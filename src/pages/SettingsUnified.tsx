@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard, Globe, Coins, Wallet } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe, Wallet } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
 import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
 import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
-import { TokenUsageTab } from '@/components/settings/TokenUsageTab';
 import { PaymentsTab } from '@/components/settings/PaymentsTab';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useSearchParams } from 'react-router-dom';
@@ -112,28 +111,7 @@ export default function SettingsUnified() {
         </TabsContent>
 
         <TabsContent value="subscription">
-          <div className="space-y-6">
-            <div className="flex gap-2 border-b pb-4">
-              <Tabs defaultValue="plan" className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                  <TabsTrigger value="plan" className="flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Plano
-                  </TabsTrigger>
-                  <TabsTrigger value="tokens" className="flex items-center gap-2">
-                    <Coins className="h-4 w-4" />
-                    Consumo de Tokens
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="plan" className="mt-6">
-                  <SubscriptionTab />
-                </TabsContent>
-                <TabsContent value="tokens" className="mt-6">
-                  <TokenUsageTab />
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
+          <SubscriptionTab />
         </TabsContent>
       </Tabs>
     </div>
