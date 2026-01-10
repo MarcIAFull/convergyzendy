@@ -24,6 +24,7 @@ import {
   Package
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
+import { pt } from 'date-fns/locale';
 
 const Customers = () => {
   const { restaurant } = useRestaurantGuard();
@@ -213,27 +214,27 @@ const Customers = () => {
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-muted-foreground text-xs">Orders</p>
+                    <p className="text-muted-foreground text-xs">Pedidos</p>
                     <p className="font-semibold text-foreground">{customer.order_count}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-muted-foreground text-xs">Avg Ticket</p>
+                    <p className="text-muted-foreground text-xs">Ticket Médio</p>
                     <p className="font-semibold text-foreground">€{customer.average_ticket.toFixed(2)}</p>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-sm pt-2 border-t border-border">
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Total Spent:</span>
+                <span className="text-muted-foreground">Total Gasto:</span>
                 <span className="font-bold text-primary">€{customer.total_spent.toFixed(2)}</span>
               </div>
               {customer.last_interaction_at && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
-                  Last order {formatDistanceToNow(new Date(customer.last_interaction_at), { addSuffix: true })}
+                  Último pedido {formatDistanceToNow(new Date(customer.last_interaction_at), { addSuffix: true, locale: pt })}
                 </div>
               )}
             </CardContent>
@@ -351,7 +352,7 @@ const Customers = () => {
                                 <div className="flex items-center gap-2">
                                   <Calendar className="h-4 w-4 text-muted-foreground" />
                                   <span className="text-sm font-medium">
-                                    {format(new Date(order.created_at), 'dd MMM yyyy, HH:mm')}
+                                    {format(new Date(order.created_at), 'dd MMM yyyy, HH:mm', { locale: pt })}
                                   </span>
                                 </div>
                                 <Badge className={getStatusColor(order.status)}>
@@ -407,18 +408,25 @@ const Customers = () => {
                             <CardContent className="pt-4 space-y-2">
                               <div className="flex items-center justify-between">
                                 <Badge className={getRecoveryStatusColor(attempt.status)}>
-                                  {attempt.status}
+                                  {attempt.status === 'recovered' ? 'Recuperado' : 
+                                   attempt.status === 'pending' ? 'Pendente' :
+                                   attempt.status === 'sent' ? 'Enviado' :
+                                   attempt.status === 'failed' ? 'Falhou' : attempt.status}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
-                                  {format(new Date(attempt.created_at), 'dd MMM, HH:mm')}
+                                  {format(new Date(attempt.created_at), 'dd MMM, HH:mm', { locale: pt })}
                                 </span>
                               </div>
                               <p className="text-sm">
-                                <span className="font-medium">Type:</span> {attempt.recovery_type}
+                                <span className="font-medium">Tipo:</span> {
+                                  attempt.recovery_type === 'cart_abandoned' ? 'Carrinho abandonado' :
+                                  attempt.recovery_type === 'checkout_incomplete' ? 'Checkout incompleto' :
+                                  attempt.recovery_type
+                                }
                               </p>
                               {attempt.cart_value && (
                                 <p className="text-sm">
-                                  <span className="font-medium">Cart Value:</span> €{attempt.cart_value.toFixed(2)}
+                                  <span className="font-medium">Valor do Carrinho:</span> €{attempt.cart_value.toFixed(2)}
                                 </p>
                               )}
                               {attempt.message_sent && (

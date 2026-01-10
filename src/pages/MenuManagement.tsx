@@ -93,7 +93,7 @@ const MenuManagement = () => {
   const handleSaveCategory = async () => {
     if (!restaurant?.id) {
       console.error('[MenuManagement] Cannot save category - no restaurant ID');
-      toast({ title: 'Error', description: 'No restaurant found. Please create a restaurant in Settings first.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado. Crie um restaurante primeiro nas Definições.', variant: 'destructive' });
       return;
     }
     
@@ -103,17 +103,17 @@ const MenuManagement = () => {
       if (editingCategory) {
         await updateCategory(editingCategory.id, { name: categoryName });
         console.log('[MenuManagement] Category updated successfully');
-        toast({ title: 'Category updated successfully' });
+        toast({ title: 'Categoria atualizada com sucesso' });
       } else {
         await addCategory(categoryName, restaurant.id);
         console.log('[MenuManagement] Category added successfully');
-        toast({ title: 'Category added successfully' });
+        toast({ title: 'Categoria adicionada com sucesso' });
       }
       setCategoryDialog(false);
       setCategoryName('');
     } catch (error) {
       console.error('[MenuManagement] Failed to save category:', error);
-      toast({ title: 'Error', description: 'Failed to save category', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Falha ao guardar categoria', variant: 'destructive' });
     }
   };
 
@@ -151,7 +151,7 @@ const MenuManagement = () => {
     const validationError = validateImageFile(file);
     if (validationError) {
       toast({
-        title: 'Invalid image',
+        title: 'Imagem inválida',
         description: validationError,
         variant: 'destructive',
       });
@@ -180,7 +180,7 @@ const MenuManagement = () => {
   const handleSaveProduct = async () => {
     if (!restaurant?.id) {
       console.error('[MenuManagement] Cannot save product - no restaurant ID');
-      toast({ title: 'Error', description: 'No restaurant found. Please create a restaurant in Settings first.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado. Crie um restaurante primeiro nas Definições.', variant: 'destructive' });
       return;
     }
     
@@ -220,11 +220,11 @@ const MenuManagement = () => {
       if (editingProduct) {
         await updateProduct(editingProduct.id, productData);
         console.log('[MenuManagement] Product updated successfully');
-        toast({ title: 'Product updated successfully' });
+        toast({ title: 'Produto atualizado com sucesso' });
       } else {
         await addProduct({ ...productData, category_id: selectedCategoryId, restaurant_id: restaurant.id });
         console.log('[MenuManagement] Product added successfully');
-        toast({ title: 'Product added successfully' });
+        toast({ title: 'Produto adicionado com sucesso' });
       }
       
       setProductDialog(false);
@@ -232,7 +232,7 @@ const MenuManagement = () => {
       setProductImagePreview('');
     } catch (error) {
       console.error('[MenuManagement] Failed to save product:', error);
-      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to save product', variant: 'destructive' });
+      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Falha ao guardar produto', variant: 'destructive' });
     } finally {
       setUploadingImage(false);
     }
@@ -260,16 +260,16 @@ const MenuManagement = () => {
       if (editingAddon) {
         await updateAddon(editingAddon.id, addonData);
         console.log('[MenuManagement] Addon updated successfully');
-        toast({ title: 'Add-on updated successfully' });
+        toast({ title: 'Adicional atualizado com sucesso' });
       } else {
         await addAddon({ ...addonData, product_id: selectedProductId });
         console.log('[MenuManagement] Addon added successfully');
-        toast({ title: 'Add-on added successfully' });
+        toast({ title: 'Adicional adicionado com sucesso' });
       }
       setAddonDialog(false);
     } catch (error) {
       console.error('[MenuManagement] Failed to save addon:', error);
-      toast({ title: 'Error', description: 'Failed to save add-on', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Falha ao guardar adicional', variant: 'destructive' });
     }
   };
 
@@ -285,31 +285,31 @@ const MenuManagement = () => {
         case 'category':
           await deleteCategory(deleteDialog.id);
           toast({ 
-            title: 'Category deleted successfully',
+            title: 'Categoria eliminada com sucesso',
             description: productCount > 0 
-              ? `${productCount} ${productCount === 1 ? 'product' : 'products'} also deleted`
+              ? `${productCount} ${productCount === 1 ? 'produto também eliminado' : 'produtos também eliminados'}`
               : undefined
           });
           break;
         case 'product':
           await deleteProduct(deleteDialog.id);
-          toast({ title: 'Product deleted successfully' });
+          toast({ title: 'Produto eliminado com sucesso' });
           break;
         case 'addon':
           await deleteAddon(deleteDialog.id);
-          toast({ title: 'Add-on deleted successfully' });
+          toast({ title: 'Adicional eliminado com sucesso' });
           break;
       }
       setDeleteDialog({ open: false, type: null, id: null });
     } catch (error) {
-      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to delete item', variant: 'destructive' });
+      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Falha ao eliminar item', variant: 'destructive' });
     }
   };
 
   if (loading && categories.length === 0) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-2">
             <Skeleton className="h-10 w-64" />
             <Skeleton className="h-4 w-96" />
@@ -345,17 +345,17 @@ const MenuManagement = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-foreground">Menu Management</h1>
-          <p className="text-muted-foreground mt-2">
-            Manage your restaurant's categories, products, and add-ons
+          <h1 className="text-2xl md:text-4xl font-bold text-foreground">Gestão de Menu</h1>
+          <p className="text-muted-foreground mt-2 text-sm md:text-base">
+            Gerencie as categorias, produtos e adicionais do seu restaurante
           </p>
         </div>
-        <Button onClick={handleAddCategory}>
+        <Button onClick={handleAddCategory} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
-          Add Category
+          Adicionar Categoria
         </Button>
       </div>
 
@@ -363,13 +363,13 @@ const MenuManagement = () => {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No categories yet</h3>
+            <h3 className="text-lg font-semibold mb-2">Ainda não há categorias</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Get started by creating your first category
+              Comece criando a sua primeira categoria
             </p>
             <Button onClick={handleAddCategory}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Category
+              Adicionar Categoria
             </Button>
           </CardContent>
         </Card>
@@ -377,15 +377,15 @@ const MenuManagement = () => {
         <Accordion type="multiple" className="space-y-4">
           {categories.map((category) => (
             <AccordionItem key={category.id} value={category.id} className="border rounded-lg bg-card">
-              <AccordionTrigger className="px-6 hover:no-underline hover:bg-muted/50 rounded-t-lg">
+              <AccordionTrigger className="px-4 md:px-6 hover:no-underline hover:bg-muted/50 rounded-t-lg">
                 <div className="flex items-center justify-between w-full pr-4">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-xl font-semibold">{category.name}</h3>
+                  <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                    <h3 className="text-lg md:text-xl font-semibold">{category.name}</h3>
                     <Badge variant="secondary">
-                      {category.products.length} {category.products.length === 1 ? 'product' : 'products'}
+                      {category.products.length} {category.products.length === 1 ? 'produto' : 'produtos'}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 md:gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
@@ -395,26 +395,26 @@ const MenuManagement = () => {
                   </div>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-6 pb-6 pt-4">
+              <AccordionContent className="px-4 md:px-6 pb-6 pt-4">
                 <div className="space-y-4">
                   <Button variant="outline" size="sm" onClick={() => handleAddProduct(category.id)}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Product
+                    Adicionar Produto
                   </Button>
                   {category.products.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No products in this category yet</p>
+                    <p className="text-muted-foreground text-center py-8">Ainda não há produtos nesta categoria</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {category.products.map((product) => (
                         <Card key={product.id} className="overflow-hidden">
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <CardTitle className="text-lg flex items-center gap-2">
-                                  {product.name}
-                                  {!product.is_available && <Badge variant="destructive" className="text-xs">Unavailable</Badge>}
+                              <div className="flex-1 min-w-0">
+                                <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+                                  <span className="truncate">{product.name}</span>
+                                  {!product.is_available && <Badge variant="destructive" className="text-xs">Indisponível</Badge>}
                                 </CardTitle>
-                                {product.description && <CardDescription className="mt-1">{product.description}</CardDescription>}
+                                {product.description && <CardDescription className="mt-1 line-clamp-2">{product.description}</CardDescription>}
                               </div>
                             </div>
                           </CardHeader>
@@ -432,13 +432,13 @@ const MenuManagement = () => {
                             </div>
                             {product.addons.length > 0 && (
                               <div>
-                                <p className="text-sm font-medium mb-2">Add-ons:</p>
+                                <p className="text-sm font-medium mb-2">Adicionais:</p>
                                 <div className="space-y-1">
                                   {product.addons.map((addon) => (
                                     <div key={addon.id} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1">
-                                      <span>{addon.name}</span>
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-muted-foreground">+€{Number(addon.price).toFixed(2)}</span>
+                                      <span className="truncate">{addon.name}</span>
+                                      <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+                                        <span className="text-muted-foreground text-xs md:text-sm">+€{Number(addon.price).toFixed(2)}</span>
                                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleEditAddon(addon)}>
                                           <Edit2 className="h-3 w-3" />
                                         </Button>
@@ -452,9 +452,9 @@ const MenuManagement = () => {
                               </div>
                             )}
                             <div className="flex gap-2 pt-2">
-                              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleAddAddon(product.id)}>
+                              <Button variant="outline" size="sm" className="flex-1 text-xs md:text-sm" onClick={() => handleAddAddon(product.id)}>
                                 <Plus className="h-3 w-3 mr-1" />
-                                Add-on
+                                Adicional
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleEditProduct(product)}>
                                 <Edit2 className="h-4 w-4" />
@@ -475,64 +475,66 @@ const MenuManagement = () => {
         </Accordion>
       )}
 
+      {/* Category Dialog */}
       <Dialog open={categoryDialog} onOpenChange={setCategoryDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingCategory ? 'Edit Category' : 'Add Category'}</DialogTitle>
-            <DialogDescription>{editingCategory ? 'Update category information' : 'Create a new category for your menu'}</DialogDescription>
+            <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Adicionar Categoria'}</DialogTitle>
+            <DialogDescription>{editingCategory ? 'Atualize as informações da categoria' : 'Crie uma nova categoria para o seu menu'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="category-name">Category Name</Label>
-              <Input id="category-name" placeholder="e.g., Pizzas, Burgers, Drinks" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+              <Label htmlFor="category-name">Nome da Categoria</Label>
+              <Input id="category-name" placeholder="Ex: Pizzas, Hambúrgueres, Bebidas" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCategoryDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveCategory} disabled={!categoryName.trim()}>{editingCategory ? 'Update' : 'Add'} Category</Button>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setCategoryDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
+            <Button onClick={handleSaveCategory} disabled={!categoryName.trim()} className="w-full sm:w-auto">{editingCategory ? 'Atualizar' : 'Adicionar'} Categoria</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Product Dialog */}
       <Dialog open={productDialog} onOpenChange={setProductDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
-            <DialogDescription>{editingProduct ? 'Update product information' : 'Create a new product in your menu'}</DialogDescription>
+            <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Produto'}</DialogTitle>
+            <DialogDescription>{editingProduct ? 'Atualize as informações do produto' : 'Crie um novo produto no seu menu'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="product-name">Product Name</Label>
-              <Input id="product-name" placeholder="e.g., Margherita Pizza" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
+              <Label htmlFor="product-name">Nome do Produto</Label>
+              <Input id="product-name" placeholder="Ex: Pizza Margherita" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="product-description">Description</Label>
-              <Textarea id="product-description" placeholder="Describe your product..." value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
+              <Label htmlFor="product-description">Descrição</Label>
+              <Textarea id="product-description" placeholder="Descreva o seu produto..." value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="product-price">Price (€)</Label>
+                <Label htmlFor="product-price">Preço (€)</Label>
                 <Input id="product-price" type="number" step="0.01" min="0" placeholder="9.99" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="product-available">Availability</Label>
+                <Label htmlFor="product-available">Disponibilidade</Label>
                 <div className="flex items-center space-x-2 pt-2">
                   <Switch id="product-available" checked={productForm.is_available} onCheckedChange={(checked) => setProductForm({ ...productForm, is_available: checked })} />
-                  <Label htmlFor="product-available" className="font-normal">{productForm.is_available ? 'Available' : 'Unavailable'}</Label>
+                  <Label htmlFor="product-available" className="font-normal">{productForm.is_available ? 'Disponível' : 'Indisponível'}</Label>
                 </div>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="product-image" className="flex items-center gap-2">
                 <Upload className="h-4 w-4" />
-                Product Image
+                Imagem do Produto
               </Label>
               <div className="space-y-3">
                 {productImagePreview ? (
                   <div className="relative w-full aspect-video bg-muted rounded-lg overflow-hidden">
                     <img
                       src={productImagePreview}
-                      alt="Product preview"
+                      alt="Pré-visualização do produto"
                       className="w-full h-full object-cover"
                     />
                     <Button
@@ -549,7 +551,7 @@ const MenuManagement = () => {
                   <div className="flex items-center justify-center w-full aspect-video border-2 border-dashed border-muted-foreground/25 rounded-lg">
                     <div className="text-center">
                       <ImageIcon className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">No image selected</p>
+                      <p className="mt-2 text-sm text-muted-foreground">Nenhuma imagem selecionada</p>
                     </div>
                   </div>
                 )}
@@ -562,7 +564,7 @@ const MenuManagement = () => {
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Supported formats: JPEG, PNG, WebP. Max size: 5MB
+                  Formatos suportados: JPEG, PNG, WebP. Tamanho máximo: 5MB
                 </p>
               </div>
             </div>
@@ -588,68 +590,71 @@ const MenuManagement = () => {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setProductDialog(false)}>Cancel</Button>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setProductDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
             <Button 
               onClick={handleSaveProduct} 
               disabled={!productForm.name.trim() || !productForm.price || parseFloat(productForm.price) < 0 || uploadingImage}
+              className="w-full sm:w-auto"
             >
               {uploadingImage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingProduct ? 'Update' : 'Add'} Product
+              {editingProduct ? 'Atualizar' : 'Adicionar'} Produto
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Addon Dialog */}
       <Dialog open={addonDialog} onOpenChange={setAddonDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingAddon ? 'Edit Add-on' : 'Add Add-on'}</DialogTitle>
-            <DialogDescription>{editingAddon ? 'Update add-on information' : 'Create a new add-on for this product'}</DialogDescription>
+            <DialogTitle>{editingAddon ? 'Editar Adicional' : 'Adicionar Adicional'}</DialogTitle>
+            <DialogDescription>{editingAddon ? 'Atualize as informações do adicional' : 'Crie um novo adicional para este produto'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="addon-name">Add-on Name</Label>
-              <Input id="addon-name" placeholder="e.g., Extra Cheese, Bacon" value={addonForm.name} onChange={(e) => setAddonForm({ ...addonForm, name: e.target.value })} />
+              <Label htmlFor="addon-name">Nome do Adicional</Label>
+              <Input id="addon-name" placeholder="Ex: Queijo Extra, Bacon" value={addonForm.name} onChange={(e) => setAddonForm({ ...addonForm, name: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="addon-price">Price (€)</Label>
+              <Label htmlFor="addon-price">Preço (€)</Label>
               <Input id="addon-price" type="number" step="0.01" min="0" placeholder="1.50" value={addonForm.price} onChange={(e) => setAddonForm({ ...addonForm, price: e.target.value })} />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddonDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveAddon} disabled={!addonForm.name.trim() || !addonForm.price || parseFloat(addonForm.price) < 0}>{editingAddon ? 'Update' : 'Add'} Add-on</Button>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setAddonDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
+            <Button onClick={handleSaveAddon} disabled={!addonForm.name.trim() || !addonForm.price || parseFloat(addonForm.price) < 0} className="w-full sm:w-auto">{editingAddon ? 'Atualizar' : 'Adicionar'} Adicional</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone.
+              Esta ação não pode ser desfeita.
               {deleteDialog.type === 'category' && (
                 <>
-                  {' '}This will permanently delete this category
+                  {' '}Isto irá eliminar permanentemente esta categoria
                   {(() => {
                     const category = categories.find(c => c.id === deleteDialog.id);
                     const productCount = category?.products.length || 0;
                     if (productCount > 0) {
-                      return ` and all ${productCount} ${productCount === 1 ? 'product' : 'products'} in it (including their add-ons)`;
+                      return ` e todos os ${productCount} ${productCount === 1 ? 'produto' : 'produtos'} nela (incluindo os seus adicionais)`;
                     }
                     return '';
                   })()}.
                 </>
               )}
-              {deleteDialog.type === 'product' && ' This will permanently delete this product and all its add-ons.'}
-              {deleteDialog.type === 'addon' && ' This will permanently delete this add-on.'}
+              {deleteDialog.type === 'product' && ' Isto irá eliminar permanentemente este produto e todos os seus adicionais.'}
+              {deleteDialog.type === 'addon' && ' Isto irá eliminar permanentemente este adicional.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto">Eliminar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
