@@ -44,3 +44,21 @@ verify_jwt = true
 
 [functions.notify-web-order]
 verify_jwt = false
+
+[functions.stripe-connect-onboard]
+verify_jwt = false
+
+[functions.stripe-connect-status]
+verify_jwt = false
+
+[functions.stripe-connect-dashboard]
+verify_jwt = false
+
+[functions.validate-coupon]
+verify_jwt = false
+
+[functions.create-payment-session]
+verify_jwt = false
+
+[functions.stripe-payment-webhook]
+verify_jwt = false

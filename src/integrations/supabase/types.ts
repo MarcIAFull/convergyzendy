@@ -722,6 +722,116 @@ export type Database = {
           },
         ]
       }
+      coupon_usage: {
+        Row: {
+          coupon_id: string
+          created_at: string | null
+          customer_phone: string
+          discount_applied: number
+          id: string
+          web_order_id: string
+        }
+        Insert: {
+          coupon_id: string
+          created_at?: string | null
+          customer_phone: string
+          discount_applied: number
+          id?: string
+          web_order_id: string
+        }
+        Update: {
+          coupon_id?: string
+          created_at?: string | null
+          customer_phone?: string
+          discount_applied?: number
+          id?: string
+          web_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupon_usage_coupon_id_fkey"
+            columns: ["coupon_id"]
+            isOneToOne: false
+            referencedRelation: "coupons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_usage_web_order_id_fkey"
+            columns: ["web_order_id"]
+            isOneToOne: false
+            referencedRelation: "web_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coupons: {
+        Row: {
+          code: string
+          created_at: string | null
+          current_usage: number | null
+          description: string | null
+          discount_type: string
+          discount_value: number
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          max_discount_amount: number | null
+          min_order_value: number | null
+          name: string
+          restaurant_id: string
+          starts_at: string
+          updated_at: string | null
+          usage_limit: number | null
+          usage_limit_per_phone: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          current_usage?: number | null
+          description?: string | null
+          discount_type?: string
+          discount_value: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_discount_amount?: number | null
+          min_order_value?: number | null
+          name: string
+          restaurant_id: string
+          starts_at?: string
+          updated_at?: string | null
+          usage_limit?: number | null
+          usage_limit_per_phone?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          current_usage?: number | null
+          description?: string | null
+          discount_type?: string
+          discount_value?: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_discount_amount?: number | null
+          min_order_value?: number | null
+          name?: string
+          restaurant_id?: string
+          starts_at?: string
+          updated_at?: string | null
+          usage_limit?: number | null
+          usage_limit_per_phone?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupons_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_insights: {
         Row: {
           average_ticket: number | null
@@ -1476,9 +1586,15 @@ export type Database = {
           meta_keywords: string[] | null
           meta_title: string | null
           min_order_amount: number | null
+          online_payments_enabled: boolean | null
           primary_color: string | null
           restaurant_id: string
           slug: string
+          stripe_account_id: string | null
+          stripe_charges_enabled: boolean | null
+          stripe_connected_at: string | null
+          stripe_onboarding_complete: boolean | null
+          stripe_payouts_enabled: boolean | null
           updated_at: string | null
         }
         Insert: {
@@ -1499,9 +1615,15 @@ export type Database = {
           meta_keywords?: string[] | null
           meta_title?: string | null
           min_order_amount?: number | null
+          online_payments_enabled?: boolean | null
           primary_color?: string | null
           restaurant_id: string
           slug: string
+          stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean | null
+          stripe_connected_at?: string | null
+          stripe_onboarding_complete?: boolean | null
+          stripe_payouts_enabled?: boolean | null
           updated_at?: string | null
         }
         Update: {
@@ -1522,9 +1644,15 @@ export type Database = {
           meta_keywords?: string[] | null
           meta_title?: string | null
           min_order_amount?: number | null
+          online_payments_enabled?: boolean | null
           primary_color?: string | null
           restaurant_id?: string
           slug?: string
+          stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean | null
+          stripe_connected_at?: string | null
+          stripe_onboarding_complete?: boolean | null
+          stripe_payouts_enabled?: boolean | null
           updated_at?: string | null
         }
         Relationships: [
@@ -1955,6 +2083,8 @@ export type Database = {
       web_orders: {
         Row: {
           cart_id: string
+          coupon_code: string | null
+          coupon_id: string | null
           created_at: string | null
           customer_email: string | null
           customer_name: string
@@ -1964,6 +2094,7 @@ export type Database = {
           delivery_instructions: string | null
           delivery_lat: number | null
           delivery_lng: number | null
+          discount_amount: number | null
           id: string
           ip_address: unknown
           items: Json
@@ -1972,6 +2103,8 @@ export type Database = {
           restaurant_id: string
           source: string | null
           status: string | null
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
           subtotal: number
           total_amount: number
           updated_at: string | null
@@ -1979,6 +2112,8 @@ export type Database = {
         }
         Insert: {
           cart_id: string
+          coupon_code?: string | null
+          coupon_id?: string | null
           created_at?: string | null
           customer_email?: string | null
           customer_name: string
@@ -1988,6 +2123,7 @@ export type Database = {
           delivery_instructions?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
+          discount_amount?: number | null
           id?: string
           ip_address?: unknown
           items: Json
@@ -1996,6 +2132,8 @@ export type Database = {
           restaurant_id: string
           source?: string | null
           status?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           subtotal: number
           total_amount: number
           updated_at?: string | null
@@ -2003,6 +2141,8 @@ export type Database = {
         }
         Update: {
           cart_id?: string
+          coupon_code?: string | null
+          coupon_id?: string | null
           created_at?: string | null
           customer_email?: string | null
           customer_name?: string
@@ -2012,6 +2152,7 @@ export type Database = {
           delivery_instructions?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
+          discount_amount?: number | null
           id?: string
           ip_address?: unknown
           items?: Json
@@ -2020,6 +2161,8 @@ export type Database = {
           restaurant_id?: string
           source?: string | null
           status?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           subtotal?: number
           total_amount?: number
           updated_at?: string | null
@@ -2031,6 +2174,13 @@ export type Database = {
             columns: ["cart_id"]
             isOneToOne: false
             referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "web_orders_coupon_id_fkey"
+            columns: ["coupon_id"]
+            isOneToOne: false
+            referencedRelation: "coupons"
             referencedColumns: ["id"]
           },
           {
@@ -2173,6 +2323,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_coupon_usage: {
+        Args: { coupon_id: string }
+        Returns: undefined
       }
       increment_subscription_tokens: {
         Args: { p_restaurant_id: string; p_tokens: number }
