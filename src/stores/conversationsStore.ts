@@ -14,7 +14,7 @@ interface ConversationsStore {
   loading: boolean;
   
   loadConversations: (restaurantId: string) => Promise<void>;
-  selectConversation: (phone: string) => void;
+  selectConversation: (phone: string | null) => void;
   loadCustomerDetails: (phone: string, restaurantId: string) => Promise<void>;
   toggleMode: (phone: string, restaurantId: string, mode: 'ai' | 'manual') => Promise<void>;
   subscribeToConversations: (restaurantId: string) => () => void;
@@ -145,8 +145,8 @@ export const useConversationsStore = create<ConversationsStore>((set, get) => ({
     }
   },
 
-  selectConversation: (phone: string) => {
-    set({ selectedPhone: phone });
+  selectConversation: (phone: string | null) => {
+    set({ selectedPhone: phone, customerDetails: phone ? get().customerDetails : null });
   },
 
   loadCustomerDetails: async (phone: string, restaurantId: string) => {

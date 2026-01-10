@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { pt } from "date-fns/locale";
 import {
   Card,
   CardContent,
@@ -49,7 +50,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle, Download, Settings } from "lucide-react";
+import { RefreshCw, Search, Filter, CheckCircle2, AlertCircle, XCircle, Download } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -85,31 +86,31 @@ interface AILog {
 
 const EXPORT_FIELDS = [
   { key: "id", label: "ID" },
-  { key: "created_at", label: "Timestamp" },
-  { key: "restaurant_id", label: "Restaurant ID" },
-  { key: "customer_phone", label: "Phone" },
-  { key: "user_message", label: "User Message" },
-  { key: "state_before", label: "State Before" },
-  { key: "state_after", label: "State After" },
-  { key: "orchestrator_intent", label: "Intent" },
-  { key: "orchestrator_confidence", label: "Confidence" },
-  { key: "orchestrator_target_state", label: "Target State" },
-  { key: "orchestrator_reasoning", label: "Reasoning" },
-  { key: "context_loaded", label: "Context" },
-  { key: "system_prompt", label: "System Prompt" },
-  { key: "prompt_length", label: "Prompt Length" },
-  { key: "ai_request", label: "AI Request" },
-  { key: "ai_response_raw", label: "AI Response (Raw)" },
-  { key: "ai_response_text", label: "AI Response (Text)" },
-  { key: "tool_calls_requested", label: "Tools Requested" },
-  { key: "tool_calls_validated", label: "Tools Validated" },
-  { key: "tool_execution_results", label: "Tool Results" },
-  { key: "final_response", label: "Final Response" },
-  { key: "processing_time_ms", label: "Processing Time" },
-  { key: "tokens_used", label: "Tokens Used" },
-  { key: "errors", label: "Errors" },
-  { key: "has_errors", label: "Has Errors" },
-  { key: "log_level", label: "Log Level" },
+  { key: "created_at", label: "Data/Hora" },
+  { key: "restaurant_id", label: "ID Restaurante" },
+  { key: "customer_phone", label: "Telefone" },
+  { key: "user_message", label: "Mensagem do Utilizador" },
+  { key: "state_before", label: "Estado Anterior" },
+  { key: "state_after", label: "Estado Posterior" },
+  { key: "orchestrator_intent", label: "Intenção" },
+  { key: "orchestrator_confidence", label: "Confiança" },
+  { key: "orchestrator_target_state", label: "Estado Alvo" },
+  { key: "orchestrator_reasoning", label: "Raciocínio" },
+  { key: "context_loaded", label: "Contexto" },
+  { key: "system_prompt", label: "Prompt do Sistema" },
+  { key: "prompt_length", label: "Tamanho do Prompt" },
+  { key: "ai_request", label: "Pedido IA" },
+  { key: "ai_response_raw", label: "Resposta IA (Bruto)" },
+  { key: "ai_response_text", label: "Resposta IA (Texto)" },
+  { key: "tool_calls_requested", label: "Ferramentas Pedidas" },
+  { key: "tool_calls_validated", label: "Ferramentas Validadas" },
+  { key: "tool_execution_results", label: "Resultados das Ferramentas" },
+  { key: "final_response", label: "Resposta Final" },
+  { key: "processing_time_ms", label: "Tempo de Processamento" },
+  { key: "tokens_used", label: "Tokens Utilizados" },
+  { key: "errors", label: "Erros" },
+  { key: "has_errors", label: "Tem Erros" },
+  { key: "log_level", label: "Nível de Log" },
 ];
 
 export default function AILogs() {
@@ -185,9 +186,9 @@ export default function AILogs() {
   };
 
   const getStatusBadge = (log: AILog) => {
-    if (log.has_errors) return <Badge variant="destructive">Error</Badge>;
-    if (log.log_level === "warning") return <Badge variant="outline">Warning</Badge>;
-    return <Badge variant="default">Success</Badge>;
+    if (log.has_errors) return <Badge variant="destructive">Erro</Badge>;
+    if (log.log_level === "warning") return <Badge variant="outline">Aviso</Badge>;
+    return <Badge variant="default">Sucesso</Badge>;
   };
 
   const uniqueIntents = Array.from(
@@ -262,11 +263,11 @@ export default function AILogs() {
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">AI Interaction Logs</h2>
-          <p className="text-muted-foreground">
-            Comprehensive debugging logs for AI agent interactions
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Logs de Interação IA</h2>
+          <p className="text-muted-foreground text-sm md:text-base">
+            Logs de depuração das interações do agente de IA
           </p>
         </div>
         <div className="flex gap-2">
@@ -274,16 +275,17 @@ export default function AILogs() {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={!logs || logs.length === 0}>
                 <Download className="mr-2 h-4 w-4" />
-                Export JSON
+                <span className="hidden sm:inline">Exportar JSON</span>
+                <span className="sm:hidden">Exportar</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Configurar Exportação</DialogTitle>
                 <DialogDescription>
                   {selectedLogIds.size > 0 
-                    ? `Exportando ${selectedLogIds.size} de ${logs?.length || 0} logs selecionados`
-                    : `Exportando todos os ${logs?.length || 0} logs (nenhum selecionado especificamente)`
+                    ? `A exportar ${selectedLogIds.size} de ${logs?.length || 0} logs selecionados`
+                    : `A exportar todos os ${logs?.length || 0} logs (nenhum selecionado especificamente)`
                   }
                 </DialogDescription>
               </DialogHeader>
@@ -312,7 +314,7 @@ export default function AILogs() {
                   </div>
 
                   <ScrollArea className="h-[200px] border rounded-md p-4">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {EXPORT_FIELDS.map(field => (
                         <div key={field.key} className="flex items-center space-x-2">
                           <Checkbox
@@ -342,16 +344,18 @@ export default function AILogs() {
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-4 border-t">
+                <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
                   <Button 
                     variant="outline" 
                     onClick={() => setExportDialogOpen(false)}
+                    className="w-full sm:w-auto"
                   >
                     Cancelar
                   </Button>
                   <Button 
                     onClick={exportLogsAsJson}
                     disabled={selectedExportFields.length === 0}
+                    className="w-full sm:w-auto"
                   >
                     <Download className="mr-2 h-4 w-4" />
                     Exportar {selectedLogIds.size > 0 ? `(${selectedLogIds.size} logs)` : '(Todos)'}
@@ -363,28 +367,28 @@ export default function AILogs() {
           
           <Button onClick={() => refetch()} variant="outline" size="sm">
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
         </div>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
             <Filter className="h-4 w-4" />
-            Filters
+            Filtros
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2">
-              <Label htmlFor="search">Search Messages</Label>
+              <Label htmlFor="search">Pesquisar Mensagens</Label>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="search"
-                  placeholder="Search in messages..."
+                  placeholder="Pesquisar..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8"
@@ -410,23 +414,23 @@ export default function AILogs() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
+              <Label htmlFor="phone">Telefone</Label>
               <Input
                 id="phone"
-                placeholder="Filter by phone..."
+                placeholder="Filtrar por telefone..."
                 value={phoneFilter}
                 onChange={(e) => setPhoneFilter(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="intent">Intent</Label>
+              <Label htmlFor="intent">Intenção</Label>
               <Select value={intentFilter} onValueChange={setIntentFilter}>
                 <SelectTrigger id="intent">
-                  <SelectValue placeholder="All intents" />
+                  <SelectValue placeholder="Todas as intenções" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All intents</SelectItem>
+                  <SelectItem value="all">Todas as intenções</SelectItem>
                   {uniqueIntents.map((intent) => (
                     <SelectItem key={intent} value={intent}>
                       {intent}
@@ -436,13 +440,13 @@ export default function AILogs() {
               </Select>
             </div>
 
-            <div className="flex items-center space-x-2 pt-8">
+            <div className="flex items-center space-x-2 pt-6 sm:pt-8">
               <Switch
                 id="errors-only"
                 checked={onlyErrors}
                 onCheckedChange={setOnlyErrors}
               />
-              <Label htmlFor="errors-only">Errors Only</Label>
+              <Label htmlFor="errors-only">Apenas Erros</Label>
             </div>
           </div>
         </CardContent>
@@ -451,13 +455,13 @@ export default function AILogs() {
       {/* Logs Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle>Interactions ({logs?.length || 0})</CardTitle>
+              <CardTitle>Interações ({logs?.length || 0})</CardTitle>
               <CardDescription>
                 {selectedLogIds.size > 0 
                   ? `${selectedLogIds.size} logs selecionados para exportação`
-                  : "Selecione logs para exportar ou clique em uma linha para ver detalhes"
+                  : "Selecione logs para exportar ou clique numa linha para ver detalhes"
                 }
               </CardDescription>
             </div>
@@ -476,7 +480,7 @@ export default function AILogs() {
                   size="sm"
                   disabled={selectedLogIds.size === 0}
                 >
-                  Desmarcar Todos
+                  Desmarcar
                 </Button>
               </div>
             )}
@@ -484,9 +488,9 @@ export default function AILogs() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading logs...</div>
+            <div className="text-center py-8 text-muted-foreground">A carregar logs...</div>
           ) : logs && logs.length > 0 ? (
-            <ScrollArea className="h-[600px]">
+            <ScrollArea className="h-[400px] md:h-[600px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -502,14 +506,14 @@ export default function AILogs() {
                         }}
                       />
                     </TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Message</TableHead>
-                    <TableHead>Intent</TableHead>
-                    <TableHead>Tools</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Time (ms)</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Hora</TableHead>
+                    <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                    <TableHead>Mensagem</TableHead>
+                    <TableHead className="hidden lg:table-cell">Intenção</TableHead>
+                    <TableHead className="hidden lg:table-cell">Ferramentas</TableHead>
+                    <TableHead className="hidden xl:table-cell">Transição</TableHead>
+                    <TableHead className="hidden md:table-cell">Tempo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -543,7 +547,7 @@ export default function AILogs() {
                         {format(new Date(log.created_at), "HH:mm:ss")}
                       </TableCell>
                       <TableCell 
-                        className="font-mono text-xs cursor-pointer"
+                        className="font-mono text-xs cursor-pointer hidden md:table-cell"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
@@ -552,7 +556,7 @@ export default function AILogs() {
                         {log.customer_phone.slice(-4)}
                       </TableCell>
                       <TableCell 
-                        className="max-w-[200px] truncate cursor-pointer"
+                        className="max-w-[100px] md:max-w-[200px] truncate cursor-pointer"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
@@ -561,7 +565,7 @@ export default function AILogs() {
                         {log.user_message}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden lg:table-cell"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
@@ -570,7 +574,7 @@ export default function AILogs() {
                         <Badge variant="outline">{log.orchestrator_intent}</Badge>
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden lg:table-cell"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
@@ -579,7 +583,7 @@ export default function AILogs() {
                         {log.tool_calls_validated?.length || 0}
                       </TableCell>
                       <TableCell 
-                        className="text-xs cursor-pointer"
+                        className="text-xs cursor-pointer hidden xl:table-cell"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
@@ -588,13 +592,13 @@ export default function AILogs() {
                         {log.state_before} → {log.state_after}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden md:table-cell"
                         onClick={() => {
                           setSelectedLog(log);
                           setSheetOpen(true);
                         }}
                       >
-                        {log.processing_time_ms}
+                        {log.processing_time_ms}ms
                       </TableCell>
                     </TableRow>
                   ))}
@@ -603,7 +607,7 @@ export default function AILogs() {
             </ScrollArea>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              No logs found. Try adjusting your filters.
+              Nenhum log encontrado. Tente ajustar os filtros.
             </div>
           )}
         </CardContent>
@@ -611,16 +615,16 @@ export default function AILogs() {
 
       {/* Detail Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-[800px] sm:max-w-[800px] overflow-y-auto">
+        <SheetContent className="w-full sm:w-[600px] md:w-[800px] sm:max-w-[800px] overflow-y-auto">
           {selectedLog && (
             <>
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2">
                   {getStatusIcon(selectedLog)}
-                  Interaction Details
+                  Detalhes da Interação
                 </SheetTitle>
                 <SheetDescription>
-                  {format(new Date(selectedLog.created_at), "PPpp")}
+                  {format(new Date(selectedLog.created_at), "PPpp", { locale: pt })}
                 </SheetDescription>
               </SheetHeader>
 
@@ -628,14 +632,14 @@ export default function AILogs() {
                 <Accordion type="multiple" className="w-full">
                   {/* Original Message */}
                   <AccordionItem value="message">
-                    <AccordionTrigger>📝 Original Message</AccordionTrigger>
+                    <AccordionTrigger>📝 Mensagem Original</AccordionTrigger>
                     <AccordionContent className="space-y-2">
                       <div>
-                        <Label>Phone</Label>
+                        <Label>Telefone</Label>
                         <p className="font-mono text-sm">{selectedLog.customer_phone}</p>
                       </div>
                       <div>
-                        <Label>Message</Label>
+                        <Label>Mensagem</Label>
                         <p className="text-sm bg-muted p-3 rounded-md">
                           {selectedLog.user_message}
                         </p>
@@ -645,22 +649,22 @@ export default function AILogs() {
 
                   {/* Orchestrator */}
                   <AccordionItem value="orchestrator">
-                    <AccordionTrigger>🔍 Classification (Orchestrator)</AccordionTrigger>
+                    <AccordionTrigger>🔍 Classificação (Orquestrador)</AccordionTrigger>
                     <AccordionContent className="space-y-2">
                       <div>
-                        <Label>Intent</Label>
+                        <Label>Intenção</Label>
                         <p><Badge>{selectedLog.orchestrator_intent}</Badge></p>
                       </div>
                       <div>
-                        <Label>Confidence</Label>
+                        <Label>Confiança</Label>
                         <p>{(selectedLog.orchestrator_confidence * 100).toFixed(1)}%</p>
                       </div>
                       <div>
-                        <Label>Target State</Label>
+                        <Label>Estado Alvo</Label>
                         <p><Badge variant="outline">{selectedLog.orchestrator_target_state}</Badge></p>
                       </div>
                       <div>
-                        <Label>Reasoning</Label>
+                        <Label>Raciocínio</Label>
                         <p className="text-sm bg-muted p-3 rounded-md">
                           {selectedLog.orchestrator_reasoning}
                         </p>
@@ -670,7 +674,7 @@ export default function AILogs() {
 
                   {/* Context */}
                   <AccordionItem value="context">
-                    <AccordionTrigger>📦 Loaded Context</AccordionTrigger>
+                    <AccordionTrigger>📦 Contexto Carregado</AccordionTrigger>
                     <AccordionContent>
                       <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px]">
                         {JSON.stringify(selectedLog.context_loaded, null, 2)}
@@ -680,7 +684,7 @@ export default function AILogs() {
 
                   {/* System Prompt */}
                   <AccordionItem value="prompt">
-                    <AccordionTrigger>📄 System Prompt ({selectedLog.prompt_length} chars)</AccordionTrigger>
+                    <AccordionTrigger>📄 Prompt do Sistema ({selectedLog.prompt_length} caracteres)</AccordionTrigger>
                     <AccordionContent>
                       <ScrollArea className="h-[400px]">
                         <pre className="text-xs bg-muted p-3 rounded-md whitespace-pre-wrap">
@@ -692,7 +696,7 @@ export default function AILogs() {
 
                   {/* OpenAI Request */}
                   <AccordionItem value="request">
-                    <AccordionTrigger>🤖 OpenAI Request</AccordionTrigger>
+                    <AccordionTrigger>🤖 Pedido à OpenAI</AccordionTrigger>
                     <AccordionContent>
                       <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px]">
                         {JSON.stringify(selectedLog.ai_request, null, 2)}
@@ -702,16 +706,16 @@ export default function AILogs() {
 
                   {/* OpenAI Response */}
                   <AccordionItem value="response">
-                    <AccordionTrigger>💬 OpenAI Response</AccordionTrigger>
+                    <AccordionTrigger>💬 Resposta da OpenAI</AccordionTrigger>
                     <AccordionContent className="space-y-2">
                       <div>
-                        <Label>Response Text</Label>
+                        <Label>Texto da Resposta</Label>
                         <p className="text-sm bg-muted p-3 rounded-md">
                           {selectedLog.ai_response_text}
                         </p>
                       </div>
                       <div>
-                        <Label>Raw Response</Label>
+                        <Label>Resposta Bruta</Label>
                         <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px]">
                           {JSON.stringify(selectedLog.ai_response_raw, null, 2)}
                         </pre>
@@ -722,25 +726,25 @@ export default function AILogs() {
                   {/* Tool Execution */}
                   <AccordionItem value="tools">
                     <AccordionTrigger>
-                      🔧 Tool Execution ({selectedLog.tool_calls_validated?.length || 0} tools)
+                      🔧 Execução de Ferramentas ({selectedLog.tool_calls_validated?.length || 0} ferramentas)
                     </AccordionTrigger>
                     <AccordionContent className="space-y-4">
                       {selectedLog.tool_calls_validated?.length > 0 ? (
                         selectedLog.tool_calls_validated.map((tool: any, idx: number) => (
                           <div key={idx} className="border rounded-md p-3 space-y-2">
                             <div className="flex items-center justify-between">
-                              <Label>Tool: {tool.function?.name}</Label>
-                              <Badge>Validated</Badge>
+                              <Label>Ferramenta: {tool.function?.name}</Label>
+                              <Badge>Validada</Badge>
                             </div>
                             <div>
-                              <Label className="text-xs">Arguments</Label>
+                              <Label className="text-xs">Argumentos</Label>
                               <pre className="text-xs bg-muted p-2 rounded-md">
                                 {JSON.stringify(JSON.parse(tool.function?.arguments || "{}"), null, 2)}
                               </pre>
                             </div>
                             {selectedLog.tool_execution_results?.[idx] && (
                               <div>
-                                <Label className="text-xs">Result</Label>
+                                <Label className="text-xs">Resultado</Label>
                                 <pre className="text-xs bg-muted p-2 rounded-md">
                                   {JSON.stringify(selectedLog.tool_execution_results[idx], null, 2)}
                                 </pre>
@@ -749,30 +753,30 @@ export default function AILogs() {
                           </div>
                         ))
                       ) : (
-                        <p className="text-sm text-muted-foreground">No tools executed</p>
+                        <p className="text-sm text-muted-foreground">Nenhuma ferramenta executada</p>
                       )}
                     </AccordionContent>
                   </AccordionItem>
 
                   {/* Final Response */}
                   <AccordionItem value="final">
-                    <AccordionTrigger>📨 Final Response</AccordionTrigger>
+                    <AccordionTrigger>📨 Resposta Final</AccordionTrigger>
                     <AccordionContent className="space-y-2">
                       <div>
-                        <Label>Message Sent</Label>
+                        <Label>Mensagem Enviada</Label>
                         <p className="text-sm bg-muted p-3 rounded-md">
                           {selectedLog.final_response}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label>State Transition</Label>
+                          <Label>Transição de Estado</Label>
                           <p className="text-sm">
                             {selectedLog.state_before} → {selectedLog.state_after}
                           </p>
                         </div>
                         <div>
-                          <Label>Processing Time</Label>
+                          <Label>Tempo de Processamento</Label>
                           <p className="text-sm">{selectedLog.processing_time_ms}ms</p>
                         </div>
                       </div>
@@ -783,7 +787,7 @@ export default function AILogs() {
                   {selectedLog.has_errors && (
                     <AccordionItem value="errors">
                       <AccordionTrigger className="text-destructive">
-                        ❌ Errors
+                        ❌ Erros
                       </AccordionTrigger>
                       <AccordionContent>
                         <pre className="text-xs bg-destructive/10 p-3 rounded-md overflow-auto max-h-[300px]">
