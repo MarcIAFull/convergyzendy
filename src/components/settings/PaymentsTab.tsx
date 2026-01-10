@@ -35,6 +35,7 @@ export function PaymentsTab() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [togglingPayments, setTogglingPayments] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     if (!restaurant?.id) return;
@@ -66,10 +67,28 @@ export function PaymentsTab() {
     fetchStatus();
   }, [restaurant?.id]);
 
+  const parseStripeError = (errorMessage: string): string => {
+    // Common Stripe Connect regional restrictions
+    if (errorMessage.includes('cannot be created by platforms')) {
+      const match = errorMessage.match(/accounts in (\w+) cannot be created by platforms in (\w+)/i);
+      if (match) {
+        const [, accountCountry, platformCountry] = match;
+        return `Restrição regional do Stripe: Contas em ${accountCountry} não podem ser criadas por plataformas em ${platformCountry}. Entre em contato com o suporte Stripe para solicitar permissão.`;
+      }
+      return 'Restrição regional do Stripe Connect. Entre em contato com o suporte Stripe.';
+    }
+    if (errorMessage.includes('country')) {
+      return 'Erro de país: O Stripe Connect tem restrições regionais. Verifique se seu país é suportado.';
+    }
+    return errorMessage;
+  };
+
   const handleConnectStripe = async () => {
     if (!restaurant?.id) return;
     
     setConnecting(true);
+    setConnectionError(null);
+    
     try {
       const { data: session } = await supabase.auth.getSession();
       
@@ -91,13 +110,23 @@ export function PaymentsTab() {
       
       const data = await response.json();
       
+      if (!response.ok || data.error) {
+        const errorMsg = data.error || 'Erro ao iniciar conexão';
+        console.error('[PaymentsTab] Error connecting:', errorMsg);
+        setConnectionError(parseStripeError(errorMsg));
+        toast.error('Erro ao conectar com Stripe');
+        return;
+      }
+      
       if (data.onboarding_url) {
         window.location.href = data.onboarding_url;
       } else {
-        throw new Error(data.error || 'Erro ao iniciar conexão');
+        throw new Error('URL de onboarding não retornada');
       }
     } catch (error) {
       console.error('[PaymentsTab] Error connecting:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Erro ao conectar com Stripe';
+      setConnectionError(parseStripeError(errorMsg));
       toast.error('Erro ao conectar com Stripe');
     } finally {
       setConnecting(false);
@@ -201,6 +230,24 @@ export function PaymentsTab() {
                   Você ainda não conectou uma conta Stripe. Conecte para aceitar pagamentos online.
                 </AlertDescription>
               </Alert>
+              
+              {connectionError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="space-y-2">
+                    <p>{connectionError}</p>
+                    <a 
+                      href="https://support.stripe.com/contact" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm underline hover:no-underline"
+                    >
+                      Contatar Suporte Stripe
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </AlertDescription>
+                </Alert>
+              )}
               
               <Button onClick={handleConnectStripe} disabled={connecting}>
                 {connecting ? (
