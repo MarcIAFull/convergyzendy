@@ -301,7 +301,7 @@ export default function ImportRestaurant() {
       setSuccess(true);
 
       setTimeout(() => {
-        navigate('/menu-management');
+        navigate('/menu');
       }, 2000);
     } catch (err: any) {
       console.error('Erro na importação:', err);
