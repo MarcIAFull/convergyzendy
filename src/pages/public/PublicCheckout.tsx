@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePublicCartStore } from '@/stores/publicCartStore';
 import { usePublicMenuStore } from '@/stores/publicMenuStore';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft, Loader2, AlertCircle, Clock, MapPin as MapPinIcon } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Clock, MapPin as MapPinIcon, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { AddressInput } from '@/components/delivery/AddressInput';
@@ -16,6 +16,8 @@ import { useGeocoding } from '@/hooks/useGeocoding';
 import { useGoogleMapsApiKey } from '@/hooks/useGoogleMapsApiKey';
 import { DeliveryZoneMap } from '@/components/delivery/DeliveryZoneMap';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { CouponInput, AppliedCoupon } from '@/components/public/CouponInput';
+import { Badge } from '@/components/ui/badge';
 
 export default function PublicCheckout() {
   const { slug } = useParams<{ slug: string }>();
@@ -32,12 +34,31 @@ export default function PublicCheckout() {
     customer_email: '',
     delivery_address: '',
     delivery_instructions: '',
-    payment_method: 'cash' as 'cash' | 'card' | 'pix' | 'mbway' | 'multibanco',
+    payment_method: 'cash' as 'cash' | 'card' | 'mbway' | 'multibanco' | 'stripe',
   });
   const [addressCoords, setAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [deliveryValidation, setDeliveryValidation] = useState<any>(null);
   const [validatingDelivery, setValidatingDelivery] = useState(false);
   const { validateDeliveryAddress } = useGeocoding();
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
+
+  // Check if Stripe is enabled for this restaurant
+  useEffect(() => {
+    const checkStripeStatus = async () => {
+      if (!menuData?.restaurant?.id) return;
+      
+      const { data } = await supabase
+        .from('restaurant_settings')
+        .select('online_payments_enabled, stripe_charges_enabled')
+        .eq('restaurant_id', menuData.restaurant.id)
+        .single();
+      
+      setStripeEnabled(data?.online_payments_enabled && data?.stripe_charges_enabled);
+    };
+    
+    checkStripeStatus();
+  }, [menuData?.restaurant?.id]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-PT', {
@@ -77,7 +98,8 @@ export default function PublicCheckout() {
   const subtotal = getSubtotal();
   const deliveryFee = menuData?.restaurant.delivery_fee || 0;
   const calculatedDeliveryFee = deliveryValidation?.delivery_fee ?? deliveryFee;
-  const total = subtotal + calculatedDeliveryFee;
+  const discount = appliedCoupon?.discount_amount || 0;
+  const total = subtotal + calculatedDeliveryFee - discount;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +109,7 @@ export default function PublicCheckout() {
     setLoading(true);
 
     try {
+      // Create cart
       const { data: cart, error: cartError } = await supabase
         .from('carts')
         .insert({
@@ -99,6 +122,7 @@ export default function PublicCheckout() {
 
       if (cartError || !cart) throw new Error('Erro ao criar carrinho');
 
+      // Add cart items
       const cartItems = items.map((item) => ({
         cart_id: cart.id,
         product_id: item.product.id,
@@ -112,6 +136,7 @@ export default function PublicCheckout() {
 
       if (itemsError) throw new Error('Erro ao adicionar items ao carrinho');
 
+      // Create web order
       const { data: webOrder, error: orderError } = await supabase
         .from('web_orders')
         .insert({
@@ -139,8 +164,12 @@ export default function PublicCheckout() {
           })),
           subtotal,
           delivery_fee: calculatedDeliveryFee,
+          discount_amount: discount,
+          coupon_id: appliedCoupon?.id || null,
+          coupon_code: appliedCoupon?.code || null,
           total_amount: total,
           payment_method: formData.payment_method,
+          payment_status: formData.payment_method === 'stripe' ? 'pending' : 'pending_delivery',
           source: 'web',
         })
         .select()
@@ -148,7 +177,40 @@ export default function PublicCheckout() {
 
       if (orderError || !webOrder) throw new Error('Erro ao criar pedido');
 
-      // Notify restaurant via WhatsApp using direct fetch
+      // If Stripe payment, redirect to checkout
+      if (formData.payment_method === 'stripe') {
+        try {
+          const response = await fetch(
+            'https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/create-payment-session',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                web_order_id: webOrder.id,
+                success_url: `${window.location.origin}/menu/${slug}/order-confirmed/${webOrder.id}`,
+                cancel_url: `${window.location.origin}/menu/${slug}/checkout?cancelled=true`,
+              }),
+            }
+          );
+
+          const sessionData = await response.json();
+
+          if (sessionData.checkout_url) {
+            // Redirect to Stripe Checkout
+            window.location.href = sessionData.checkout_url;
+            return;
+          } else {
+            throw new Error(sessionData.error || 'Erro ao criar sessão de pagamento');
+          }
+        } catch (stripeError) {
+          console.error('[Checkout] Stripe error:', stripeError);
+          // Delete the order since payment failed
+          await supabase.from('web_orders').delete().eq('id', webOrder.id);
+          throw new Error('Erro ao processar pagamento online. Tente outro método.');
+        }
+      }
+
+      // For non-Stripe payments, notify restaurant and redirect
       console.log('[Checkout] Order created, sending WhatsApp notification...', webOrder.id);
       
       try {
@@ -156,9 +218,7 @@ export default function PublicCheckout() {
           'https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/notify-web-order',
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               order_id: webOrder.id,
               restaurant_id: menuData.restaurant.id 
@@ -173,7 +233,6 @@ export default function PublicCheckout() {
           console.error('[Checkout] WhatsApp notification failed:', notifyResult);
         }
       } catch (notifyError) {
-        // Don't block the flow if notification fails
         console.error('[Checkout] Failed to send WhatsApp notification:', notifyError);
       }
 
@@ -349,6 +408,16 @@ export default function PublicCheckout() {
               value={formData.payment_method}
               onValueChange={(value: any) => setFormData({ ...formData, payment_method: value })}
             >
+              {stripeEnabled && (
+                <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5 border-primary/20">
+                  <RadioGroupItem value="stripe" id="stripe" />
+                  <Label htmlFor="stripe" className="cursor-pointer flex items-center gap-2 flex-1">
+                    <CreditCard className="h-4 w-4 text-primary" />
+                    <span>Pagar Online</span>
+                    <Badge variant="secondary" className="ml-auto">Recomendado</Badge>
+                  </Label>
+                </div>
+              )}
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="cash" id="cash" />
                 <Label htmlFor="cash" className="cursor-pointer">Dinheiro</Label>
@@ -368,7 +437,24 @@ export default function PublicCheckout() {
             </RadioGroup>
           </Card>
 
+          {/* Coupon Section */}
           <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Cupom de Desconto</h2>
+            
+            {menuData?.restaurant?.id && (
+              <CouponInput
+                restaurantId={menuData.restaurant.id}
+                customerPhone={formData.customer_phone}
+                subtotal={subtotal}
+                onCouponApplied={setAppliedCoupon}
+                appliedCoupon={appliedCoupon}
+              />
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Resumo do Pedido</h2>
+            
             <div className="space-y-3">
               <div className="flex justify-between text-foreground">
                 <span>Subtotal</span>
@@ -379,6 +465,13 @@ export default function PublicCheckout() {
                 <span>Taxa de Entrega</span>
                 <span>{formatPrice(calculatedDeliveryFee)}</span>
               </div>
+
+              {appliedCoupon && (
+                <div className="flex justify-between text-green-600">
+                  <span>Desconto ({appliedCoupon.code})</span>
+                  <span>-{formatPrice(discount)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between text-xl font-bold text-foreground pt-3 border-t">
                 <span>Total</span>
@@ -400,6 +493,8 @@ export default function PublicCheckout() {
               </>
             ) : validatingDelivery ? (
               'Validando endereço...'
+            ) : formData.payment_method === 'stripe' ? (
+              `Pagar Online · ${formatPrice(total)}`
             ) : (
               `Confirmar Pedido · ${formatPrice(total)}`
             )}

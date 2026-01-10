@@ -29,6 +29,7 @@ import {
   UserPlus,
   FileText,
   ClipboardList,
+  Tag,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -68,6 +69,7 @@ export function AppSidebar() {
   const operationsRoutes = [
     { title: "Pedidos", url: "/dashboard", icon: ClipboardList, badge: unreadOrders },
     { title: "Menu", url: "/menu", icon: Package },
+    { title: "Cupons", url: "/coupons", icon: Tag },
     { title: "Zonas de Entrega", url: "/delivery-zones", icon: MapPin },
     { title: "Clientes", url: "/customers", icon: Users },
     { title: "Equipe", url: "/team", icon: UserPlus },
