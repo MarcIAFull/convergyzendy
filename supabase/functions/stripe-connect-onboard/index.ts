@@ -101,7 +101,7 @@ serve(async (req) => {
       
       const account = await stripe.accounts.create({
         type: 'express',
-        country: 'PT', // Portugal
+        country: 'BR', // Brazil - mesma região da plataforma
         email: user.email,
         business_type: 'company',
         company: {
