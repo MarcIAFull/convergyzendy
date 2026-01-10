@@ -2255,6 +2255,10 @@ export type Database = {
         Returns: undefined
       }
       cleanup_expired_caches: { Args: never; Returns: undefined }
+      create_default_tenant_settings: {
+        Args: { p_restaurant_id: string }
+        Returns: undefined
+      }
       create_restaurant_with_owner: {
         Args: {
           p_address: string
@@ -2264,6 +2268,10 @@ export type Database = {
           p_phone: string
         }
         Returns: Json
+      }
+      create_trial_subscription: {
+        Args: { p_restaurant_id: string }
+        Returns: undefined
       }
       detect_abandoned_carts: {
         Args: { p_delay_minutes?: number; p_restaurant_id: string }
