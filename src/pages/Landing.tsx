@@ -236,10 +236,16 @@ const Landing = () => {
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </Link>
-                <Button size="lg" variant="outline" className="text-lg px-8 py-6 h-auto">
-                  <MessageSquare className="mr-2 w-5 h-5" />
-                  Ver Demo ao Vivo
-                </Button>
+                <a 
+                  href="https://wa.me/351915817565?text=Ol%C3%A1!%20Quero%20ver%20uma%20demonstra%C3%A7%C3%A3o%20do%20Zendy%20AI" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
+                  <Button size="lg" variant="outline" className="text-lg px-8 py-6 h-auto">
+                    <MessageSquare className="mr-2 w-5 h-5" />
+                    Ver Demo ao Vivo
+                  </Button>
+                </a>
               </div>
               
               <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
