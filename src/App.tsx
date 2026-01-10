@@ -33,6 +33,7 @@ import TeamManagement from "@/pages/TeamManagement";
 import AcceptInvitation from "@/pages/AcceptInvitation";
 import Onboarding from "@/pages/Onboarding";
 import ImportRestaurant from "@/pages/ImportRestaurant";
+import Coupons from "@/pages/Coupons";
 import { AdminRoute } from "@/components/AdminRoute";
 import { OnboardingRoute } from "@/components/OnboardingRoute";
 import { HelmetProvider } from 'react-helmet-async';
@@ -74,6 +75,7 @@ const App = () => (
                   {/* Operations */}
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/menu" element={<MenuManagement />} />
+                  <Route path="/coupons" element={<Coupons />} />
                   <Route path="/delivery-zones" element={<DeliveryZones />} />
                   <Route path="/customers" element={<Customers />} />
                   <Route path="/orders/:id" element={<OrderDetail />} />

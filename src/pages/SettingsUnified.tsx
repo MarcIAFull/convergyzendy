@@ -1,5 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard, Globe, MessageSquare, Coins } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe, MessageSquare, Coins, Wallet } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
@@ -7,10 +7,14 @@ import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
 import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
 import { TokenUsageTab } from '@/components/settings/TokenUsageTab';
+import { PaymentsTab } from '@/components/settings/PaymentsTab';
 import { useRestaurantStore } from '@/stores/restaurantStore';
+import { useSearchParams } from 'react-router-dom';
 
 export default function SettingsUnified() {
   const { restaurant } = useRestaurantStore();
+  const [searchParams] = useSearchParams();
+  const defaultTab = searchParams.get('tab') || 'restaurant';
   
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -22,8 +26,8 @@ export default function SettingsUnified() {
       </div>
 
       {/* KEY força re-mount de todas as tabs quando restaurante muda */}
-      <Tabs defaultValue="restaurant" className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
-        <TabsList className="grid w-full grid-cols-7">
+      <Tabs defaultValue={defaultTab} className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
@@ -31,6 +35,10 @@ export default function SettingsUnified() {
           <TabsTrigger value="public-menu" className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
             <span className="hidden sm:inline">Menu</span>
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            <span className="hidden sm:inline">Pagamentos</span>
           </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex items-center gap-2">
             <Smartphone className="h-4 w-4" />
@@ -60,6 +68,10 @@ export default function SettingsUnified() {
 
         <TabsContent value="public-menu">
           <PublicMenuTab />
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <PaymentsTab />
         </TabsContent>
 
         <TabsContent value="whatsapp">
