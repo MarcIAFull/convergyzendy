@@ -249,7 +249,7 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
   const loadedCount = messages.length;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Compact Header */}
       <div className="border-b border-border px-4 py-3 flex-shrink-0">
         <div className="flex items-center justify-between gap-3">

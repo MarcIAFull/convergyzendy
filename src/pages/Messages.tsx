@@ -59,9 +59,9 @@ export default function Messages() {
 
   if (restaurantLoading || loading) {
     return (
-      <div className="h-full p-4 md:p-6">
+      <div className="h-[calc(100dvh-4rem)] p-4 md:p-6 overflow-hidden">
         {isMobile ? (
-          <Card className="h-full">
+          <Card className="h-full overflow-hidden">
             <div className="p-4 space-y-3">
               <Skeleton className="h-10 w-full" />
               {[1, 2, 3, 4, 5].map((i) => (
@@ -70,8 +70,8 @@ export default function Messages() {
             </div>
           </Card>
         ) : (
-          <div className="flex gap-4 h-full">
-            <Card className="w-80 flex-shrink-0">
+          <div className="flex gap-4 h-full min-h-0 overflow-hidden">
+            <Card className="w-80 flex-shrink-0 overflow-hidden">
               <div className="p-4 space-y-3">
                 <Skeleton className="h-10 w-full" />
                 {[1, 2, 3, 4, 5].map((i) => (
@@ -79,7 +79,7 @@ export default function Messages() {
                 ))}
               </div>
             </Card>
-            <Card className="flex-1">
+            <Card className="flex-1 overflow-hidden">
               <Skeleton className="h-full" />
             </Card>
           </div>
@@ -97,7 +97,7 @@ export default function Messages() {
   // Mobile Layout
   if (isMobile) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border bg-background flex-shrink-0">
           {selectedPhone && selectedConversation ? (
@@ -128,7 +128,7 @@ export default function Messages() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {selectedPhone && selectedConversation ? (
             <ChatArea
               selectedPhone={selectedPhone}
@@ -171,15 +171,15 @@ export default function Messages() {
 
   // Desktop Layout - 2 columns + Sheet for details
   return (
-    <div className="h-full p-4 md:p-6 flex flex-col">
+    <div className="h-[calc(100dvh-4rem)] p-4 md:p-6 flex flex-col overflow-hidden">
       <div className="mb-4 flex-shrink-0">
         <h1 className="text-2xl font-bold">Mensagens</h1>
         <p className="text-muted-foreground text-sm">Gerencie as conversas com seus clientes</p>
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
         {/* Conversation List - Fixed width */}
-        <Card className="w-80 flex-shrink-0 overflow-hidden">
+        <Card className="w-80 flex-shrink-0 overflow-hidden h-full">
           <ConversationList
             conversations={conversations}
             selectedPhone={selectedPhone}
@@ -188,7 +188,7 @@ export default function Messages() {
         </Card>
 
         {/* Chat Area - Flexible */}
-        <Card className="flex-1 overflow-hidden">
+        <Card className="flex-1 overflow-hidden h-full">
           {selectedPhone && selectedConversation ? (
             <ChatArea
               selectedPhone={selectedPhone}

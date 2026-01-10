@@ -28,7 +28,7 @@ export function ConversationList({ conversations, selectedPhone, onSelectConvers
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <div className="p-3 border-b border-border flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -41,7 +41,7 @@ export function ConversationList({ conversations, selectedPhone, onSelectConvers
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {filteredConversations.length === 0 ? (
           <div className="p-6 text-center text-muted-foreground text-sm">
             <p>Nenhuma conversa encontrada</p>
