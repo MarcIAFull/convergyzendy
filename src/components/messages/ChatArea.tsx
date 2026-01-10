@@ -296,30 +296,21 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages - Fixed height container with scroll */}
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-2"
+        className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2"
       >
-        {/* Load More Indicator */}
+        {/* Load More - Simple top indicator */}
         {hasMoreMessages && (
-          <div className="flex justify-center py-2">
+          <div className="text-center py-1">
             {isLoadingMore ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                A carregar...
-              </div>
+              <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />
             ) : (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={loadMoreMessages}
-                className="text-xs text-muted-foreground h-auto py-1"
-              >
-                <ChevronUp className="h-3 w-3 mr-1" />
-                Carregar anteriores ({loadedCount} de {totalCount})
-              </Button>
+              <span className="text-xs text-muted-foreground">
+                ↑ Scroll para carregar mais
+              </span>
             )}
           </div>
         )}
