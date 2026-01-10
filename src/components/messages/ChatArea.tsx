@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, Loader2, User } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Send, Bot, Loader2, User, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { ConversationModeToggle } from './ConversationModeToggle';
-import { LiveCart } from './LiveCart';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -29,9 +27,10 @@ interface ChatAreaProps {
   restaurantId: string;
   onToggleMode: (mode: 'ai' | 'manual') => void;
   cart?: CartWithItems | null;
+  onShowDetails?: () => void;
 }
 
-export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onToggleMode, cart }: ChatAreaProps) {
+export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onToggleMode, cart, onShowDetails }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -102,13 +101,13 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
 
     setIsSending(true);
     try {
-    const { error } = await supabase.functions.invoke('whatsapp-send', {
-      body: {
-        restaurantId,
-        customerPhone: selectedPhone,
-        messageText: newMessage.trim(),
-      },
-    });
+      const { error } = await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          restaurantId,
+          customerPhone: selectedPhone,
+          messageText: newMessage.trim(),
+        },
+      });
 
       if (error) throw error;
 
@@ -134,10 +133,10 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
     try {
       await onToggleMode(newMode);
       toast({
-        title: newMode === 'manual' ? '👤 Modo Manual Ativado' : '🤖 Modo IA Ativado',
+        title: newMode === 'manual' ? '👤 Modo Manual' : '🤖 Modo IA',
         description: newMode === 'manual' 
-          ? 'Você está no controle da conversa' 
-          : 'A IA responderá automaticamente',
+          ? 'Você está no controle' 
+          : 'IA responderá automaticamente',
       });
     } catch (error) {
       toast({
@@ -151,127 +150,135 @@ export function ChatArea({ selectedPhone, customerName, mode, restaurantId, onTo
   };
 
   const displayName = customerName || selectedPhone;
+  const cartItemCount = cart?.items?.length || 0;
 
   return (
-    <div className="flex h-full">
-      {/* Main Chat Area */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Alerta Fixo de Atenção */}
-        {mode === 'manual' && (
-          <Alert className="m-4 mb-0 border-2 border-orange-500 bg-orange-500/10">
-            <User className="h-5 w-5 text-orange-500" />
-            <AlertDescription className="text-sm font-medium text-orange-500 flex items-center justify-between">
-              <div>
-                <span className="font-bold">⚠️ MODO MANUAL ATIVO</span>
-                <p className="text-xs mt-1 text-orange-600">Você está no controle desta conversa. A IA não responderá automaticamente.</p>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Header */}
-        <div className="border-b border-border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-lg">{displayName}</h2>
-              <p className="text-sm text-muted-foreground">{selectedPhone}</p>
+    <div className="flex flex-col h-full">
+      {/* Compact Header */}
+      <div className="border-b border-border px-4 py-3 flex-shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="min-w-0">
+              <h2 className="font-semibold text-sm truncate">{displayName}</h2>
+              <p className="text-xs text-muted-foreground truncate">{selectedPhone}</p>
             </div>
+            
+            {/* Inline Manual Mode Badge */}
+            {mode === 'manual' && (
+              <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-500/10 text-xs flex-shrink-0">
+                ⚠️ Manual
+              </Badge>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Cart indicator */}
+            {cartItemCount > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                🛒 {cartItemCount}
+              </Badge>
+            )}
+            
             <ConversationModeToggle
               mode={mode}
               onToggle={handleToggleMode}
               disabled={isTogglingMode}
+              compact
             />
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg) => {
-            const isOutgoing = msg.direction === 'outbound';
-            return (
-              <div
-                key={msg.id}
-                className={cn(
-                  'flex flex-col',
-                  isOutgoing ? 'items-end' : 'items-start'
-                )}
+            
+            {onShowDetails && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={onShowDetails}
               >
-                {/* Badge indicating origin (only for outbound messages) */}
-                {isOutgoing && msg.sent_by && (
-                  <div className="flex items-center gap-1 mb-1 px-2">
-                    {msg.sent_by === 'ai' ? (
-                      <>
-                        <Bot className="h-3 w-3 text-primary" />
-                        <span className="text-xs text-muted-foreground font-medium">IA</span>
-                      </>
-                    ) : msg.sent_by === 'human' ? (
-                      <>
-                        <User className="h-3 w-3 text-blue-600" />
-                        <span className="text-xs text-muted-foreground font-medium">Você</span>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-                
-                <Card
-                  className={cn(
-                    'max-w-[70%] p-3',
-                    isOutgoing
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  )}
-                >
-                  <p className="text-sm break-words">{msg.body}</p>
-                  <p
-                    className={cn(
-                      'text-xs mt-1',
-                      isOutgoing ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                    )}
-                  >
-                    {format(new Date(msg.timestamp), 'HH:mm')}
-                  </p>
-                </Card>
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-border p-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder={mode === 'ai' ? 'Assumir controle para enviar mensagem' : 'Digite sua mensagem...'}
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              disabled={mode === 'ai' || isSending}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={mode === 'ai' || isSending || !newMessage.trim()}
-            >
-              {isSending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+                <Info className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* LiveCart Sidebar - Shows when cart has items */}
-      {cart && cart.items && cart.items.length > 0 && (
-        <div className="w-80 border-l border-border p-4 overflow-y-auto hidden lg:block">
-          <LiveCart cart={cart} />
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {messages.map((msg) => {
+          const isOutgoing = msg.direction === 'outbound';
+          return (
+            <div
+              key={msg.id}
+              className={cn(
+                'flex flex-col max-w-[85%]',
+                isOutgoing ? 'ml-auto items-end' : 'mr-auto items-start'
+              )}
+            >
+              <div
+                className={cn(
+                  'rounded-2xl px-3 py-2 relative',
+                  isOutgoing
+                    ? 'bg-primary text-primary-foreground rounded-br-md'
+                    : 'bg-muted rounded-bl-md'
+                )}
+              >
+                <p className="text-sm break-words whitespace-pre-wrap">{msg.body}</p>
+                <div className={cn(
+                  'flex items-center gap-1 mt-1',
+                  isOutgoing ? 'justify-end' : 'justify-start'
+                )}>
+                  {/* Sender indicator */}
+                  {isOutgoing && msg.sent_by && (
+                    msg.sent_by === 'ai' ? (
+                      <Bot className="h-3 w-3 opacity-60" />
+                    ) : msg.sent_by === 'human' ? (
+                      <User className="h-3 w-3 opacity-60" />
+                    ) : null
+                  )}
+                  <span
+                    className={cn(
+                      'text-[10px]',
+                      isOutgoing ? 'text-primary-foreground/60' : 'text-muted-foreground'
+                    )}
+                  >
+                    {format(new Date(msg.timestamp), 'HH:mm')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Compact Footer */}
+      <div className="border-t border-border p-3 flex-shrink-0">
+        <div className="flex gap-2">
+          <Input
+            placeholder={mode === 'ai' ? 'Ative Manual para enviar' : 'Digite sua mensagem...'}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            disabled={mode === 'ai' || isSending}
+            className="text-sm"
+          />
+          <Button
+            onClick={handleSendMessage}
+            disabled={mode === 'ai' || isSending || !newMessage.trim()}
+            size="icon"
+            className="flex-shrink-0"
+          >
+            {isSending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
