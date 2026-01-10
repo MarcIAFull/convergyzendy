@@ -101,8 +101,8 @@ export const useTokenUsageStore = create<TokenUsageState>((set) => ({
         const dailyAverage = tokensUsed / daysElapsed;
         const projectedMonthlyTokens = Math.round(dailyAverage * daysInPeriod);
 
-        // Custo estimado: 80% input @ $5/1M, 20% output @ $15/1M
-        const estimatedCostUsd = (tokensUsed * 0.8 * 5 / 1000000) + (tokensUsed * 0.2 * 15 / 1000000);
+        // Custo estimado GPT-4o mini: 80% input @ $0.15/1M, 20% output @ $0.60/1M
+        const estimatedCostUsd = (tokensUsed * 0.8 * 0.15 / 1000000) + (tokensUsed * 0.2 * 0.60 / 1000000);
 
         set({
           currentPeriod: {
@@ -140,7 +140,8 @@ export const useTokenUsageStore = create<TokenUsageState>((set) => ({
 
       const tokens = (data || []).reduce((sum, log) => sum + (log.tokens_used || 0), 0);
       const interactions = data?.length || 0;
-      const cost = (tokens * 0.8 * 5 / 1000000) + (tokens * 0.2 * 15 / 1000000);
+      // GPT-4o mini: Input $0.15/1M, Output $0.60/1M
+      const cost = (tokens * 0.8 * 0.15 / 1000000) + (tokens * 0.2 * 0.60 / 1000000);
 
       set({
         todayUsage: {
