@@ -153,9 +153,9 @@ const Customers = () => {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-4xl font-bold text-foreground">Customer Insights</h1>
+        <h1 className="text-4xl font-bold text-foreground">Insights de Clientes</h1>
         <p className="text-muted-foreground mt-2">
-          Understand your customers and their ordering behavior
+          Compreenda os seus clientes e o comportamento de compras
         </p>
       </div>
 
@@ -164,7 +164,7 @@ const Customers = () => {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by phone or name..."
+            placeholder="Pesquisar por telefone ou nome..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -172,10 +172,10 @@ const Customers = () => {
         </div>
         <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
           <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="frequent">Frequent</TabsTrigger>
-            <TabsTrigger value="high_value">High Value</TabsTrigger>
-            <TabsTrigger value="inactive">Inactive</TabsTrigger>
+            <TabsTrigger value="all">Todos</TabsTrigger>
+            <TabsTrigger value="frequent">Frequentes</TabsTrigger>
+            <TabsTrigger value="high_value">Alto Valor</TabsTrigger>
+            <TabsTrigger value="inactive">Inativos</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -191,9 +191,9 @@ const Customers = () => {
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    {customer.name || 'Unnamed Customer'}
+                    {customer.name || 'Cliente sem nome'}
                   </CardTitle>
                   <CardDescription className="flex items-center gap-1 mt-1">
                     <Phone className="h-3 w-3" />
@@ -245,9 +245,9 @@ const Customers = () => {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No customers found</h3>
+                <h3 className="text-lg font-semibold mb-2">Nenhum cliente encontrado</h3>
                 <p className="text-muted-foreground text-center">
-                  {searchQuery ? 'Try a different search term' : 'Customers will appear here once they place orders'}
+                  {searchQuery ? 'Tente um termo de pesquisa diferente' : 'Os clientes aparecerão aqui assim que fizerem pedidos'}
                 </p>
               </CardContent>
             </Card>
@@ -263,7 +263,7 @@ const Customers = () => {
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
-                  {selectedCustomer.name || 'Unnamed Customer'}
+                  {selectedCustomer.name || 'Cliente sem nome'}
                 </SheetTitle>
                 <SheetDescription className="flex items-center gap-1">
                   <Phone className="h-3 w-3" />
@@ -276,7 +276,7 @@ const Customers = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardDescription className="text-xs">Total Orders</CardDescription>
+                      <CardDescription className="text-xs">Total de Pedidos</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-2xl font-bold text-foreground">{selectedCustomer.order_count}</p>
@@ -284,7 +284,7 @@ const Customers = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardDescription className="text-xs">Total Spent</CardDescription>
+                      <CardDescription className="text-xs">Total Gasto</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-2xl font-bold text-primary">€{selectedCustomer.total_spent.toFixed(2)}</p>
@@ -292,7 +292,7 @@ const Customers = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardDescription className="text-xs">Avg Ticket</CardDescription>
+                      <CardDescription className="text-xs">Ticket Médio</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-2xl font-bold text-foreground">€{selectedCustomer.average_ticket.toFixed(2)}</p>
@@ -300,7 +300,7 @@ const Customers = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardDescription className="text-xs">Frequency</CardDescription>
+                      <CardDescription className="text-xs">Frequência</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-2xl font-bold text-foreground">
@@ -315,7 +315,7 @@ const Customers = () => {
                   <div>
                     <h3 className="font-semibold mb-3 flex items-center gap-2">
                       <Star className="h-4 w-4 text-primary" />
-                      Preferred Products
+                      Produtos Preferidos
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {selectedCustomer.preferred_items.map((item: any, idx: number) => (
@@ -333,7 +333,7 @@ const Customers = () => {
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <Package className="h-4 w-4" />
-                    Order History ({customerOrders.length})
+                    Histórico de Pedidos ({customerOrders.length})
                   </h3>
                   {loadingOrders ? (
                     <div className="space-y-3">
@@ -385,7 +385,7 @@ const Customers = () => {
                           </Card>
                         ))}
                         {customerOrders.length === 0 && (
-                          <p className="text-center text-muted-foreground py-8">No orders yet</p>
+                          <p className="text-center text-muted-foreground py-8">Sem pedidos ainda</p>
                         )}
                       </div>
                     </ScrollArea>
@@ -399,7 +399,7 @@ const Customers = () => {
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <MessageSquare className="h-4 w-4" />
-                        Recovery Attempts ({customerRecoveryAttempts.length})
+                        Tentativas de Recuperação ({customerRecoveryAttempts.length})
                       </h3>
                       <div className="space-y-2">
                         {customerRecoveryAttempts.map((attempt) => (

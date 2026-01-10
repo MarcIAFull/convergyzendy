@@ -101,16 +101,16 @@ const Analytics = () => {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-foreground">Analytics Dashboard</h1>
+          <h1 className="text-4xl font-bold text-foreground">Análises</h1>
           <p className="text-muted-foreground mt-2">
-            Performance insights and business metrics
+            Insights de performance e métricas do negócio
           </p>
         </div>
         <Tabs value={dateRange} onValueChange={(v) => handleRangeChange(v as any)}>
           <TabsList>
-            <TabsTrigger value="week">7 Days</TabsTrigger>
-            <TabsTrigger value="month">30 Days</TabsTrigger>
-            <TabsTrigger value="all">All Time</TabsTrigger>
+            <TabsTrigger value="week">7 Dias</TabsTrigger>
+            <TabsTrigger value="month">30 Dias</TabsTrigger>
+            <TabsTrigger value="all">Todo Período</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -118,22 +118,22 @@ const Analytics = () => {
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Total Revenue"
+          title="Receita Total"
           value={`€${data.totalRevenue.toFixed(2)}`}
           icon={DollarSign}
         />
         <MetricCard
-          title="Total Orders"
+          title="Total de Pedidos"
           value={data.totalOrders.toString()}
           icon={ShoppingCart}
         />
         <MetricCard
-          title="Average Ticket"
+          title="Ticket Médio"
           value={`€${data.averageTicket.toFixed(2)}`}
           icon={TrendingUp}
         />
         <MetricCard
-          title="Total Customers"
+          title="Total de Clientes"
           value={data.totalCustomers.toString()}
           icon={Users}
         />
@@ -142,8 +142,8 @@ const Analytics = () => {
       {/* Revenue Over Time */}
       <Card>
         <CardHeader>
-          <CardTitle>Revenue Over Time</CardTitle>
-          <CardDescription>Daily revenue and order volume</CardDescription>
+          <CardTitle>Receita ao Longo do Tempo</CardTitle>
+          <CardDescription>Receita diária e volume de pedidos</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={350}>
@@ -171,7 +171,7 @@ const Analytics = () => {
                 dataKey="revenue" 
                 stroke="hsl(var(--primary))" 
                 strokeWidth={2}
-                name="Revenue (€)"
+                name="Receita (€)"
                 dot={{ fill: 'hsl(var(--primary))' }}
               />
               <Line 
@@ -180,7 +180,7 @@ const Analytics = () => {
                 dataKey="orders" 
                 stroke="hsl(var(--secondary))" 
                 strokeWidth={2}
-                name="Orders"
+                name="Pedidos"
                 dot={{ fill: 'hsl(var(--secondary))' }}
               />
             </LineChart>
@@ -194,9 +194,9 @@ const Analytics = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Top Selling Products
+              Produtos Mais Vendidos
             </CardTitle>
-            <CardDescription>Best performers by revenue</CardDescription>
+            <CardDescription>Melhores por receita</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -208,7 +208,7 @@ const Analytics = () => {
                   <div className="flex-1">
                     <p className="font-medium text-foreground">{product.product_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {product.total_quantity} units sold
+                      {product.total_quantity} unidades vendidas
                     </p>
                   </div>
                   <div className="text-right">
@@ -217,7 +217,7 @@ const Analytics = () => {
                 </div>
               ))}
               {data.topProducts.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No products data yet</p>
+                <p className="text-center text-muted-foreground py-8">Sem dados de produtos ainda</p>
               )}
             </div>
           </CardContent>
@@ -228,15 +228,15 @@ const Analytics = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />
-              Performance Metrics
+              Métricas de Performance
             </CardTitle>
-            <CardDescription>Conversion and recovery statistics</CardDescription>
+            <CardDescription>Estatísticas de conversão e recuperação</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Conversion Rate */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Cart → Order Conversion</span>
+                <span className="text-sm font-medium">Conversão Carrinho → Pedido</span>
                 <span className="text-2xl font-bold text-primary">{data.conversionRate.toFixed(1)}%</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -251,23 +251,23 @@ const Analytics = () => {
             <div className="pt-4 border-t border-border">
               <div className="flex items-center gap-2 mb-4">
                 <RefreshCcw className="h-4 w-4 text-muted-foreground" />
-                <span className="font-semibold">Recovery Attempts</span>
+                <span className="font-semibold">Tentativas de Recuperação</span>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Attempts</p>
+                  <p className="text-sm text-muted-foreground">Total Tentativas</p>
                   <p className="text-2xl font-bold text-foreground">{data.recoveryStats.total_attempts}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Successful</p>
+                  <p className="text-sm text-muted-foreground">Bem-sucedidas</p>
                   <p className="text-2xl font-bold text-success">{data.recoveryStats.successful_recoveries}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Recovery Rate</p>
+                  <p className="text-sm text-muted-foreground">Taxa de Recuperação</p>
                   <p className="text-2xl font-bold text-primary">{data.recoveryStats.recovery_rate.toFixed(1)}%</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Recovered Revenue</p>
+                  <p className="text-sm text-muted-foreground">Receita Recuperada</p>
                   <p className="text-2xl font-bold text-success">€{data.recoveryStats.total_recovered_revenue.toFixed(2)}</p>
                 </div>
               </div>
