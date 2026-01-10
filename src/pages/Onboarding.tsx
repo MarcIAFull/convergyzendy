@@ -29,7 +29,7 @@ const Onboarding = () => {
 
   const steps = [
     { id: 'restaurant' as Step, title: 'Restaurante', required: true },
-    { id: 'menu' as Step, title: 'Cardápio', required: false },
+    { id: 'menu' as Step, title: 'Menu', required: false },
     { id: 'whatsapp' as Step, title: 'WhatsApp', required: false },
   ];
 
@@ -44,7 +44,7 @@ const Onboarding = () => {
     openingHours?: any;
   }) => {
     if (!user) {
-      toast.error('Você precisa estar autenticado');
+      toast.error('Precisa estar autenticado');
       navigate('/login');
       return;
     }
@@ -54,8 +54,8 @@ const Onboarding = () => {
       
       // Validar que temos um usuário autenticado
       if (!user?.id) {
-        console.error('[Onboarding] ❌ Usuário não autenticado');
-        toast.error('Você precisa estar autenticado. Faça login novamente.');
+        console.error('[Onboarding] ❌ Utilizador não autenticado');
+        toast.error('Precisa estar autenticado. Faça login novamente.');
         navigate('/login');
         return;
       }
@@ -111,16 +111,16 @@ const Onboarding = () => {
       if (templateId) {
         // Apply menu template
         await applyMenuTemplate(restaurantId, templateId);
-        toast.success('Template de cardápio aplicado!');
+        toast.success('Template de menu aplicado!');
       } else {
-        toast.success('Você pode adicionar produtos depois!');
+        toast.success('Pode adicionar produtos depois!');
       }
 
       setCompletedSteps([...completedSteps, 'menu']);
       setCurrentStep('whatsapp');
     } catch (error: any) {
       console.error('Menu setup error:', error);
-      toast.error(error.message || 'Erro ao configurar cardápio');
+      toast.error(error.message || 'Erro ao configurar menu');
       throw error;
     }
   };
@@ -166,7 +166,7 @@ const Onboarding = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      toast.success('Você saiu com sucesso');
+      toast.success('Sessão terminada com sucesso');
       navigate('/login');
     } catch (error) {
       console.error('Erro ao sair:', error);
@@ -175,23 +175,25 @@ const Onboarding = () => {
   };
 
   const applyMenuTemplate = async (restaurantId: string, templateId: string) => {
-    // Simple hardcoded templates for MVP
+    // Templates com preços em EUR
     const templates: Record<string, { categories: { name: string; products: { name: string; price: number; description: string }[] }[] }> = {
       pizzeria: {
         categories: [
           {
             name: 'Pizzas',
             products: [
-              { name: 'Pizza Margherita', price: 35.00, description: 'Molho de tomate, mussarela e manjericão' },
-              { name: 'Pizza Calabresa', price: 38.00, description: 'Molho de tomate, mussarela e calabresa' },
-              { name: 'Pizza Portuguesa', price: 42.00, description: 'Presunto, ovos, cebola, azeitona e ervilha' },
+              { name: 'Pizza Margherita', price: 10.50, description: 'Molho de tomate, mozzarella e manjericão' },
+              { name: 'Pizza Calabresa', price: 12.00, description: 'Molho de tomate, mozzarella e calabresa' },
+              { name: 'Pizza Portuguesa', price: 13.50, description: 'Presunto, ovos, cebola, azeitona e ervilha' },
+              { name: 'Pizza 4 Queijos', price: 14.00, description: 'Mozzarella, gorgonzola, parmesão e provolone' },
+              { name: 'Pizza Pepperoni', price: 13.00, description: 'Molho de tomate, mozzarella e pepperoni' },
             ],
           },
           {
             name: 'Bebidas',
             products: [
-              { name: 'Refrigerante 2L', price: 8.00, description: 'Coca-Cola, Guaraná ou Fanta' },
-              { name: 'Suco Natural', price: 10.00, description: 'Laranja, limão ou abacaxi' },
+              { name: 'Refrigerante 1.5L', price: 3.50, description: 'Coca-Cola, Fanta ou Sprite' },
+              { name: 'Água Mineral 1L', price: 2.00, description: 'Com ou sem gás' },
             ],
           },
         ],
@@ -201,16 +203,74 @@ const Onboarding = () => {
           {
             name: 'Hambúrgueres',
             products: [
-              { name: 'Classic Burger', price: 28.00, description: 'Pão, hambúrguer, queijo, alface e tomate' },
-              { name: 'Bacon Burger', price: 32.00, description: 'Pão, hambúrguer, queijo, bacon e cebola' },
-              { name: 'Double Burger', price: 38.00, description: 'Dois hambúrgueres, queijo e molho especial' },
+              { name: 'Classic Burger', price: 9.50, description: 'Pão, hambúrguer, queijo, alface e tomate' },
+              { name: 'Bacon Burger', price: 11.00, description: 'Pão, hambúrguer, queijo, bacon e cebola caramelizada' },
+              { name: 'Double Burger', price: 14.50, description: 'Dois hambúrgueres, queijo duplo e molho especial' },
             ],
           },
           {
             name: 'Acompanhamentos',
             products: [
-              { name: 'Batata Frita', price: 12.00, description: 'Batata frita crocante' },
-              { name: 'Onion Rings', price: 15.00, description: 'Anéis de cebola empanados' },
+              { name: 'Batata Frita', price: 4.50, description: 'Porção de batatas fritas crocantes' },
+              { name: 'Onion Rings', price: 5.50, description: 'Anéis de cebola empanados' },
+            ],
+          },
+        ],
+      },
+      acai: {
+        categories: [
+          {
+            name: 'Açaí',
+            products: [
+              { name: 'Açaí 300ml', price: 6.00, description: 'Açaí natural com granola e banana' },
+              { name: 'Açaí 500ml', price: 9.00, description: 'Açaí natural com granola, banana e morango' },
+              { name: 'Açaí 700ml', price: 12.00, description: 'Açaí premium com todos os toppings' },
+            ],
+          },
+          {
+            name: 'Sumos Naturais',
+            products: [
+              { name: 'Sumo de Laranja', price: 4.00, description: 'Sumo natural de laranja' },
+              { name: 'Sumo de Ananás', price: 4.50, description: 'Sumo natural de ananás' },
+            ],
+          },
+        ],
+      },
+      sushi: {
+        categories: [
+          {
+            name: 'Combinados',
+            products: [
+              { name: 'Combinado 16 peças', price: 18.00, description: 'Sushi variado para 1 pessoa' },
+              { name: 'Combinado 32 peças', price: 32.00, description: 'Sushi variado para 2 pessoas' },
+              { name: 'Combinado 48 peças', price: 45.00, description: 'Sushi variado para 3-4 pessoas' },
+            ],
+          },
+          {
+            name: 'Hot Rolls',
+            products: [
+              { name: 'Hot Roll Salmão', price: 12.00, description: '8 peças de salmão empanado' },
+              { name: 'Hot Roll Filadélfia', price: 11.00, description: '8 peças com cream cheese' },
+            ],
+          },
+        ],
+      },
+      cafe: {
+        categories: [
+          {
+            name: 'Cafés',
+            products: [
+              { name: 'Café Expresso', price: 1.20, description: 'Café expresso italiano' },
+              { name: 'Cappuccino', price: 3.00, description: 'Café com leite vaporizado e espuma' },
+              { name: 'Latte', price: 3.50, description: 'Café com leite cremoso' },
+            ],
+          },
+          {
+            name: 'Pastelaria',
+            products: [
+              { name: 'Pastel de Nata', price: 1.50, description: 'Tradicional pastel de nata português' },
+              { name: 'Croissant', price: 2.00, description: 'Croissant folhado com manteiga' },
+              { name: 'Bolo de Chocolate', price: 3.50, description: 'Fatia de bolo de chocolate' },
             ],
           },
         ],
@@ -254,53 +314,57 @@ const Onboarding = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-3xl">
-        <CardHeader>
-          <div className="flex items-center justify-between mb-4">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Configuração do Zendy</CardTitle>
-              <CardDescription>
-                Vamos configurar seu restaurante em {steps.length} etapas simples
+              <CardTitle className="text-xl sm:text-2xl">Configuração do Zendy</CardTitle>
+              <CardDescription className="text-sm">
+                Vamos configurar o seu restaurante em {steps.length} etapas simples
               </CardDescription>
             </div>
             <Button
               onClick={handleSignOut}
               variant="ghost"
               size="sm"
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground self-end sm:self-auto"
             >
               <LogOut className="h-4 w-4 mr-2" />
               Sair
             </Button>
           </div>
-          <div className="flex items-center gap-2">
+          
+          {/* Step Indicators */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3">
             {steps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${
-                    completedSteps.includes(step.id)
-                      ? 'bg-primary border-primary text-primary-foreground'
-                      : currentStep === step.id
-                      ? 'border-primary text-primary'
-                      : 'border-muted text-muted-foreground'
-                  }`}
-                >
-                  {completedSteps.includes(step.id) ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <span className="text-sm font-semibold">{index + 1}</span>
+              <div
+                key={step.id}
+                className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 transition-colors ${
+                  completedSteps.includes(step.id)
+                    ? 'bg-primary border-primary text-primary-foreground'
+                    : currentStep === step.id
+                    ? 'border-primary text-primary'
+                    : 'border-muted text-muted-foreground'
+                }`}
+              >
+                {completedSteps.includes(step.id) ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <span className="text-sm font-semibold">{index + 1}</span>
                 )}
               </div>
             ))}
           </div>
-          <Progress value={progress} className="h-2 mt-4" />
-          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+          
+          <Progress value={progress} className="h-2" />
+          
+          <div className="flex justify-between text-xs text-muted-foreground">
             {steps.map((step) => (
               <span
                 key={step.id}
-                className={currentStep === step.id ? 'text-foreground font-medium' : ''}
+                className={`text-center flex-1 ${currentStep === step.id ? 'text-foreground font-medium' : ''}`}
               >
                 {step.title}
-                {!step.required && ' (opcional)'}
+                {!step.required && <span className="hidden sm:inline"> (opcional)</span>}
               </span>
             ))}
           </div>

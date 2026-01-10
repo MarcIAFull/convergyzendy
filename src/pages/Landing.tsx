@@ -101,19 +101,19 @@ const Landing = () => {
     {
       name: "Carlos Silva",
       business: "Pizzaria do Bairro",
-      quote: "Triplicamos nossos pedidos noturnos. A IA atende melhor que muito funcionário!",
+      quote: "Triplicámos os nossos pedidos noturnos. A IA atende melhor que muitos funcionários!",
       rating: 5
     },
     {
       name: "Ana Costa",
       business: "Açaí da Ana",
-      quote: "A recuperação de carrinhos me trouxe R$3.000 extras no primeiro mês.",
+      quote: "A recuperação de carrinhos trouxe-me €800 extras no primeiro mês.",
       rating: 5
     },
     {
       name: "Pedro Santos",
       business: "Burger House",
-      quote: "Setup em 15 minutos. No mesmo dia já estava recebendo pedidos via WhatsApp.",
+      quote: "Configuração em 15 minutos. No mesmo dia já estava a receber pedidos via WhatsApp.",
       rating: 5
     }
   ];

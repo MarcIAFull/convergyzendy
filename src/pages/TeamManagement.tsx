@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trash2, Mail, UserPlus, Copy, CheckCircle2 } from 'lucide-react';
+import { Trash2, Mail, UserPlus, Copy, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -26,6 +27,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { InviteMemberDialog } from '@/components/team/InviteMemberDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { format } from 'date-fns';
+import { pt } from 'date-fns/locale';
 
 interface TeamMember {
   id: string;
@@ -55,6 +59,7 @@ export default function TeamManagement() {
   const [error, setError] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -77,7 +82,7 @@ export default function TeamManagement() {
 
       if (membersError) {
         console.error('Error fetching members:', membersError);
-        setError('Erro ao carregar membros da equipe');
+        setError('Erro ao carregar membros da equipa');
         throw membersError;
       }
 
@@ -99,7 +104,7 @@ export default function TeamManagement() {
 
     } catch (error: any) {
       console.error('Error fetching team data:', error);
-      toast.error(error.message || 'Erro ao carregar equipe');
+      toast.error(error.message || 'Erro ao carregar equipa');
       setError(error.message || 'Erro ao carregar dados');
     } finally {
       setLoading(false);
@@ -110,7 +115,7 @@ export default function TeamManagement() {
     const url = `${window.location.origin}/accept-invitation/${token}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Link copiado para área de transferência!');
+      toast.success('Link copiado para a área de transferência!');
     } catch (error) {
       toast.error('Erro ao copiar link');
     }
@@ -158,27 +163,110 @@ export default function TeamManagement() {
       admin: 'secondary',
       member: 'outline'
     };
-    return <Badge variant={variants[role] || 'outline'}>{role}</Badge>;
+    const labels: Record<string, string> = {
+      owner: 'Proprietário',
+      admin: 'Administrador',
+      member: 'Membro'
+    };
+    return <Badge variant={variants[role] || 'outline'}>{labels[role] || role}</Badge>;
+  };
+
+  const formatDate = (dateString: string) => {
+    return format(new Date(dateString), "d 'de' MMM, yyyy", { locale: pt });
   };
 
   if (!restaurant) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="container mx-auto py-8 px-4">
         <p className="text-muted-foreground">Selecione um restaurante primeiro</p>
       </div>
     );
   }
 
+  // Mobile Card View for Members
+  const MemberCard = ({ member }: { member: TeamMember }) => {
+    const isCurrentUser = member.user_id === user?.id;
+    return (
+      <Card className="mb-3">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="font-medium truncate">{member.user_email}</span>
+                {isCurrentUser && (
+                  <Badge variant="secondary" className="text-xs">Você</Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                {getRoleBadge(member.role)}
+                <span>•</span>
+                <span>{formatDate(member.created_at)}</span>
+              </div>
+            </div>
+            {member.role !== 'owner' && !isCurrentUser && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMemberToDelete(member.id)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // Mobile Card View for Invitations
+  const InvitationCard = ({ invitation }: { invitation: Invitation }) => (
+    <Card className="mb-3">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <span className="font-medium truncate">{invitation.email}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              {getRoleBadge(invitation.role)}
+              <span>•</span>
+              <span>Expira: {formatDate(invitation.expires_at)}</span>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => copyInvitationLink(invitation.token)}
+              title="Copiar link do convite"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleDeleteInvitation(invitation.id)}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className="container mx-auto py-8 space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="container mx-auto py-6 md:py-8 px-4 space-y-6 md:space-y-8">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold">Gestão de Equipe</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Gestão de Equipa</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Gerencie membros e convites para {restaurant.name}
           </p>
         </div>
-        <Button onClick={() => setInviteDialogOpen(true)}>
+        <Button onClick={() => setInviteDialogOpen(true)} className="w-full sm:w-auto">
           <UserPlus className="mr-2 h-4 w-4" />
           Convidar Membro
         </Button>
@@ -186,44 +274,56 @@ export default function TeamManagement() {
 
       {/* Error State */}
       {error && (
-        <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
+        <div className="p-4 bg-destructive/10 text-destructive rounded-lg text-sm">
           {error}
         </div>
       )}
 
       {/* Team Members */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Membros Ativos</h2>
-        <div className="border rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Adicionado em</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <>
-                  {[1, 2, 3].map((i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-[200px]" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-[40px] ml-auto" /></TableCell>
-                    </TableRow>
-                  ))}
-                </>
-              ) : members.length === 0 ? (
+        <h2 className="text-lg md:text-xl font-semibold flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Membros Ativos
+        </h2>
+        
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <Skeleton className="h-4 w-[200px] mb-2" />
+                  <Skeleton className="h-3 w-[150px]" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : members.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              Nenhum membro encontrado
+            </CardContent>
+          </Card>
+        ) : isMobile ? (
+          // Mobile: Card Layout
+          <div>
+            {members.map((member) => (
+              <MemberCard key={member.id} member={member} />
+            ))}
+          </div>
+        ) : (
+          // Desktop: Table Layout
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Nenhum membro encontrado
-                  </TableCell>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Cargo</TableHead>
+                  <TableHead>Adicionado em</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ) : (
-                members.map((member) => {
+              </TableHeader>
+              <TableBody>
+                {members.map((member) => {
                   const isCurrentUser = member.user_id === user?.id;
                   return (
                     <TableRow key={member.id}>
@@ -236,9 +336,7 @@ export default function TeamManagement() {
                         </div>
                       </TableCell>
                       <TableCell>{getRoleBadge(member.role)}</TableCell>
-                      <TableCell>
-                        {new Date(member.created_at).toLocaleDateString('pt-BR')}
-                      </TableCell>
+                      <TableCell>{formatDate(member.created_at)}</TableCell>
                       <TableCell className="text-right">
                         {member.role !== 'owner' && !isCurrentUser && (
                           <Button
@@ -252,35 +350,47 @@ export default function TeamManagement() {
                       </TableCell>
                     </TableRow>
                   );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
       {/* Pending Invitations */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Convites Pendentes</h2>
-        <div className="border rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Expira em</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitations.length === 0 ? (
+        <h2 className="text-lg md:text-xl font-semibold flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          Convites Pendentes
+        </h2>
+        
+        {invitations.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              Nenhum convite pendente
+            </CardContent>
+          </Card>
+        ) : isMobile ? (
+          // Mobile: Card Layout
+          <div>
+            {invitations.map((invitation) => (
+              <InvitationCard key={invitation.id} invitation={invitation} />
+            ))}
+          </div>
+        ) : (
+          // Desktop: Table Layout
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Nenhum convite pendente
-                  </TableCell>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Cargo</TableHead>
+                  <TableHead>Expira em</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ) : (
-                invitations.map((invitation) => (
+              </TableHeader>
+              <TableBody>
+                {invitations.map((invitation) => (
                   <TableRow key={invitation.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -289,9 +399,7 @@ export default function TeamManagement() {
                       </div>
                     </TableCell>
                     <TableCell>{getRoleBadge(invitation.role)}</TableCell>
-                    <TableCell>
-                      {new Date(invitation.expires_at).toLocaleDateString('pt-BR')}
-                    </TableCell>
+                    <TableCell>{formatDate(invitation.expires_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -312,26 +420,27 @@ export default function TeamManagement() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!memberToDelete} onOpenChange={() => setMemberToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Remover Membro</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover este membro? Esta ação não pode ser desfeita.
+              Tem a certeza de que pretende remover este membro? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => memberToDelete && handleDeleteMember(memberToDelete)}
+              className="w-full sm:w-auto"
             >
               Remover
             </AlertDialogAction>
