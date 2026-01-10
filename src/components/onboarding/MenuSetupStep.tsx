@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Loader2, Pizza, Beef, FileText, ChevronRight } from 'lucide-react';
+import { Loader2, Pizza, Beef, FileText, ChevronRight, IceCream, Fish, Coffee } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface MenuSetupStepProps {
   onComplete: (templateId?: string) => Promise<void>;
@@ -13,7 +14,7 @@ interface MenuSetupStepProps {
 
 const MenuSetupStep = ({ onComplete, onSkip }: MenuSetupStepProps) => {
   const [loading, setLoading] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<'empty' | 'pizzeria' | 'hamburger'>('empty');
+  const [selectedOption, setSelectedOption] = useState<string>('empty');
   const [error, setError] = useState<string | null>(null);
 
   const templates = [
@@ -26,14 +27,32 @@ const MenuSetupStep = ({ onComplete, onSkip }: MenuSetupStepProps) => {
     {
       id: 'pizzeria',
       name: 'Pizzaria',
-      description: '5 pizzas + 2 bebidas',
+      description: '5 pizzas + 2 bebidas (preços em €)',
       icon: Pizza,
     },
     {
       id: 'hamburger',
       name: 'Hamburgueria',
-      description: '3 hambúrgueres + 2 acompanhamentos',
+      description: '3 hambúrgueres + 2 acompanhamentos (preços em €)',
       icon: Beef,
+    },
+    {
+      id: 'acai',
+      name: 'Açaí & Sumos',
+      description: '3 açaís + 2 sumos naturais (preços em €)',
+      icon: IceCream,
+    },
+    {
+      id: 'sushi',
+      name: 'Sushi',
+      description: '3 combinados + 2 hot rolls (preços em €)',
+      icon: Fish,
+    },
+    {
+      id: 'cafe',
+      name: 'Café & Pastelaria',
+      description: '3 cafés + 3 doces (preços em €)',
+      icon: Coffee,
     },
   ];
 
@@ -48,7 +67,7 @@ const MenuSetupStep = ({ onComplete, onSkip }: MenuSetupStepProps) => {
         await onComplete(selectedOption);
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao configurar cardápio');
+      setError(err.message || 'Erro ao configurar menu');
     } finally {
       setLoading(false);
     }
@@ -57,9 +76,9 @@ const MenuSetupStep = ({ onComplete, onSkip }: MenuSetupStepProps) => {
   return (
     <div className="space-y-6">
       <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-2">Configurar Cardápio (Opcional)</h3>
+        <h3 className="text-lg font-semibold mb-2">Configurar Menu (Opcional)</h3>
         <p className="text-sm text-muted-foreground">
-          Escolha um template básico ou comece do zero. Você pode personalizar depois.
+          Escolha um template básico ou comece do zero. Pode personalizar depois.
         </p>
       </div>
 
@@ -69,56 +88,63 @@ const MenuSetupStep = ({ onComplete, onSkip }: MenuSetupStepProps) => {
         </Alert>
       )}
 
-      <RadioGroup
-        value={selectedOption}
-        onValueChange={(value) => setSelectedOption(value as any)}
-        className="space-y-3"
-      >
-        {templates.map((template) => {
-          const Icon = template.icon;
-          return (
-            <Card
-              key={template.id}
-              className={`cursor-pointer transition-all hover:border-primary ${
-                selectedOption === template.id ? 'border-primary ring-1 ring-primary' : ''
-              }`}
-              onClick={() => setSelectedOption(template.id as any)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start gap-4">
-                  <RadioGroupItem value={template.id} id={template.id} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                        selectedOption === template.id ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                      }`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{template.name}</CardTitle>
-                        <CardDescription className="text-sm">
-                          {template.description}
-                        </CardDescription>
+      <ScrollArea className="h-[350px] sm:h-auto">
+        <RadioGroup
+          value={selectedOption}
+          onValueChange={(value) => setSelectedOption(value)}
+          className="space-y-3 pr-4 sm:pr-0"
+        >
+          {templates.map((template) => {
+            const Icon = template.icon;
+            return (
+              <Card
+                key={template.id}
+                className={`cursor-pointer transition-all hover:border-primary ${
+                  selectedOption === template.id ? 'border-primary ring-1 ring-primary' : ''
+                }`}
+                onClick={() => setSelectedOption(template.id)}
+              >
+                <CardHeader className="p-3 sm:pb-3">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <RadioGroupItem value={template.id} id={template.id} className="mt-1" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <div className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg flex-shrink-0 ${
+                          selectedOption === template.id ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="text-sm sm:text-base">{template.name}</CardTitle>
+                          <CardDescription className="text-xs sm:text-sm truncate">
+                            {template.description}
+                          </CardDescription>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </CardHeader>
-            </Card>
-          );
-        })}
-      </RadioGroup>
+                </CardHeader>
+              </Card>
+            );
+          })}
+        </RadioGroup>
+      </ScrollArea>
 
-      <div className="flex justify-between gap-2 pt-4">
+      <div className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onSkip}
           disabled={loading}
+          className="w-full sm:w-auto"
         >
-          Pular Esta Etapa
+          Saltar Esta Etapa
         </Button>
-        <Button onClick={handleContinue} disabled={loading} className="min-w-32">
+        <Button 
+          onClick={handleContinue} 
+          disabled={loading} 
+          className="w-full sm:w-auto min-w-32"
+        >
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Continuar
           <ChevronRight className="ml-2 h-4 w-4" />

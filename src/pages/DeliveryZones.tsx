@@ -16,11 +16,22 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DeliveryZone {
   id: string;
@@ -41,6 +52,8 @@ export default function DeliveryZones() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
+  const [zoneToDelete, setZoneToDelete] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -143,25 +156,27 @@ export default function DeliveryZones() {
       loadZones();
     } catch (error: any) {
       console.error('Error saving zone:', error);
-      toast.error('Erro ao salvar zona');
+      toast.error('Erro ao guardar zona');
     }
   };
 
-  const handleDelete = async (zoneId: string) => {
-    if (!confirm('Deseja realmente excluir esta zona?')) return;
-
+  const handleConfirmDelete = async () => {
+    if (!zoneToDelete) return;
+    
     try {
       const { error } = await supabase
         .from('delivery_zones')
         .delete()
-        .eq('id', zoneId);
+        .eq('id', zoneToDelete);
 
       if (error) throw error;
-      toast.success('Zona excluída com sucesso');
+      toast.success('Zona eliminada com sucesso');
       loadZones();
     } catch (error: any) {
       console.error('Error deleting zone:', error);
-      toast.error('Erro ao excluir zona');
+      toast.error('Erro ao eliminar zona');
+    } finally {
+      setZoneToDelete(null);
     }
   };
 
@@ -181,7 +196,7 @@ export default function DeliveryZones() {
 
   if (restaurantLoading || loading || apiKeyLoading) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 md:p-6">
         <div className="flex items-center justify-center min-h-[400px]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -191,7 +206,7 @@ export default function DeliveryZones() {
 
   if (apiKeyError || !apiKey) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 md:p-6">
         <div className="text-center text-muted-foreground">
           <p>Erro ao carregar Google Maps API Key</p>
           <p className="text-sm">{apiKeyError}</p>
@@ -201,23 +216,24 @@ export default function DeliveryZones() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+    <div className="container mx-auto p-4 md:p-6">
+      <div className="space-y-4 md:space-y-6">
+        {/* Header - Responsive */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Zonas de Entrega</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl md:text-3xl font-bold">Zonas de Entrega</h1>
+            <p className="text-sm md:text-base text-muted-foreground">
               Configure áreas de entrega, taxas e tempos estimados
             </p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={resetForm}>
+              <Button onClick={resetForm} className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Nova Zona
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md z-50 bg-background">
+            <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto z-50 bg-background">
               <DialogHeader>
                 <DialogTitle>
                   {editingZone ? 'Editar Zona' : 'Nova Zona de Entrega'}
@@ -270,26 +286,27 @@ export default function DeliveryZones() {
                   </Select>
                 </div>
 
-                <div>
-                  <Label htmlFor="fee_amount">Valor da Taxa (€)</Label>
-                  <Input
-                    id="fee_amount"
-                    type="number"
-                    step="0.5"
-                    value={formData.fee_amount}
-                    onChange={(e) => setFormData({ ...formData, fee_amount: parseFloat(e.target.value) })}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="min_order">Pedido Mínimo (€)</Label>
-                  <Input
-                    id="min_order"
-                    type="number"
-                    step="0.5"
-                    value={formData.min_order_amount}
-                    onChange={(e) => setFormData({ ...formData, min_order_amount: parseFloat(e.target.value) })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fee_amount">Taxa (€)</Label>
+                    <Input
+                      id="fee_amount"
+                      type="number"
+                      step="0.5"
+                      value={formData.fee_amount}
+                      onChange={(e) => setFormData({ ...formData, fee_amount: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="min_order">Mínimo (€)</Label>
+                    <Input
+                      id="min_order"
+                      type="number"
+                      step="0.5"
+                      value={formData.min_order_amount}
+                      onChange={(e) => setFormData({ ...formData, min_order_amount: parseFloat(e.target.value) })}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -319,36 +336,38 @@ export default function DeliveryZones() {
           </Dialog>
         </div>
 
+        {/* Map - Responsive height */}
         {restaurantLocation && (
           <Card>
-            <CardHeader>
-              <CardTitle>Mapa de Cobertura</CardTitle>
-              <CardDescription>
+            <CardHeader className="pb-2 md:pb-4">
+              <CardTitle className="text-lg md:text-xl">Mapa de Cobertura</CardTitle>
+              <CardDescription className="text-xs md:text-sm">
                 Visualize as zonas de entrega configuradas
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-2 md:p-6">
               <DeliveryZoneMap
                 center={restaurantLocation}
                 zones={zones}
-                height="500px"
+                height={isMobile ? "300px" : "500px"}
                 apiKey={apiKey}
               />
               <p className="text-xs text-muted-foreground mt-2">
-                Centro: {restaurantLocation[0].toFixed(6)}, {restaurantLocation[1].toFixed(6)}
+                Centro: {restaurantLocation[0].toFixed(4)}, {restaurantLocation[1].toFixed(4)}
               </p>
             </CardContent>
           </Card>
         )}
 
+        {/* Zones List - Responsive */}
         <Card>
-          <CardHeader>
-            <CardTitle>Zonas Cadastradas</CardTitle>
-            <CardDescription>
+          <CardHeader className="pb-2 md:pb-4">
+            <CardTitle className="text-lg md:text-xl">Zonas Configuradas</CardTitle>
+            <CardDescription className="text-xs md:text-sm">
               {zones.length} {zones.length === 1 ? 'zona configurada' : 'zonas configuradas'}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-2 md:p-6">
             {zones.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <MapPin className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -360,34 +379,36 @@ export default function DeliveryZones() {
                 {zones.map((zone) => (
                   <div
                     key={zone.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 md:p-4 border rounded-lg"
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold">{zone.name}</h3>
-                        <Badge variant={zone.is_active ? 'default' : 'secondary'}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <h3 className="font-semibold truncate">{zone.name}</h3>
+                        <Badge variant={zone.is_active ? 'default' : 'secondary'} className="text-xs">
                           {zone.is_active ? 'Ativa' : 'Inativa'}
                         </Badge>
                       </div>
-                      <div className="text-sm text-muted-foreground space-y-1">
+                      <div className="text-xs md:text-sm text-muted-foreground space-y-0.5 md:space-y-1">
                         <p>
                           Taxa: €{zone.fee_amount.toFixed(2)} ({zone.fee_type === 'fixed' ? 'Fixa' : zone.fee_type === 'per_km' ? 'Por Km' : 'Escalonada'})
                         </p>
-                        {zone.coordinates?.radius && (
-                          <p>Raio: {zone.coordinates.radius} km</p>
-                        )}
-                        {zone.min_order_amount && (
-                          <p>Pedido mínimo: €{zone.min_order_amount.toFixed(2)}</p>
-                        )}
-                        {zone.max_delivery_time_minutes && (
-                          <p>Tempo máximo: {zone.max_delivery_time_minutes} min</p>
-                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                          {zone.coordinates?.radius && (
+                            <span>Raio: {zone.coordinates.radius} km</span>
+                          )}
+                          {zone.min_order_amount && (
+                            <span>Mín: €{zone.min_order_amount.toFixed(2)}</span>
+                          )}
+                          {zone.max_delivery_time_minutes && (
+                            <span>Tempo: {zone.max_delivery_time_minutes} min</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 self-end sm:self-center">
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="outline"
+                        size={isMobile ? "sm" : "icon"}
                         onClick={() => {
                           setEditingZone(zone);
                           setFormData({
@@ -404,13 +425,16 @@ export default function DeliveryZones() {
                         }}
                       >
                         <Edit className="h-4 w-4" />
+                        {isMobile && <span className="ml-1">Editar</span>}
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(zone.id)}
+                        variant="outline"
+                        size={isMobile ? "sm" : "icon"}
+                        onClick={() => setZoneToDelete(zone.id)}
+                        className="text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
+                        {isMobile && <span className="ml-1">Eliminar</span>}
                       </Button>
                     </div>
                   </div>
@@ -420,6 +444,27 @@ export default function DeliveryZones() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!zoneToDelete} onOpenChange={() => setZoneToDelete(null)}>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Zona de Entrega</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem a certeza de que pretende eliminar esta zona? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
