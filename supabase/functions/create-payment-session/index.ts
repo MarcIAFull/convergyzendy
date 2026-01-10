@@ -189,7 +189,7 @@ serve(async (req) => {
           restaurant_id: order.restaurant_id,
         },
       },
-      locale: 'pt-PT',
+      locale: 'pt',
     }, {
       stripeAccount: settings.stripe_account_id,
     });
