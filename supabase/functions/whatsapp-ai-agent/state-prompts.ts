@@ -178,7 +178,8 @@ AÇÃO ATUAL: Precisas recolher e VALIDAR a morada de entrega.
     case 'collecting_payment':
       stateGuidance = `
 AÇÃO ATUAL: Precisas recolher o método de pagamento.
-- Pergunta como o cliente quer pagar (Dinheiro, Multibanco, MBWay).
+- Pergunta como o cliente quer pagar usando APENAS os métodos configurados pelo restaurante.
+- NÃO ofereças métodos que o restaurante não aceita!
 - Confirma o método escolhido.
 - Usa a ferramenta set_payment_method.
 `;

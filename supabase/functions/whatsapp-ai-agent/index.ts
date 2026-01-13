@@ -879,7 +879,10 @@ ${rawMessage}
             newMetadata,
             pendingItems,
             restaurant,
-            menuUrl: context.menuUrl
+            menuUrl: context.menuUrl,
+            acceptedPaymentMethods: context.acceptedPaymentMethods,
+            mbwayPhoneNumber: context.mbwayPhoneNumber,
+            formatted: { paymentMethods: context.formatted.paymentMethods }
           }
         );
         
@@ -1320,6 +1323,10 @@ interface ToolExecutionContext {
   pendingItems: any[];
   restaurant: any;
   menuUrl: string;
+  // Payment settings
+  acceptedPaymentMethods: { cash: boolean; card: boolean; mbway: boolean };
+  mbwayPhoneNumber: string | null;
+  formatted: { paymentMethods: string };
 }
 
 interface ToolExecutionResult {
@@ -1343,7 +1350,8 @@ async function executeToolCall(
   const { 
     restaurantId, customerPhone, availableProducts, activeCart, 
     cartItems, rawMessage, intent, confidence, newState, newMetadata, 
-    pendingItems, restaurant, menuUrl 
+    pendingItems, restaurant, menuUrl,
+    acceptedPaymentMethods, mbwayPhoneNumber, formatted
   } = ctx;
   
   let currentActiveCart = activeCart;
@@ -1884,13 +1892,41 @@ async function executeToolCall(
       
       console.log(`[Tool] 🔄 Payment normalization: "${method}" → "${normalizedMethod}"`);
       
+      // ============================================================
+      // FASE 2: VALIDATE AGAINST RESTAURANT'S ACCEPTED METHODS
+      // ============================================================
+      const restaurantAcceptedMethods = acceptedPaymentMethods || { cash: true, card: true, mbway: false };
+      
+      const methodEnabled: Record<string, boolean> = {
+        'cash': restaurantAcceptedMethods.cash !== false,
+        'card': restaurantAcceptedMethods.card !== false,
+        'mbway': restaurantAcceptedMethods.mbway === true
+      };
+      
+      // Check if method is valid
       const validMethods = ['cash', 'card', 'mbway'];
       if (!validMethods.includes(normalizedMethod)) {
         console.log(`[Tool] ❌ Invalid payment method: "${method}" (normalized: "${normalizedMethod}")`);
         return {
           output: {
             success: false,
-            error: `Método de pagamento inválido: "${method}". Opções: dinheiro, cartão/multibanco, ou MBWay`
+            error: `Método de pagamento inválido: "${method}". Opções disponíveis: ${formatted.paymentMethods}`
+          }
+        };
+      }
+      
+      // Check if method is enabled for this restaurant
+      if (!methodEnabled[normalizedMethod]) {
+        const enabledList = Object.entries(methodEnabled)
+          .filter(([_, enabled]) => enabled)
+          .map(([m]) => m === 'cash' ? 'dinheiro' : m === 'card' ? 'cartão' : 'MBWay')
+          .join(', ');
+        
+        console.log(`[Tool] ❌ Payment method not accepted by restaurant: "${normalizedMethod}". Accepted: ${enabledList}`);
+        return {
+          output: {
+            success: false,
+            error: `Não aceitamos ${method === normalizedMethod ? method : `${method} (${normalizedMethod})`}. Opções disponíveis: ${enabledList}`
           }
         };
       }
@@ -1899,6 +1935,20 @@ async function executeToolCall(
       stateUpdate.newState = 'ready_to_order';
       
       console.log(`[Tool] ✅ Payment method set: ${normalizedMethod}`);
+      
+      // Special handling for MBWay with phone number
+      if (normalizedMethod === 'mbway' && mbwayPhoneNumber) {
+        return {
+          output: {
+            success: true,
+            method: normalizedMethod,
+            original_input: method,
+            message: `Pagamento via MBWay. Envie o pagamento para: +351 ${mbwayPhoneNumber}`,
+            mbway_phone: mbwayPhoneNumber
+          },
+          stateUpdate
+        };
+      }
       
       return {
         output: {
