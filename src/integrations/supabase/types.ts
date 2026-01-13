@@ -1570,6 +1570,7 @@ export type Database = {
       restaurant_settings: {
         Row: {
           accent_color: string | null
+          accepted_payment_methods: Json | null
           banner_url: string | null
           checkout_web_enabled: boolean | null
           checkout_whatsapp_enabled: boolean | null
@@ -1581,6 +1582,7 @@ export type Database = {
           instagram_url: string | null
           logo_url: string | null
           max_delivery_distance_km: number | null
+          mbway_phone_number: string | null
           menu_enabled: boolean | null
           meta_description: string | null
           meta_keywords: string[] | null
@@ -1599,6 +1601,7 @@ export type Database = {
         }
         Insert: {
           accent_color?: string | null
+          accepted_payment_methods?: Json | null
           banner_url?: string | null
           checkout_web_enabled?: boolean | null
           checkout_whatsapp_enabled?: boolean | null
@@ -1610,6 +1613,7 @@ export type Database = {
           instagram_url?: string | null
           logo_url?: string | null
           max_delivery_distance_km?: number | null
+          mbway_phone_number?: string | null
           menu_enabled?: boolean | null
           meta_description?: string | null
           meta_keywords?: string[] | null
@@ -1628,6 +1632,7 @@ export type Database = {
         }
         Update: {
           accent_color?: string | null
+          accepted_payment_methods?: Json | null
           banner_url?: string | null
           checkout_web_enabled?: boolean | null
           checkout_whatsapp_enabled?: boolean | null
@@ -1639,6 +1644,7 @@ export type Database = {
           instagram_url?: string | null
           logo_url?: string | null
           max_delivery_distance_km?: number | null
+          mbway_phone_number?: string | null
           menu_enabled?: boolean | null
           meta_description?: string | null
           meta_keywords?: string[] | null
