@@ -30,6 +30,10 @@ export interface ConversationContext {
   stateMetadata: any;
   menuUrl: string;
   
+  // Payment settings
+  acceptedPaymentMethods: { cash: boolean; card: boolean; mbway: boolean };
+  mbwayPhoneNumber: string | null;
+  
   // Formatted strings (for template variables)
   formatted: {
     menu: string;           // RAG format: categories only
@@ -40,6 +44,7 @@ export interface ConversationContext {
     pendingItems: string;
     restaurantInfo: string; // Restaurant operational info (phone, address, hours, delivery fee)
     localTime: string;      // Local time based on restaurant timezone
+    paymentMethods: string; // Accepted payment methods formatted for prompt
   };
 }
 
@@ -77,12 +82,17 @@ export async function buildConversationContext(
   if (!restaurant) throw new Error('Restaurant not found');
   console.log(`[Context Builder] Restaurant: ${restaurant.name}`);
 
-  // Load restaurant settings for slug and custom domain
+  // Load restaurant settings for slug, custom domain, and payment methods
   const { data: restaurantSettings } = await supabase
     .from('restaurant_settings')
-    .select('slug, custom_domain')
+    .select('slug, custom_domain, accepted_payment_methods, mbway_phone_number')
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
+  
+  // Extract payment settings with defaults
+  const acceptedPaymentMethods = (restaurantSettings?.accepted_payment_methods as { cash?: boolean; card?: boolean; mbway?: boolean } | null) || { cash: true, card: true, mbway: false };
+  const mbwayPhoneNumber = restaurantSettings?.mbway_phone_number || null;
+  console.log(`[Context Builder] Payment methods: cash=${acceptedPaymentMethods.cash}, card=${acceptedPaymentMethods.card}, mbway=${acceptedPaymentMethods.mbway}${mbwayPhoneNumber ? ` (MBWay: ${mbwayPhoneNumber})` : ''}`);
   
   // Build menu URL - use custom domain if configured, otherwise use production domain
   const baseUrl = restaurantSettings?.custom_domain 
@@ -365,7 +375,8 @@ export async function buildConversationContext(
     history: formatHistoryForPrompt(conversationHistory, historyTruncateLength),
     pendingItems: formatPendingItemsForPrompt(pendingItems),
     restaurantInfo: formatRestaurantInfoForPrompt(restaurant),    // Operational info
-    localTime: ''  // OPTIMIZATION Phase 1.3: Removed - breaks cache, not essential
+    localTime: '',  // OPTIMIZATION Phase 1.3: Removed - breaks cache, not essential
+    paymentMethods: formatPaymentMethodsForPrompt(acceptedPaymentMethods, mbwayPhoneNumber)
   };
 
   console.log(`[Context Builder] ✅ RAG Menu format: ${formatted.menu.length} chars (vs full: ${formatted.menuFull.length} chars)`);
@@ -394,6 +405,14 @@ export async function buildConversationContext(
     currentState,
     stateMetadata,
     menuUrl,
+    
+    // Payment settings
+    acceptedPaymentMethods: {
+      cash: acceptedPaymentMethods.cash !== false,
+      card: acceptedPaymentMethods.card !== false,
+      mbway: acceptedPaymentMethods.mbway === true
+    },
+    mbwayPhoneNumber,
     
     // Formatted strings
     formatted
@@ -480,6 +499,28 @@ function formatCartForPrompt(cartItems: any[], cartTotal: number): string {
   ).join(', ');
   
   return `${itemsText} | Total: €${cartTotal.toFixed(2)}`;
+}
+
+/**
+ * Format accepted payment methods for prompt
+ */
+function formatPaymentMethodsForPrompt(
+  methods: { cash?: boolean; card?: boolean; mbway?: boolean },
+  mbwayPhone: string | null
+): string {
+  const enabled: string[] = [];
+  
+  if (methods.cash !== false) enabled.push('Dinheiro');
+  if (methods.card !== false) enabled.push('Cartão (Multibanco)');
+  if (methods.mbway === true) {
+    enabled.push(mbwayPhone ? `MBWay (+351 ${mbwayPhone})` : 'MBWay');
+  }
+  
+  if (enabled.length === 0) {
+    return 'Nenhum método de pagamento configurado';
+  }
+  
+  return enabled.join(', ');
 }
 
 /**

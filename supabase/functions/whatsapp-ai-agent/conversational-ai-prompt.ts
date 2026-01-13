@@ -182,7 +182,7 @@ Antes de chamar \`finalize_order\`, VERIFICAR:
 
 **SE FALTAR ALGO:**
 - Falta endereço → "Pra onde eu mando? Me diz a rua e número."
-- Falta pagamento → "Como vai pagar? Dinheiro, cartão ou MBWay?"
+- Falta pagamento → Perguntar usando APENAS os métodos aceitos pelo restaurante
 - Falta itens → "O carrinho tá vazio! O que você vai querer?"
 
 ═══════════════════════════════════════════════════════════════
