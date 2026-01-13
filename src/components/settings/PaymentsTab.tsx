@@ -5,13 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 import { 
   CreditCard, 
   ExternalLink, 
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  RefreshCw 
+  RefreshCw,
+  Banknote,
+  Smartphone,
+  Wallet
 } from 'lucide-react';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,6 +33,12 @@ interface StripeStatus {
   error?: string;
 }
 
+interface PaymentMethods {
+  cash: boolean;
+  card: boolean;
+  mbway: boolean;
+}
+
 export function PaymentsTab() {
   const { restaurant } = useRestaurantStore();
   const [status, setStatus] = useState<StripeStatus | null>(null);
@@ -36,6 +46,15 @@ export function PaymentsTab() {
   const [connecting, setConnecting] = useState(false);
   const [togglingPayments, setTogglingPayments] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  
+  // Payment methods state
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethods>({
+    cash: true,
+    card: true,
+    mbway: false
+  });
+  const [mbwayPhoneNumber, setMbwayPhoneNumber] = useState('');
+  const [savingPaymentMethods, setSavingPaymentMethods] = useState(false);
 
   const fetchStatus = async () => {
     if (!restaurant?.id) return;
@@ -55,6 +74,27 @@ export function PaymentsTab() {
       
       const data = await response.json();
       setStatus(data);
+      
+      // Load payment methods settings
+      const { data: settings } = await supabase
+        .from('restaurant_settings')
+        .select('accepted_payment_methods, mbway_phone_number')
+        .eq('restaurant_id', restaurant.id)
+        .single();
+      
+      if (settings) {
+        const methods = settings.accepted_payment_methods as unknown as PaymentMethods | null;
+        if (methods && typeof methods === 'object') {
+          setPaymentMethods({
+            cash: Boolean(methods.cash ?? true),
+            card: Boolean(methods.card ?? true),
+            mbway: Boolean(methods.mbway ?? false)
+          });
+        }
+        if (settings.mbway_phone_number) {
+          setMbwayPhoneNumber(settings.mbway_phone_number);
+        }
+      }
     } catch (error) {
       console.error('[PaymentsTab] Error fetching status:', error);
       toast.error('Erro ao carregar status do Stripe');
@@ -68,7 +108,6 @@ export function PaymentsTab() {
   }, [restaurant?.id]);
 
   const parseStripeError = (errorMessage: string): string => {
-    // Common Stripe Connect regional restrictions
     if (errorMessage.includes('cannot be created by platforms')) {
       const match = errorMessage.match(/accounts in (\w+) cannot be created by platforms in (\w+)/i);
       if (match) {
@@ -186,6 +225,67 @@ export function PaymentsTab() {
     }
   };
 
+  const handlePaymentMethodToggle = async (method: keyof PaymentMethods, enabled: boolean) => {
+    if (!restaurant?.id) return;
+    
+    // Ensure at least one payment method is enabled
+    const newMethods = { ...paymentMethods, [method]: enabled };
+    if (!newMethods.cash && !newMethods.card && !newMethods.mbway) {
+      toast.error('Pelo menos um método de pagamento deve estar ativo');
+      return;
+    }
+    
+    setSavingPaymentMethods(true);
+    try {
+      const { error } = await supabase
+        .from('restaurant_settings')
+        .update({ 
+          accepted_payment_methods: newMethods 
+        })
+        .eq('restaurant_id', restaurant.id);
+
+      if (error) throw error;
+
+      setPaymentMethods(newMethods);
+      toast.success(`${method === 'cash' ? 'Dinheiro' : method === 'card' ? 'Cartão' : 'MBWay'} ${enabled ? 'ativado' : 'desativado'}`);
+    } catch (error) {
+      console.error('[PaymentsTab] Error updating payment methods:', error);
+      toast.error('Erro ao atualizar métodos de pagamento');
+    } finally {
+      setSavingPaymentMethods(false);
+    }
+  };
+
+  const handleSaveMbwayNumber = async () => {
+    if (!restaurant?.id) return;
+    
+    // Validate phone number format (Portuguese mobile: 9XXXXXXXX or +351 9XXXXXXXX)
+    const cleanNumber = mbwayPhoneNumber.replace(/\s+/g, '').replace('+351', '');
+    if (cleanNumber && !/^9\d{8}$/.test(cleanNumber)) {
+      toast.error('Número MBWay inválido. Use o formato: 9XXXXXXXX');
+      return;
+    }
+    
+    setSavingPaymentMethods(true);
+    try {
+      const { error } = await supabase
+        .from('restaurant_settings')
+        .update({ 
+          mbway_phone_number: cleanNumber || null
+        })
+        .eq('restaurant_id', restaurant.id);
+
+      if (error) throw error;
+
+      toast.success('Número MBWay guardado');
+    } catch (error) {
+      console.error('[PaymentsTab] Error saving MBWay number:', error);
+      toast.error('Erro ao guardar número MBWay');
+    } finally {
+      setSavingPaymentMethods(false);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -198,6 +298,7 @@ export function PaymentsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Stripe Connect Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -365,6 +466,130 @@ export function PaymentsTab() {
         </CardContent>
       </Card>
 
+      {/* Payment Methods Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Métodos de Pagamento Aceitos
+          </CardTitle>
+          <CardDescription>
+            Selecione quais formas de pagamento o seu restaurante aceita
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Cash */}
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Banknote className="h-5 w-5 text-green-700" />
+              </div>
+              <div>
+                <Label htmlFor="payment-cash" className="text-base font-medium cursor-pointer">
+                  Dinheiro
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Pagamento em espécie na entrega
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="payment-cash"
+              checked={paymentMethods.cash}
+              onCheckedChange={(checked) => handlePaymentMethodToggle('cash', checked)}
+              disabled={savingPaymentMethods}
+            />
+          </div>
+
+          {/* Card */}
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <CreditCard className="h-5 w-5 text-blue-700" />
+              </div>
+              <div>
+                <Label htmlFor="payment-card" className="text-base font-medium cursor-pointer">
+                  Cartão (Multibanco)
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Pagamento com cartão na entrega via terminal
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="payment-card"
+              checked={paymentMethods.card}
+              onCheckedChange={(checked) => handlePaymentMethodToggle('card', checked)}
+              disabled={savingPaymentMethods}
+            />
+          </div>
+
+          {/* MBWay */}
+          <div className="space-y-3 p-4 border rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <Smartphone className="h-5 w-5 text-red-700" />
+                </div>
+                <div>
+                  <Label htmlFor="payment-mbway" className="text-base font-medium cursor-pointer">
+                    MBWay
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Pagamento por MBWay antes da entrega
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="payment-mbway"
+                checked={paymentMethods.mbway}
+                onCheckedChange={(checked) => handlePaymentMethodToggle('mbway', checked)}
+                disabled={savingPaymentMethods}
+              />
+            </div>
+            
+            {/* MBWay Phone Number - only show if MBWay is enabled */}
+            {paymentMethods.mbway && (
+              <div className="pt-3 border-t space-y-2">
+                <Label htmlFor="mbway-phone" className="text-sm font-medium">
+                  Número para receber MBWay
+                </Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                      +351
+                    </span>
+                    <Input
+                      id="mbway-phone"
+                      type="tel"
+                      placeholder="9XXXXXXXX"
+                      value={mbwayPhoneNumber}
+                      onChange={(e) => setMbwayPhoneNumber(e.target.value.replace(/[^\d]/g, '').slice(0, 9))}
+                      className="pl-14"
+                      maxLength={9}
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleSaveMbwayNumber}
+                    disabled={savingPaymentMethods}
+                    size="sm"
+                  >
+                    {savingPaymentMethods ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Guardar'
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Este é o número que receberá os pagamentos MBWay dos clientes
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Info Card */}
       <Card>
         <CardHeader>
@@ -381,7 +606,7 @@ export function PaymentsTab() {
             3. <strong>Ative pagamentos online</strong> - Clientes verão a opção "Pagar Online" no checkout
           </p>
           <p>
-            4. <strong>Receba diretamente</strong> - Os pagamentos vão direto para sua conta Stripe
+            4. <strong>Configure métodos aceitos</strong> - Escolha quais formas de pagamento aceita para entregas
           </p>
         </CardContent>
       </Card>
