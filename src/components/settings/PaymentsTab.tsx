@@ -466,6 +466,27 @@ export function PaymentsTab() {
         </CardContent>
       </Card>
 
+      {/* Info Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Como funciona?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            1. <strong>Conecte sua conta Stripe</strong> - Você será redirecionado para criar ou conectar uma conta
+          </p>
+          <p>
+            2. <strong>Complete a verificação</strong> - O Stripe precisa verificar seus dados para pagamentos
+          </p>
+          <p>
+            3. <strong>Ative pagamentos online</strong> - Clientes verão a opção "Pagar Online" no checkout
+          </p>
+          <p>
+            4. <strong>Configure métodos aceitos</strong> - Escolha quais formas de pagamento aceita para entregas
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Payment Methods Card */}
       <Card>
         <CardHeader>
@@ -587,27 +608,6 @@ export function PaymentsTab() {
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Como funciona?</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>
-            1. <strong>Conecte sua conta Stripe</strong> - Você será redirecionado para criar ou conectar uma conta
-          </p>
-          <p>
-            2. <strong>Complete a verificação</strong> - O Stripe precisa verificar seus dados para pagamentos
-          </p>
-          <p>
-            3. <strong>Ative pagamentos online</strong> - Clientes verão a opção "Pagar Online" no checkout
-          </p>
-          <p>
-            4. <strong>Configure métodos aceitos</strong> - Escolha quais formas de pagamento aceita para entregas
-          </p>
         </CardContent>
       </Card>
     </div>
