@@ -820,13 +820,40 @@ ${rawMessage}
       const toolCalls = assistantMessage.tool_calls;
       allToolCallsRaw.push(...toolCalls);
       
-      console.log(`[Iteration ${iterations}] Tool calls received: ${toolCalls.length}`);
-      toolCalls.forEach((tc: any, idx: number) => {
-        console.log(`[Iteration ${iterations}]   ${idx + 1}. ${tc.function.name}(${tc.function.arguments})`);
+      // ============================================================
+      // TOOL PRIORITY ORDERING: Execute dependent tools in sequence
+      // Lower number = higher priority (runs first)
+      // ============================================================
+      const TOOL_PRIORITY: Record<string, number> = {
+        'search_menu': 1,                        // First: search for products
+        'get_product_addons': 2,                 // Second: get addons for products
+        'add_pending_item': 3,                   // Third: add to pending items
+        'add_to_cart': 3,                        // Third: or add directly to cart
+        'remove_pending_item': 4,                // Fourth: modify pending items
+        'confirm_pending_items': 5,              // Fifth: confirm pending items
+        'remove_from_cart': 6,                   // Sixth: modify cart
+        'show_cart': 7,                          // Seventh: show cart
+        'validate_and_set_delivery_address': 8, // Eighth: set address
+        'set_payment_method': 9,                 // Ninth: set payment
+        'finalize_order': 10,                    // Last: finalize
+      };
+      
+      // Sort tool calls by priority (lowest number first)
+      const sortedToolCalls = [...toolCalls].sort((a: any, b: any) => {
+        const priorityA = TOOL_PRIORITY[a.function.name] || 5;
+        const priorityB = TOOL_PRIORITY[b.function.name] || 5;
+        return priorityA - priorityB;
       });
       
-      // Validate and execute each tool call
-      for (const toolCall of toolCalls) {
+      console.log(`[Iteration ${iterations}] Tool calls received: ${toolCalls.length}`);
+      console.log(`[Iteration ${iterations}] Execution order (sorted by priority):`);
+      sortedToolCalls.forEach((tc: any, idx: number) => {
+        const priority = TOOL_PRIORITY[tc.function.name] || 5;
+        console.log(`[Iteration ${iterations}]   ${idx + 1}. [P${priority}] ${tc.function.name}(${tc.function.arguments})`);
+      });
+      
+      // Validate and execute each tool call IN PRIORITY ORDER
+      for (const toolCall of sortedToolCalls) {
         const functionName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
         
@@ -1006,6 +1033,15 @@ ${rawMessage}
       for (const toolResult of allToolResults) {
         const { function_name, result } = toolResult;
         
+        // ============================================================
+        // FILTER ERRORS: Skip failed tool results in customer response
+        // Only include successful results in the fallback message
+        // ============================================================
+        if (result.success === false || result.error) {
+          console.log(`[Response] ⏭️ Skipping failed tool result: ${function_name} - ${result.error || result.message || 'unknown error'}`);
+          continue;
+        }
+        
         switch (function_name) {
           case 'search_menu': {
             if (result.found && result.products && result.products.length > 0) {
@@ -1014,15 +1050,22 @@ ${rawMessage}
                 .map((p: any) => `• ${p.name} - €${p.price.toFixed(2)}`)
                 .join('\n');
               confirmations.push(`🔍 Encontrei estas opções:\n${productList}`);
-            } else {
-              confirmations.push(`❌ Não encontrei produtos para essa busca.`);
+            }
+            // Don't show "not found" errors in fallback
+            break;
+          }
+          
+          case 'add_to_cart': 
+          case 'add_pending_item': {
+            if (result.success) {
+              confirmations.push(`✅ ${result.message || 'Produto adicionado!'}`);
             }
             break;
           }
           
-          case 'add_to_cart': {
-            if (result.success) {
-              confirmations.push(`✅ ${result.message || 'Produto adicionado ao carrinho!'}`);
+          case 'confirm_pending_items': {
+            if (result.success && result.count > 0) {
+              confirmations.push(`✅ ${result.message || `${result.count} item(s) confirmado(s)!`}`);
             }
             break;
           }
@@ -1030,39 +1073,45 @@ ${rawMessage}
           case 'validate_and_set_delivery_address': {
             if (result.valid === true) {
               confirmations.push(`📍 Endereço confirmado! Taxa de entrega: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
-            } else if (result.valid === false) {
-              confirmations.push(`❌ ${result.message || 'Endereço fora da área de entrega.'}`);
             }
+            // Don't show address errors in fallback - let AI handle gracefully
             break;
           }
           
           case 'set_payment_method': {
-            const methodNames: { [key: string]: string } = {
-              cash: 'Dinheiro',
-              card: 'Cartão',
-              mbway: 'MBWay'
-            };
-            confirmations.push(`💳 Pagamento: ${methodNames[result.method] || result.method}`);
+            if (result.success) {
+              const methodNames: { [key: string]: string } = {
+                cash: 'Dinheiro',
+                card: 'Cartão',
+                mbway: 'MBWay'
+              };
+              confirmations.push(`💳 Pagamento: ${methodNames[result.method] || result.method}`);
+            }
             break;
           }
           
           case 'finalize_order': {
             if (result.success) {
               confirmations.push(`🎉 ${result.message || 'Pedido confirmado!'}`);
-            } else {
-              confirmations.push(`⚠️ ${result.message || 'Não foi possível finalizar o pedido.'}`);
             }
+            // Don't show finalize errors in fallback - let AI explain what's missing
             break;
           }
           
           default:
-            if (result.message) {
+            if (result.success && result.message) {
               confirmations.push(result.message);
             }
         }
       }
       
-      finalResponse = confirmations.join('\n\n');
+      // If no successful results, provide a generic message
+      if (confirmations.length === 0) {
+        console.log('[Response] ⚠️ No successful tool results for fallback, using generic message');
+        finalResponse = 'Deixa-me verificar isso. O que gostarias de pedir?';
+      } else {
+        finalResponse = confirmations.join('\n\n');
+      }
       console.log(`[Response] Fallback message constructed: "${finalResponse.substring(0, 150)}..."`);
     }
     
@@ -2199,13 +2248,85 @@ async function executeToolCall(
     }
     
     case 'add_pending_item': {
-      const { product_id, quantity = 1, addon_ids = [], notes } = args;
+      let { product_id, quantity = 1, addon_ids = [], notes } = args;
       
-      const product = availableProducts.find(p => p.id === product_id);
-      if (!product) {
-        return { output: { success: false, error: 'Produto não encontrado' } };
+      // ============================================================
+      // SMART PRODUCT RESOLUTION: Accept names OR UUIDs
+      // If product_id is not a valid UUID, treat it as a product name
+      // ============================================================
+      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(product_id);
+      
+      let product = null;
+      
+      if (isValidUUID) {
+        // Direct UUID lookup
+        product = availableProducts.find(p => p.id === product_id);
+      } else {
+        // Treat as product name - do smart search
+        console.log(`[Tool] 🔍 add_pending_item: "${product_id}" is not UUID, searching by name...`);
+        
+        const searchResults = smartSearchProducts(availableProducts, product_id, undefined, [], { maxResults: 1 });
+        
+        if (searchResults.length > 0 && searchResults[0].similarity >= 0.4) {
+          product = searchResults[0].product;
+          product_id = product.id; // Update to actual UUID
+          console.log(`[Tool] ✅ Found product by name: "${product.name}" (similarity: ${searchResults[0].similarity.toFixed(2)})`);
+        } else {
+          console.log(`[Tool] ❌ No product found for name: "${args.product_id}"`);
+        }
       }
       
+      if (!product) {
+        return { 
+          output: { 
+            success: false, 
+            error: `Produto "${args.product_id}" não encontrado. Tente buscar no menu primeiro.` 
+          } 
+        };
+      }
+      
+      // ============================================================
+      // CHECK FOR EXISTING PENDING ITEM - Increment instead of duplicate
+      // ============================================================
+      const { data: existingPending } = await supabase
+        .from('conversation_pending_items')
+        .select('id, quantity')
+        .eq('user_phone', customerPhone)
+        .eq('restaurant_id', restaurantId)
+        .eq('product_id', product_id)
+        .eq('status', 'pending')
+        .maybeSingle();
+      
+      if (existingPending) {
+        // Update quantity instead of creating duplicate
+        const newQuantity = existingPending.quantity + quantity;
+        const { error: updateError } = await supabase
+          .from('conversation_pending_items')
+          .update({ 
+            quantity: newQuantity,
+            addon_ids: addon_ids.length > 0 ? addon_ids : undefined,
+            notes: notes || undefined,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPending.id);
+        
+        if (updateError) {
+          return { output: { success: false, error: updateError.message } };
+        }
+        
+        console.log(`[Tool] ✅ Updated existing pending item: ${product.name} (${existingPending.quantity} → ${newQuantity})`);
+        return {
+          output: {
+            success: true,
+            message: `Atualizado: ${newQuantity}x ${product.name} nos itens pendentes`,
+            product_name: product.name,
+            quantity: newQuantity,
+            price: product.price
+          }
+        };
+      }
+      
+      // Insert new pending item
       const { error: pendingError } = await supabase
         .from('conversation_pending_items')
         .insert({
@@ -2222,11 +2343,14 @@ async function executeToolCall(
         return { output: { success: false, error: pendingError.message } };
       }
       
-      console.log(`[Tool] ✅ Added pending item: ${product.name}`);
+      console.log(`[Tool] ✅ Added pending item: ${quantity}x ${product.name}`);
       return {
         output: {
           success: true,
-          message: `${product.name} adicionado aos itens pendentes`
+          message: `${quantity}x ${product.name} adicionado aos itens pendentes`,
+          product_name: product.name,
+          quantity,
+          price: product.price
         }
       };
     }
@@ -2258,45 +2382,89 @@ async function executeToolCall(
         stateUpdate.activeCart = newCart;
       }
       
+      // ============================================================
+      // ANTI-DUPLICATION: Check existing cart items before adding
+      // Merge quantities if same product_id + addon_ids + notes
+      // ============================================================
+      
+      // Get existing cart items for comparison
+      const { data: existingCartItems } = await supabase
+        .from('cart_items')
+        .select('id, product_id, quantity, notes, cart_item_addons(addon_id)')
+        .eq('cart_id', currentActiveCart!.id);
+      
+      // Create a map for fast lookup
+      const existingItemsMap = new Map<string, { id: string; quantity: number }>();
+      for (const item of existingCartItems || []) {
+        const addonIds = (item.cart_item_addons || []).map((a: any) => a.addon_id).sort().join(',');
+        const key = `${item.product_id}|${addonIds}|${item.notes || ''}`;
+        existingItemsMap.set(key, { id: item.id, quantity: item.quantity });
+      }
+      
       // Move pending items to cart
       let addedCount = 0;
+      let mergedCount = 0;
+      
       for (const pendingItem of itemsToConfirm) {
-        const { data: cartItem } = await supabase
-          .from('cart_items')
-          .insert({
-            cart_id: currentActiveCart!.id,
-            product_id: pendingItem.product_id,
-            quantity: pendingItem.quantity,
-            notes: pendingItem.notes
-          })
-          .select()
-          .single();
+        const addonIds = (pendingItem.addon_ids || []).sort().join(',');
+        const itemKey = `${pendingItem.product_id}|${addonIds}|${pendingItem.notes || ''}`;
         
-        if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
-          await supabase.from('cart_item_addons').insert(
-            pendingItem.addon_ids.map((addonId: string) => ({
-              cart_item_id: cartItem.id,
-              addon_id: addonId
-            }))
-          );
+        const existingItem = existingItemsMap.get(itemKey);
+        
+        if (existingItem) {
+          // Merge: increment quantity of existing item
+          const newQuantity = existingItem.quantity + pendingItem.quantity;
+          await supabase
+            .from('cart_items')
+            .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
+            .eq('id', existingItem.id);
+          
+          console.log(`[Tool] 🔄 Merged pending item into existing cart item (qty: ${existingItem.quantity} → ${newQuantity})`);
+          mergedCount++;
+        } else {
+          // Insert new cart item
+          const { data: cartItem } = await supabase
+            .from('cart_items')
+            .insert({
+              cart_id: currentActiveCart!.id,
+              product_id: pendingItem.product_id,
+              quantity: pendingItem.quantity,
+              notes: pendingItem.notes
+            })
+            .select()
+            .single();
+          
+          if (cartItem && pendingItem.addon_ids && pendingItem.addon_ids.length > 0) {
+            await supabase.from('cart_item_addons').insert(
+              pendingItem.addon_ids.map((addonId: string) => ({
+                cart_item_id: cartItem.id,
+                addon_id: addonId
+              }))
+            );
+          }
+          
+          // Update map for next iterations
+          existingItemsMap.set(itemKey, { id: cartItem.id, quantity: pendingItem.quantity });
+          addedCount++;
         }
         
         await supabase
           .from('conversation_pending_items')
           .update({ status: 'confirmed' })
           .eq('id', pendingItem.id);
-        
-        addedCount++;
       }
       
       stateUpdate.cartModified = true;
-      console.log(`[Tool] ✅ Confirmed ${addedCount} pending items`);
+      const totalProcessed = addedCount + mergedCount;
+      console.log(`[Tool] ✅ Confirmed ${totalProcessed} pending items (${addedCount} new, ${mergedCount} merged)`);
       
       return {
         output: {
           success: true,
-          count: addedCount,
-          message: `${addedCount} item(s) adicionado(s) ao carrinho`
+          count: totalProcessed,
+          added: addedCount,
+          merged: mergedCount,
+          message: `${totalProcessed} item(s) adicionado(s) ao carrinho`
         },
         stateUpdate
       };
