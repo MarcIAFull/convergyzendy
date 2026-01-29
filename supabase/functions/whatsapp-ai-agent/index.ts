@@ -1440,7 +1440,8 @@ async function executeToolCall(
             category: r.product.category,
             description: r.product.description,
             similarity: r.similarity,
-            addons: r.product.addons || []
+            addons: r.product.addons || [],
+            max_addons: r.product.max_addons ?? null // null = sem limite
           }))
         }
       };
@@ -1460,6 +1461,18 @@ async function executeToolCall(
       let invalidAddons: string[] = [];
       
       if (addon_ids && addon_ids.length > 0) {
+        // Check max_addons limit
+        const maxAddons = product.max_addons;
+        if (maxAddons != null && addon_ids.length > maxAddons) {
+          console.warn(`[Tool] ⚠️ Too many addons: ${addon_ids.length} > max ${maxAddons}`);
+          return { 
+            output: { 
+              success: false, 
+              error: `Este produto permite no máximo ${maxAddons} ${maxAddons === 1 ? 'adicional' : 'adicionais'}. Foram selecionados ${addon_ids.length}.` 
+            } 
+          };
+        }
+        
         // Fetch addons that belong to this product
         const { data: productAddons } = await supabase
           .from('addons')
