@@ -64,7 +64,7 @@ const MenuManagement = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [categoryName, setCategoryName] = useState('');
-  const [productForm, setProductForm] = useState({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [] as string[], ingredients: [] as string[] });
+  const [productForm, setProductForm] = useState({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [] as string[], ingredients: [] as string[], max_addons: '' });
   const [productImageFile, setProductImageFile] = useState<File | null>(null);
   const [productImagePreview, setProductImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -120,7 +120,7 @@ const MenuManagement = () => {
   const handleAddProduct = (categoryId: string) => {
     setEditingProduct(null);
     setSelectedCategoryId(categoryId);
-    setProductForm({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [], ingredients: [] });
+    setProductForm({ name: '', description: '', price: '', image_url: '', is_available: true, search_keywords: [], ingredients: [], max_addons: '' });
     setProductImageFile(null);
     setProductImagePreview('');
     setProductDialog(true);
@@ -137,6 +137,7 @@ const MenuManagement = () => {
       is_available: product.is_available,
       search_keywords: product.search_keywords || [],
       ingredients: product.ingredients || [],
+      max_addons: product.max_addons != null ? String(product.max_addons) : '',
     });
     setProductImageFile(null);
     setProductImagePreview(product.image_url || '');
@@ -215,6 +216,7 @@ const MenuManagement = () => {
         is_available: productForm.is_available,
         search_keywords: productForm.search_keywords,
         ingredients: productForm.ingredients,
+        max_addons: productForm.max_addons ? parseInt(productForm.max_addons, 10) : null,
       };
 
       if (editingProduct) {
@@ -525,6 +527,21 @@ const MenuManagement = () => {
               </div>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="product-max-addons">Limite de Adicionais</Label>
+              <Input 
+                id="product-max-addons" 
+                type="number" 
+                min="0" 
+                step="1"
+                placeholder="Sem limite" 
+                value={productForm.max_addons} 
+                onChange={(e) => setProductForm({ ...productForm, max_addons: e.target.value })} 
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe vazio para permitir adicionais ilimitados
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="product-image" className="flex items-center gap-2">
                 <Upload className="h-4 w-4" />
                 Imagem do Produto
@@ -564,7 +581,7 @@ const MenuManagement = () => {
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Formatos suportados: JPEG, PNG, WebP. Tamanho máximo: 5MB
+                  Formatos: JPEG, PNG, WebP • Tamanho máximo: 5MB • Dimensão recomendada: 800×450px (16:9)
                 </p>
               </div>
             </div>

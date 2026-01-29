@@ -1375,6 +1375,7 @@ export type Database = {
           ingredients: string[] | null
           is_available: boolean
           is_featured: boolean | null
+          max_addons: number | null
           name: string
           nutritional_info: Json | null
           price: number
@@ -1393,6 +1394,7 @@ export type Database = {
           ingredients?: string[] | null
           is_available?: boolean
           is_featured?: boolean | null
+          max_addons?: number | null
           name: string
           nutritional_info?: Json | null
           price: number
@@ -1411,6 +1413,7 @@ export type Database = {
           ingredients?: string[] | null
           is_available?: boolean
           is_featured?: boolean | null
+          max_addons?: number | null
           name?: string
           nutritional_info?: Json | null
           price?: number

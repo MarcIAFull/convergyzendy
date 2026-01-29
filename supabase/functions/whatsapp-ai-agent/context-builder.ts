@@ -128,7 +128,7 @@ export async function buildConversationContext(
     .select(`
       id, name, sort_order,
       products!inner (
-        id, name, description, price, is_available,
+        id, name, description, price, is_available, max_addons,
         addons (id, name, price)
       )
     `)
@@ -146,7 +146,8 @@ export async function buildConversationContext(
         description: p.description,
         category: cat.name,
         is_available: p.is_available ?? true, // CRITICAL: Include is_available for smart search
-        addons: p.addons || []
+        addons: p.addons || [],
+        max_addons: p.max_addons ?? null // Limite de adicionais (null = sem limite)
       }))
   ) || [];
 
@@ -470,11 +471,12 @@ function formatMenuForPromptFull(products: any[]): string {
       let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
       if (p.description) line += ` | ${p.description.substring(0, 50)}`;
       
-      // Add addons
+      // Add addons with max_addons limit info
       if (p.addons && p.addons.length > 0) {
         const validAddons = (p.addons || []).filter((a: any) => a && a.name);
         if (validAddons.length > 0) {
-          line += `\n  Addons: ${validAddons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
+          const maxAddonsInfo = p.max_addons != null ? ` [máx: ${p.max_addons}]` : '';
+          line += `\n  Addons${maxAddonsInfo}: ${validAddons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
         }
       }
       

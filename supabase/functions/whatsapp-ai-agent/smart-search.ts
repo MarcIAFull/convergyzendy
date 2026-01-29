@@ -11,6 +11,7 @@ interface Product {
   search_keywords?: string[];
   ingredients?: string[];
   addons?: any[];
+  max_addons?: number | null;
 }
 
 interface Synonym {
