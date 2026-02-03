@@ -1441,7 +1441,8 @@ async function executeToolCall(
             description: r.product.description,
             similarity: r.similarity,
             addons: r.product.addons || [],
-            max_addons: r.product.max_addons ?? null // null = sem limite
+            max_addons: r.product.max_addons ?? null, // null = sem limite
+            free_addons_count: r.product.free_addons_count ?? null // Complementos grátis inclusos
           }))
         }
       };
@@ -1544,20 +1545,47 @@ async function executeToolCall(
       stateUpdate.newState = 'confirming_item';
       stateUpdate.cartModified = true;
       
-      // Calculate total with addons
-      const addonsTotal = validatedAddons.reduce((sum, a) => sum + (a.price || 0), 0);
-      const itemTotal = (product.price + addonsTotal) * quantity;
+      // ============================================================
+      // FASE 2: Calculate FREE vs PAID addons correctly
+      // ============================================================
+      const freeAddonsCount = product.free_addons_count ?? 0;
+      
+      // Separate addons into free and paid
+      const freeAddons = validatedAddons.slice(0, freeAddonsCount);
+      const paidAddons = validatedAddons.slice(freeAddonsCount);
+      
+      // Calculate total: only paid addons contribute to price
+      const paidAddonsTotal = paidAddons.reduce((sum, a) => sum + (a.price || 0), 0);
+      const itemTotal = (product.price + paidAddonsTotal) * quantity;
+      
+      console.log(`[Tool] 💰 Pricing breakdown: base=€${product.price}, freeAddons=${freeAddons.length}, paidAddons=${paidAddons.length}, paidTotal=€${paidAddonsTotal}, itemTotal=€${itemTotal}`);
+      
+      // Build descriptive message
+      let message = `Adicionei ${quantity}x ${product.name} ao carrinho!`;
+      if (freeAddons.length > 0) {
+        message += `\n✓ ${freeAddons.length} complemento(s) grátis: ${freeAddons.map(a => a.name).join(', ')}`;
+      }
+      if (paidAddons.length > 0) {
+        message += `\n+ ${paidAddons.length} complemento(s) extra: ${paidAddons.map(a => `${a.name} (+€${a.price.toFixed(2)})`).join(', ')}`;
+      }
+      message += `\nTotal do item: €${itemTotal.toFixed(2)}`;
       
       return {
         output: {
           success: true,
-          message: `Adicionei ${quantity}x ${product.name} ao carrinho!`,
+          message,
           product_name: product.name,
           quantity,
           price: product.price,
-          addons_added: validatedAddons.map(a => ({ name: a.name, price: a.price })),
+          // Detailed addon breakdown
+          free_addons: freeAddons.map(a => ({ name: a.name, price: a.price })),
+          paid_addons: paidAddons.map(a => ({ name: a.name, price: a.price })),
+          addons_total: paidAddonsTotal, // Only paid addons count
           addons_rejected: invalidAddons.length > 0 ? invalidAddons : undefined,
-          item_total: itemTotal
+          item_total: itemTotal,
+          // Metadata for AI context
+          free_addons_count: freeAddonsCount,
+          total_addons_selected: validatedAddons.length
         },
         stateUpdate
       };

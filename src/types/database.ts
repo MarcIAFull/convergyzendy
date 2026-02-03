@@ -53,6 +53,7 @@ export interface Product {
   search_keywords: string[];
   ingredients: string[];
   max_addons: number | null;
+  free_addons_count: number | null;
   created_at: string;
   updated_at: string;
 }

@@ -1370,6 +1370,7 @@ export type Database = {
           created_at: string
           description: string | null
           display_order: number | null
+          free_addons_count: number | null
           id: string
           image_url: string | null
           ingredients: string[] | null
@@ -1389,6 +1390,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_order?: number | null
+          free_addons_count?: number | null
           id?: string
           image_url?: string | null
           ingredients?: string[] | null
@@ -1408,6 +1410,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_order?: number | null
+          free_addons_count?: number | null
           id?: string
           image_url?: string | null
           ingredients?: string[] | null
