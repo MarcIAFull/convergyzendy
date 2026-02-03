@@ -128,7 +128,7 @@ export async function buildConversationContext(
     .select(`
       id, name, sort_order,
       products!inner (
-        id, name, description, price, is_available, max_addons,
+        id, name, description, price, is_available, max_addons, free_addons_count,
         addons (id, name, price)
       )
     `)
@@ -147,7 +147,8 @@ export async function buildConversationContext(
         category: cat.name,
         is_available: p.is_available ?? true, // CRITICAL: Include is_available for smart search
         addons: p.addons || [],
-        max_addons: p.max_addons ?? null // Limite de adicionais (null = sem limite)
+        max_addons: p.max_addons ?? null, // Limite de adicionais (null = sem limite)
+        free_addons_count: p.free_addons_count ?? null // Complementos grátis inclusos
       }))
   ) || [];
 
@@ -470,6 +471,12 @@ function formatMenuForPromptFull(products: any[]): string {
     const itemsFormatted = items.map(p => {
       let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
       if (p.description) line += ` | ${p.description.substring(0, 50)}`;
+      
+      // Add free_addons_count info (PRIORITY - customer-facing benefit)
+      const freeAddons = p.free_addons_count ?? 0;
+      if (freeAddons > 0) {
+        line += ` [${freeAddons} complementos GRÁTIS]`;
+      }
       
       // Add addons with max_addons limit info
       if (p.addons && p.addons.length > 0) {

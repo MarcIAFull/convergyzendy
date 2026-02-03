@@ -12,6 +12,7 @@ interface Product {
   ingredients?: string[];
   addons?: any[];
   max_addons?: number | null;
+  free_addons_count?: number | null;
 }
 
 interface Synonym {
