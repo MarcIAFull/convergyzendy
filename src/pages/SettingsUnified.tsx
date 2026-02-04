@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard, Globe, Wallet, Truck } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe, Wallet, Truck, Printer } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
@@ -9,6 +9,7 @@ import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
 import { PaymentsTab } from '@/components/settings/PaymentsTab';
 import { GlovoTab } from '@/components/settings/GlovoTab';
+import { ZoneSoftTab } from '@/components/settings/ZoneSoftTab';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useSearchParams } from 'react-router-dom';
 
@@ -31,7 +32,7 @@ export default function SettingsUnified() {
 
       {/* KEY força re-mount de todas as tabs quando restaurante muda */}
       <Tabs defaultValue={defaultTab} className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
@@ -47,6 +48,10 @@ export default function SettingsUnified() {
           <TabsTrigger value="glovo" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">Entregas</span>
+          </TabsTrigger>
+          <TabsTrigger value="zonesoft" className="flex items-center gap-2">
+            <Printer className="h-4 w-4" />
+            <span className="hidden sm:inline">POS</span>
           </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex items-center gap-2">
             <Smartphone className="h-4 w-4" />
@@ -76,6 +81,10 @@ export default function SettingsUnified() {
 
         <TabsContent value="glovo">
           <GlovoTab />
+        </TabsContent>
+
+        <TabsContent value="zonesoft">
+          <ZoneSoftTab />
         </TabsContent>
 
         <TabsContent value="whatsapp">

@@ -1337,6 +1337,10 @@ export type Database = {
           total_amount: number
           updated_at: string
           user_phone: string
+          zonesoft_document_number: number | null
+          zonesoft_document_series: string | null
+          zonesoft_document_type: string | null
+          zonesoft_synced_at: string | null
         }
         Insert: {
           cart_id: string
@@ -1351,6 +1355,10 @@ export type Database = {
           total_amount: number
           updated_at?: string
           user_phone: string
+          zonesoft_document_number?: number | null
+          zonesoft_document_series?: string | null
+          zonesoft_document_type?: string | null
+          zonesoft_synced_at?: string | null
         }
         Update: {
           cart_id?: string
@@ -1365,6 +1373,10 @@ export type Database = {
           total_amount?: number
           updated_at?: string
           user_phone?: string
+          zonesoft_document_number?: number | null
+          zonesoft_document_series?: string | null
+          zonesoft_document_type?: string | null
+          zonesoft_synced_at?: string | null
         }
         Relationships: [
           {
@@ -1834,6 +1846,77 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "restaurant_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_zonesoft_config: {
+        Row: {
+          app_key: string | null
+          app_secret: string | null
+          client_id: string | null
+          created_at: string | null
+          document_series: string | null
+          document_type: string | null
+          enabled: boolean | null
+          id: string
+          last_error: string | null
+          last_sync_at: string | null
+          operator_id: number | null
+          payment_type_id: number | null
+          products_synced_at: string | null
+          restaurant_id: string | null
+          store_id: number | null
+          sync_mode: string | null
+          updated_at: string | null
+          warehouse_id: number | null
+        }
+        Insert: {
+          app_key?: string | null
+          app_secret?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          document_series?: string | null
+          document_type?: string | null
+          enabled?: boolean | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          operator_id?: number | null
+          payment_type_id?: number | null
+          products_synced_at?: string | null
+          restaurant_id?: string | null
+          store_id?: number | null
+          sync_mode?: string | null
+          updated_at?: string | null
+          warehouse_id?: number | null
+        }
+        Update: {
+          app_key?: string | null
+          app_secret?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          document_series?: string | null
+          document_type?: string | null
+          enabled?: boolean | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          operator_id?: number | null
+          payment_type_id?: number | null
+          products_synced_at?: string | null
+          restaurant_id?: string | null
+          store_id?: number | null
+          sync_mode?: string | null
+          updated_at?: string | null
+          warehouse_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_zonesoft_config_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
             referencedRelation: "restaurants"
@@ -2416,6 +2499,111 @@ export type Database = {
             foreignKeyName: "whatsapp_instances_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zonesoft_product_mapping: {
+        Row: {
+          id: string
+          last_synced_at: string | null
+          local_product_id: string | null
+          restaurant_id: string | null
+          zonesoft_product_code: string | null
+          zonesoft_product_id: number
+          zonesoft_product_name: string | null
+        }
+        Insert: {
+          id?: string
+          last_synced_at?: string | null
+          local_product_id?: string | null
+          restaurant_id?: string | null
+          zonesoft_product_code?: string | null
+          zonesoft_product_id: number
+          zonesoft_product_name?: string | null
+        }
+        Update: {
+          id?: string
+          last_synced_at?: string | null
+          local_product_id?: string | null
+          restaurant_id?: string | null
+          zonesoft_product_code?: string | null
+          zonesoft_product_id?: number
+          zonesoft_product_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zonesoft_product_mapping_local_product_id_fkey"
+            columns: ["local_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zonesoft_product_mapping_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zonesoft_sync_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          order_id: string | null
+          request_body: Json | null
+          response_body: Json | null
+          restaurant_id: string | null
+          status: string
+          zonesoft_document_number: number | null
+          zonesoft_document_series: string | null
+          zonesoft_document_type: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          request_body?: Json | null
+          response_body?: Json | null
+          restaurant_id?: string | null
+          status: string
+          zonesoft_document_number?: number | null
+          zonesoft_document_series?: string | null
+          zonesoft_document_type?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          request_body?: Json | null
+          response_body?: Json | null
+          restaurant_id?: string | null
+          status?: string
+          zonesoft_document_number?: number | null
+          zonesoft_document_series?: string | null
+          zonesoft_document_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zonesoft_sync_logs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zonesoft_sync_logs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
