@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Smartphone, Brain, CreditCard, Globe, Wallet } from 'lucide-react';
+import { Store, Smartphone, Brain, CreditCard, Globe, Wallet, Truck } from 'lucide-react';
 import { RestaurantTab } from '@/components/settings/RestaurantTab';
 import { WhatsAppTab } from '@/components/settings/WhatsAppTab';
 import { AIPersonalizationTab } from '@/components/settings/AIPersonalizationTab';
@@ -8,6 +8,7 @@ import { SubscriptionTab } from '@/components/settings/SubscriptionTab';
 import { PublicMenuTab } from '@/components/settings/PublicMenuTab';
 import { ChatSimulatorTab } from '@/components/settings/ChatSimulatorTab';
 import { PaymentsTab } from '@/components/settings/PaymentsTab';
+import { GlovoTab } from '@/components/settings/GlovoTab';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useSearchParams } from 'react-router-dom';
 
@@ -30,7 +31,7 @@ export default function SettingsUnified() {
 
       {/* KEY força re-mount de todas as tabs quando restaurante muda */}
       <Tabs defaultValue={defaultTab} className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
@@ -43,13 +44,17 @@ export default function SettingsUnified() {
             <Wallet className="h-4 w-4" />
             <span className="hidden sm:inline">Pagamentos</span>
           </TabsTrigger>
+          <TabsTrigger value="glovo" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">Entregas</span>
+          </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex items-center gap-2">
             <Smartphone className="h-4 w-4" />
             <span className="hidden sm:inline">WhatsApp</span>
           </TabsTrigger>
           <TabsTrigger value="ai" className="flex items-center gap-2">
             <Brain className="h-4 w-4" />
-            <span className="hidden sm:inline">Inteligência Artificial</span>
+            <span className="hidden sm:inline">IA</span>
           </TabsTrigger>
           <TabsTrigger value="subscription" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
@@ -67,6 +72,10 @@ export default function SettingsUnified() {
 
         <TabsContent value="payments">
           <PaymentsTab />
+        </TabsContent>
+
+        <TabsContent value="glovo">
+          <GlovoTab />
         </TabsContent>
 
         <TabsContent value="whatsapp">

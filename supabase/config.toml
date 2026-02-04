@@ -62,3 +62,12 @@ verify_jwt = false
 
 [functions.stripe-payment-webhook]
 verify_jwt = false
+
+[functions.glovo-auth]
+verify_jwt = false
+
+[functions.glovo-delivery]
+verify_jwt = false
+
+[functions.glovo-webhook]
+verify_jwt = false
