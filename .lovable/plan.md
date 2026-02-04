@@ -1,82 +1,138 @@
 
 
-# Plano de Integração: Glovo On-Demand (LaaS)
+# Plano de Integração: ZoneSoft POS
 
 ## Objetivo
-Integrar o serviço de estafetas da Glovo (LaaS - Logistics as a Service) para permitir que os restaurantes solicitem entregas diretamente através da plataforma.
+Integrar o sistema ZoneSoft (POS/Sistema de Cozinha) para permitir que restaurantes enviem pedidos confirmados diretamente para o sistema de caixa e cozinha, onde são impressos os tickets/cupons.
+
+---
+
+## Análise da Documentação ZoneSoft
+
+### Visão Geral da API
+A ZoneSoft API V3 é uma REST API que permite:
+- **Criar documentos de venda** (Tickets, Faturas, etc.) via `Documents::saveInstances`
+- **Sincronizar produtos** via `Products::getInstances`
+- **Gerir clientes** via `Clients::saveInstances`
+- **Consultar pedidos** via `Documents::getInstances`
+
+### Autenticação
+A API usa autenticação via headers HMAC:
+
+| Header | Descrição |
+|--------|-----------|
+| `X-ZS-CLIENT-ID` | ID do cliente (loja) na ZoneSoft |
+| `X-ZS-APP-KEY` | Chave da aplicação registada |
+| `X-ZS-SIGNATURE` | HMAC-SHA256 do body com o `app_secret` |
+
+### Endpoints Principais
+
+| Interface | Ação | Descrição |
+|-----------|------|-----------|
+| `documents` | `saveInstances` | Criar documentos (pedidos/tickets) |
+| `documents` | `getInstances` | Consultar documentos |
+| `products` | `getInstances` | Listar produtos do POS |
+| `clients` | `saveInstances` | Criar/atualizar clientes |
+
+### URLs da API
+- **URL Base**: `https://api.zonesoft.org/v3/`
+- **Formato**: `POST {base}/{interface}/{action}`
 
 ---
 
 ## Fase 1: Configuração de Base de Dados
 
-### 1.1 Migração SQL - Novas Tabelas e Campos
+### 1.1 Migração SQL - Novas Tabelas
 
 ```sql
--- Configuração de integração Glovo por restaurante
-CREATE TABLE restaurant_glovo_config (
+-- Configuração ZoneSoft por restaurante
+CREATE TABLE restaurant_zonesoft_config (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE UNIQUE,
   enabled BOOLEAN DEFAULT false,
-  client_id TEXT,
-  client_secret TEXT,
-  access_token TEXT,
-  refresh_token TEXT,
-  token_expires_at TIMESTAMPTZ,
-  address_book_id UUID, -- ID do Address Book na Glovo
-  webhook_secret TEXT,
-  environment TEXT DEFAULT 'staging' CHECK (environment IN ('staging', 'production')),
+  
+  -- Credenciais API
+  client_id TEXT,              -- X-ZS-CLIENT-ID
+  app_key TEXT,                -- X-ZS-APP-KEY
+  app_secret TEXT,             -- Para gerar X-ZS-SIGNATURE
+  
+  -- Configuração da Loja
+  store_id INTEGER,            -- loja no ZoneSoft
+  warehouse_id INTEGER,        -- armazem padrão
+  operator_id INTEGER,         -- empid (operador)
+  document_type TEXT DEFAULT 'TK',  -- Tipo de documento (TK=Ticket, VD=Venda, etc)
+  document_series TEXT,        -- Série do documento (ex: W2024L5)
+  payment_type_id INTEGER DEFAULT 1, -- Tipo de pagamento padrão
+  
+  -- Mapeamento
+  products_synced_at TIMESTAMPTZ,
+  sync_mode TEXT DEFAULT 'manual' CHECK (sync_mode IN ('manual', 'auto')),
+  
+  -- Metadados
+  last_sync_at TIMESTAMPTZ,
+  last_error TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Entregas Glovo
-CREATE TABLE glovo_deliveries (
+-- Mapeamento de produtos (nosso sistema -> ZoneSoft)
+CREATE TABLE zonesoft_product_mapping (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
   restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
-  tracking_number TEXT NOT NULL,
-  order_code TEXT,
-  quote_id UUID,
-  quote_price DECIMAL(10,2),
-  final_fee DECIMAL(10,2),
-  status TEXT NOT NULL DEFAULT 'CREATED',
-  courier_name TEXT,
-  courier_phone TEXT,
-  courier_latitude DECIMAL(10,7),
-  courier_longitude DECIMAL(10,7),
-  tracking_link TEXT,
-  estimated_pickup_at TIMESTAMPTZ,
-  estimated_delivery_at TIMESTAMPTZ,
-  picked_at TIMESTAMPTZ,
-  delivered_at TIMESTAMPTZ,
-  cancelled_at TIMESTAMPTZ,
-  cancellation_reason TEXT,
-  raw_response JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  local_product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  zonesoft_product_id INTEGER NOT NULL,
+  zonesoft_product_code TEXT,
+  zonesoft_product_name TEXT,
+  last_synced_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(restaurant_id, local_product_id)
+);
+
+-- Log de sincronizações ZoneSoft
+CREATE TABLE zonesoft_sync_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  action TEXT NOT NULL, -- 'send_order', 'sync_products', 'get_document'
+  status TEXT NOT NULL, -- 'success', 'error', 'pending'
+  zonesoft_document_number INTEGER,
+  zonesoft_document_type TEXT,
+  zonesoft_document_series TEXT,
+  request_body JSONB,
+  response_body JSONB,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Índices
-CREATE INDEX idx_glovo_deliveries_order_id ON glovo_deliveries(order_id);
-CREATE INDEX idx_glovo_deliveries_tracking ON glovo_deliveries(tracking_number);
-CREATE INDEX idx_glovo_deliveries_status ON glovo_deliveries(status);
+CREATE INDEX idx_zonesoft_product_mapping_restaurant ON zonesoft_product_mapping(restaurant_id);
+CREATE INDEX idx_zonesoft_product_mapping_local ON zonesoft_product_mapping(local_product_id);
+CREATE INDEX idx_zonesoft_sync_logs_order ON zonesoft_sync_logs(order_id);
+CREATE INDEX idx_zonesoft_sync_logs_restaurant ON zonesoft_sync_logs(restaurant_id);
 
--- Adicionar campo na tabela orders para indicar método de entrega
-ALTER TABLE orders ADD COLUMN delivery_provider TEXT DEFAULT 'restaurant' 
-  CHECK (delivery_provider IN ('restaurant', 'glovo', 'other'));
+-- Adicionar campo na orders para tracking ZoneSoft
+ALTER TABLE orders ADD COLUMN zonesoft_document_number INTEGER;
+ALTER TABLE orders ADD COLUMN zonesoft_document_type TEXT;
+ALTER TABLE orders ADD COLUMN zonesoft_document_series TEXT;
+ALTER TABLE orders ADD COLUMN zonesoft_synced_at TIMESTAMPTZ;
 
 -- RLS
-ALTER TABLE restaurant_glovo_config ENABLE ROW LEVEL SECURITY;
-ALTER TABLE glovo_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_zonesoft_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE zonesoft_product_mapping ENABLE ROW LEVEL SECURITY;
+ALTER TABLE zonesoft_sync_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their restaurant glovo config" ON restaurant_glovo_config
+CREATE POLICY "Users can manage their restaurant zonesoft config" ON restaurant_zonesoft_config
   FOR ALL USING (restaurant_id IN (
-    SELECT id FROM restaurants WHERE user_id = auth.uid()
+    SELECT restaurant_id FROM restaurant_owners WHERE user_id = auth.uid()
   ));
 
-CREATE POLICY "Users can view their deliveries" ON glovo_deliveries
+CREATE POLICY "Users can manage product mappings" ON zonesoft_product_mapping
+  FOR ALL USING (restaurant_id IN (
+    SELECT restaurant_id FROM restaurant_owners WHERE user_id = auth.uid()
+  ));
+
+CREATE POLICY "Users can view sync logs" ON zonesoft_sync_logs
   FOR SELECT USING (restaurant_id IN (
-    SELECT id FROM restaurants WHERE user_id = auth.uid()
+    SELECT restaurant_id FROM restaurant_owners WHERE user_id = auth.uid()
   ));
 ```
 
@@ -84,134 +140,201 @@ CREATE POLICY "Users can view their deliveries" ON glovo_deliveries
 
 ## Fase 2: Edge Functions
 
-### 2.1 `glovo-auth` - Autenticação e Gestão de Tokens
+### 2.1 `zonesoft-api` - Função Principal
 
 Responsabilidades:
-- Gerar access token inicial
-- Renovar token automaticamente quando expirar
-- Revogar token se necessário
+- Gerar assinatura HMAC-SHA256
+- Executar chamadas à API ZoneSoft
+- Gerir rate limiting (máx 20 req/2s)
 
-Endpoints internos:
-- `POST /glovo-auth` → Gerar/renovar token
+Ações suportadas:
+- `test-connection` - Testar credenciais
+- `sync-products` - Sincronizar produtos do ZoneSoft
+- `send-order` - Enviar pedido confirmado
+- `get-document` - Consultar documento
 
-### 2.2 `glovo-delivery` - Gestão de Entregas
+### 2.2 Implementação da Assinatura
 
-Responsabilidades:
-- Criar orçamento (quote)
-- Criar pedido de entrega
-- Cancelar entrega
-- Obter status, posição do estafeta, link de tracking
+```typescript
+// Gerar X-ZS-SIGNATURE
+const generateSignature = (body: string, appSecret: string): string => {
+  const encoder = new TextEncoder();
+  const key = encoder.encode(appSecret);
+  const data = encoder.encode(body);
+  
+  // HMAC-SHA256
+  const signature = await crypto.subtle.importKey(
+    'raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  ).then(key => crypto.subtle.sign('HMAC', key, data));
+  
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+};
+```
 
-Endpoints internos:
-- `POST /glovo-delivery/quote` → Criar orçamento
-- `POST /glovo-delivery/create` → Criar entrega a partir de quote
-- `POST /glovo-delivery/cancel` → Cancelar entrega
-- `GET /glovo-delivery/status/{trackingNumber}` → Status atual
-- `GET /glovo-delivery/courier/{trackingNumber}` → Info do estafeta
-- `GET /glovo-delivery/tracking-link/{trackingNumber}` → Link de tracking
+### 2.3 Estrutura do Documento (Pedido)
 
-### 2.3 `glovo-webhook` - Receber Notificações
-
-Responsabilidades:
-- Receber callbacks de STATUS_UPDATE e POSITION_UPDATE
-- Atualizar tabela `glovo_deliveries`
-- Notificar restaurante (via realtime ou push)
-
-Endpoint público (verify_jwt = false):
-- `POST /glovo-webhook` → Receber notificações da Glovo
+```json
+{
+  "document": [{
+    "doc": "TK",                        // Tipo: Ticket
+    "serie": "W2024L5",                 // Série configurada
+    "loja": 5,                          // Store ID
+    "cliente": 0,                       // Cliente (0 = consumidor final)
+    "nome": "João Silva",               // Nome do cliente
+    "telefone": "+351912345678",        // Telefone
+    "morada": "Rua X, 123, Lisboa",     // Endereço de entrega
+    "pagamento": 1,                     // Tipo de pagamento
+    "emp": 100,                         // Operador ID
+    "data": "2024-02-04",               // Data
+    "datahora": "2024-02-04 14:30:00",  // Data/hora
+    "observacoes": "Sem cebola",        // Observações
+    "ivaincluido": 1,                   // IVA incluído
+    "vendas": [                         // Linhas do pedido
+      {
+        "codigo": 123,                  // Código do produto no ZoneSoft
+        "descricao": "Pizza Margherita",
+        "qtd": 2,
+        "punit": 12.50,
+        "iva": 23,
+        "total": 25.00
+      }
+    ]
+  }]
+}
+```
 
 ---
 
-## Fase 3: Lógica de Negócio
+## Fase 3: Fluxo de Integração
 
-### 3.1 Fluxo de Criação de Entrega
+### 3.1 Configuração Inicial
 
 ```text
-1. Pedido muda para status "preparing"
-2. Restaurante clica "Solicitar Estafeta Glovo"
-3. Sistema chama POST /glovo-delivery/quote
-   - Envia: endereço pickup (restaurante), endereço delivery (cliente)
-   - Recebe: quoteId, preço estimado, tempo estimado
-4. Mostrar orçamento ao restaurante
-5. Restaurante confirma
-6. Sistema chama POST /glovo-delivery/create
-   - Envia: quoteId, contacto do cliente, detalhes do pedido
-   - Recebe: trackingNumber, orderCode
-7. Guardar em glovo_deliveries
-8. Atualizar order.delivery_provider = 'glovo'
+1. Restaurante acede a Configurações > Integrações > ZoneSoft
+2. Introduz credenciais (Client ID, App Key, App Secret)
+3. Configura Store ID, Warehouse ID, Operador
+4. Testa conexão
+5. Sincroniza produtos do ZoneSoft
+6. Mapeia produtos locais aos produtos ZoneSoft
 ```
 
-### 3.2 Sincronização de Status
+### 3.2 Envio de Pedido
 
-Via Webhook (preferencial):
-- Glovo envia POST para `/glovo-webhook`
-- Atualizar `glovo_deliveries.status`
-- Se status = 'DELIVERED', atualizar `orders.status = 'completed'`
-- Se status = 'CANCELLED', atualizar `orders.status` e notificar
+```text
+1. Pedido é confirmado no nosso sistema
+2. Sistema verifica se restaurante tem ZoneSoft ativo
+3. Converte itens do pedido para formato ZoneSoft
+   - Busca mapeamento de produtos
+   - Produtos sem mapeamento: usa nome/preço original
+4. Chama POST documents/saveInstances
+5. Guarda número do documento retornado
+6. Atualiza order com zonesoft_document_number
+7. Ticket é impresso automaticamente no POS
+```
 
-Via Polling (fallback):
-- Verificar periodicamente pedidos com status intermédio
-- Chamar GET /status para atualizar
+### 3.3 Diagrama de Fluxo
+
+```text
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Pedido    │────▶│   Edge Fn    │────▶│  ZoneSoft   │
+│  Confirmado │     │ zonesoft-api │     │    API      │
+└─────────────┘     └──────────────┘     └─────────────┘
+                           │                    │
+                           ▼                    ▼
+                    ┌──────────────┐     ┌─────────────┐
+                    │  sync_logs   │     │  Impressão  │
+                    │   (DB)       │     │   Ticket    │
+                    └──────────────┘     └─────────────┘
+```
 
 ---
 
 ## Fase 4: Interface do Utilizador
 
-### 4.1 Configurações do Restaurante
-
-Adicionar nova tab ou secção em Settings:
+### 4.1 Tab ZoneSoft em Configurações
 
 ```text
-Configurações > Entregas > Glovo On-Demand
-
-[x] Ativar Glovo On-Demand
-    
-Credenciais API:
-- Client ID: [input]
-- Client Secret: [input] (mascarado)
-
-Ambiente: [Staging ▼] / [Produção ▼]
-
-Endereço de Pickup:
-- Endereço: [input com geocoding]
-- Coordenadas: [mostrar lat/lng]
-- [Botão: Registar no Glovo]
-
-Status: ✅ Conectado | ❌ Não configurado
+┌─────────────────────────────────────────────────────────────┐
+│ 🖨️ ZoneSoft POS                                            │
+│ Integre com o sistema ZoneSoft para impressão automática   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ [x] Ativar Integração ZoneSoft                             │
+│                                                             │
+│ ─────────────────────────────────────────────────────────  │
+│                                                             │
+│ CREDENCIAIS API                                             │
+│                                                             │
+│ Client ID:    [________________________]                    │
+│ App Key:      [________________________]                    │
+│ App Secret:   [••••••••••••••••••] 👁                       │
+│                                                             │
+│ ─────────────────────────────────────────────────────────  │
+│                                                             │
+│ CONFIGURAÇÃO DA LOJA                                        │
+│                                                             │
+│ Store ID (loja):        [____]                              │
+│ Warehouse ID (armazem): [____]                              │
+│ Operator ID (emp):      [____]                              │
+│ Tipo de Documento:      [TK - Ticket    ▼]                  │
+│ Série:                  [________________]                  │
+│ Tipo de Pagamento:      [Numerário      ▼]                  │
+│                                                             │
+│ ─────────────────────────────────────────────────────────  │
+│                                                             │
+│ SINCRONIZAÇÃO DE PRODUTOS                                   │
+│                                                             │
+│ Última sincronização: 04/02/2024 14:30                     │
+│ Produtos mapeados: 45/50                                    │
+│                                                             │
+│ [Sincronizar Produtos]  [Mapear Produtos]                   │
+│                                                             │
+│ ─────────────────────────────────────────────────────────  │
+│                                                             │
+│ [Testar Conexão]                    [Guardar Configurações] │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 Detalhes do Pedido
-
-Adicionar secção "Entrega" no painel de detalhes:
+### 4.2 Modal de Mapeamento de Produtos
 
 ```text
-┌─────────────────────────────────────────────┐
-│ ENTREGA                                      │
-│ ─────────────────────────────────────────── │
-│ Método: [Restaurante ▼] [Glovo ▼]           │
-│                                              │
-│ [Se Glovo selecionado e não criado:]        │
-│ Preço estimado: €3.50                       │
-│ Tempo estimado: 25-35 min                   │
-│ [Botão: Solicitar Estafeta]                 │
-│                                              │
-│ [Se Glovo criado:]                          │
-│ Status: 🚴 A caminho do restaurante         │
-│ Estafeta: João Silva (+351 912 345 678)     │
-│ Tracking: GLV123456789                      │
-│ [Link: Ver no mapa]                         │
-│ [Botão: Cancelar entrega] (se possível)     │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Mapear Produtos                                       [X]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ 🔍 [Pesquisar produto...]                                   │
+│                                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ NOSSO PRODUTO          │ PRODUTO ZONESOFT              │ │
+│ ├─────────────────────────────────────────────────────────┤ │
+│ │ Pizza Margherita       │ [Pizza Marg. (cod: 123) ▼]   │ │
+│ │ Pizza Pepperoni        │ [Pizza Pep. (cod: 124)  ▼]   │ │
+│ │ Coca-Cola 33cl         │ [Coca Cola (cod: 50)    ▼]   │ │
+│ │ Hambúrguer Classic     │ [Não mapeado           ▼]   │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ ⚠️ Produtos não mapeados serão enviados com nome/preço     │
+│    original mas podem não aparecer no relatório ZoneSoft   │
+│                                                             │
+│                                        [Guardar Mapeamento] │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.3 Kanban de Pedidos
-
-Adicionar indicador visual:
+### 4.3 Indicador no Painel do Pedido
 
 ```text
-Pedido #123
-🛵 Glovo - Aceite
-ETA: 15 min
+┌─────────────────────────────────────────┐
+│ INTEGRAÇÃO POS                          │
+│ ─────────────────────────────────────── │
+│ ZoneSoft: ✅ Enviado                    │
+│ Documento: TK W2024L5/1234              │
+│ Enviado em: 04/02/2024 14:35           │
+│                                         │
+│ [Reenviar para POS] (se erro)          │
+└─────────────────────────────────────────┘
 ```
 
 ---
@@ -220,60 +343,115 @@ ETA: 15 min
 
 | Arquivo | Tipo | Descrição |
 |---------|------|-----------|
-| `supabase/migrations/xxx_glovo_integration.sql` | Novo | Schema de base de dados |
-| `supabase/functions/glovo-auth/index.ts` | Novo | Autenticação OAuth |
-| `supabase/functions/glovo-delivery/index.ts` | Novo | Operações de entrega |
-| `supabase/functions/glovo-webhook/index.ts` | Novo | Receber callbacks |
-| `supabase/config.toml` | Modificar | Adicionar configurações das novas funções |
-| `src/types/glovo.ts` | Novo | Tipos TypeScript para Glovo |
-| `src/stores/glovoStore.ts` | Novo | Estado da integração Glovo |
-| `src/components/settings/GlovoTab.tsx` | Novo | Configurações Glovo |
-| `src/components/orders/GlovoDeliveryPanel.tsx` | Novo | Painel de entrega Glovo |
-| `src/pages/SettingsUnified.tsx` | Modificar | Adicionar tab Glovo |
-| `src/components/OrderDetailsPanel.tsx` | Modificar | Integrar painel de entrega |
-| `src/components/orders/OrdersKanban.tsx` | Modificar | Indicador visual Glovo |
+| `supabase/migrations/xxx_zonesoft_integration.sql` | Novo | Schema de base de dados |
+| `supabase/functions/zonesoft-api/index.ts` | Novo | Edge function principal |
+| `supabase/config.toml` | Modificar | Adicionar configuração da função |
+| `src/types/zonesoft.ts` | Novo | Tipos TypeScript |
+| `src/stores/zonesoftStore.ts` | Novo | Estado da integração |
+| `src/components/settings/ZoneSoftTab.tsx` | Novo | Tab de configuração |
+| `src/components/settings/ZoneSoftProductMapping.tsx` | Novo | Modal de mapeamento |
+| `src/components/orders/ZoneSoftSyncPanel.tsx` | Novo | Painel no detalhe do pedido |
+| `src/pages/SettingsUnified.tsx` | Modificar | Adicionar tab ZoneSoft |
+| `src/components/OrderDetailsPanel.tsx` | Modificar | Integrar painel de sync |
 
 ---
 
-## Fase 6: Secrets e Configuração
+## Fase 6: Trigger Automático (Opcional)
 
-Secrets necessários (por restaurante, guardados na tabela):
-- `GLOVO_CLIENT_ID`
-- `GLOVO_CLIENT_SECRET`
+Para envio automático quando o pedido é confirmado:
 
-URLs da API:
-- Staging: `https://ondemand-stageapi.glovoapp.com`
-- Production: `https://ondemand-api.glovoapp.com`
+```sql
+-- Trigger para enviar automaticamente ao ZoneSoft
+CREATE OR REPLACE FUNCTION notify_zonesoft_on_order_confirmed()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'confirmed' AND OLD.status != 'confirmed' THEN
+    -- Verificar se restaurante tem ZoneSoft ativo
+    IF EXISTS (
+      SELECT 1 FROM restaurant_zonesoft_config 
+      WHERE restaurant_id = NEW.restaurant_id 
+      AND enabled = true
+    ) THEN
+      -- Inserir job na fila de sincronização
+      INSERT INTO zonesoft_sync_logs (
+        restaurant_id, order_id, action, status
+      ) VALUES (
+        NEW.restaurant_id, NEW.id, 'send_order', 'pending'
+      );
+      
+      -- Notificar via pg_notify para processamento
+      PERFORM pg_notify('zonesoft_sync', json_build_object(
+        'order_id', NEW.id,
+        'restaurant_id', NEW.restaurant_id
+      )::text);
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER on_order_confirmed_zonesoft
+AFTER UPDATE ON orders
+FOR EACH ROW
+EXECUTE FUNCTION notify_zonesoft_on_order_confirmed();
+```
 
 ---
 
-## Considerações Técnicas
+## Fase 7: Considerações Técnicas
 
 ### Rate Limiting
-- Máximo 20 requests por 2 segundos
-- Ban de 60 segundos se exceder
+- ZoneSoft tem limite de 20 requests por 2 segundos
+- Implementar queue com debounce para envios em lote
+
+### Tratamento de Erros
+| Código | Descrição | Ação |
+|--------|-----------|------|
+| 200/201 | Sucesso | Guardar número do documento |
+| 401 | Não autorizado | Verificar credenciais |
+| 422 | Dados inválidos | Mostrar erro específico |
+| 429 | Rate limit | Retry com backoff |
+| 500 | Erro servidor | Retry ou notificar |
 
 ### Segurança
-- Credenciais Glovo guardadas encriptadas na BD
-- Webhook valida `Authorization` header com `partnerSecret`
-- Tokens renovados automaticamente antes de expirar
-
-### Throttling
-- Posição do estafeta atualizada via webhook (a cada 20s)
-- Não fazer polling excessivo
-
-### Disponibilidade
-- Verificar `GET /v2/laas/working-areas` para horários
-- Validar entrega com `POST /v2/laas/parcels/validation` antes de oferecer opção
+- `app_secret` guardado encriptado na BD
+- Nunca expor credenciais no frontend
+- Todas as chamadas via edge function
 
 ---
 
-## Próximos Passos Recomendados
+## Fase 8: Próximos Passos
 
-1. **Obter credenciais de teste** junto à Glovo (contactar partner.integrationseu@glovoapp.com)
-2. **Implementar Fase 1** (base de dados) e **Fase 2** (edge functions)
-3. **Testar no ambiente Staging** com simulações
-4. **Implementar UI** (Fase 4)
-5. **Validar com restaurante piloto**
-6. **Migrar para Production**
+### Prioridade 1 (MVP)
+1. Criar tabelas de configuração e mapeamento
+2. Implementar edge function com assinatura HMAC
+3. Criar tab de configuração no Settings
+4. Implementar envio manual de pedido
+
+### Prioridade 2 (Melhorias)
+5. Adicionar sincronização de produtos
+6. Criar modal de mapeamento
+7. Implementar envio automático via trigger
+
+### Prioridade 3 (Avançado)
+8. Sincronização bidirecional de stock
+9. Relatórios de vendas unificados
+10. Suporte a múltiplas séries de documentos
+
+---
+
+## Requisitos para Implementação
+
+### Do lado do cliente
+1. **Licença ZS Rest ativa** na ZoneSoft
+2. **Módulo ZSAPIFood (Developer) ativado** - solicitar à ZoneSoft
+3. **Registo na plataforma de integração**: developer.zonesoft.org
+4. **Credenciais de API** (Client ID, App Key, App Secret)
+5. **Store ID** da loja a integrar
+
+### Documentação de Referência
+- Portal Developer: https://developer.zonesoft.org
+- Documentação API: Fornecida nos PDFs
+- Suporte: geral@zonesoft.org
 
