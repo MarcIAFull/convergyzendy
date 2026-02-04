@@ -4,8 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
+import { OrderTypeBadge } from '@/components/orders/OrderTypeBadge';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
 import type { OrderWithDetails } from '@/types/database';
+import type { OrderType } from '@/types/public-menu';
 import { AlertCircle, Clock, Package, CheckCircle, XCircle, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -156,6 +158,17 @@ function KanbanCard({
         <p className="font-medium text-sm truncate">{customerName}</p>
         <p className="text-xs text-muted-foreground truncate">{order.user_phone}</p>
         
+        {/* Order Type Badge */}
+        {((order as any).order_type === 'dine_in' || (order as any).order_type === 'takeaway') && (
+          <div className="mt-2">
+            <OrderTypeBadge 
+              orderType={((order as any).order_type || 'delivery') as OrderType}
+              tableNumber={(order as any).table_number}
+              className="text-xs"
+            />
+          </div>
+        )}
+
         <div className="mt-2 pt-2 border-t flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
             {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}

@@ -28,6 +28,10 @@ export function PublicMenuTab() {
     estimated_prep_time_minutes: 30,
     checkout_whatsapp_enabled: true,
     checkout_web_enabled: false,
+    dine_in_enabled: false,
+    dine_in_require_table_number: true,
+    dine_in_table_prefix: 'Mesa',
+    takeaway_enabled: false,
     meta_title: '',
     meta_description: '',
     meta_keywords: [] as string[],
@@ -74,6 +78,10 @@ export function PublicMenuTab() {
       estimated_prep_time_minutes: 30,
       checkout_whatsapp_enabled: true,
       checkout_web_enabled: false,
+      dine_in_enabled: false,
+      dine_in_require_table_number: true,
+      dine_in_table_prefix: 'Mesa',
+      takeaway_enabled: false,
       meta_title: '',
       meta_description: '',
       meta_keywords: [] as string[],
@@ -108,6 +116,10 @@ export function PublicMenuTab() {
         estimated_prep_time_minutes: settings.estimated_prep_time_minutes || 30,
         checkout_whatsapp_enabled: settings.checkout_whatsapp_enabled ?? true,
         checkout_web_enabled: settings.checkout_web_enabled ?? false,
+        dine_in_enabled: (settings as any).dine_in_enabled ?? false,
+        dine_in_require_table_number: (settings as any).dine_in_require_table_number ?? true,
+        dine_in_table_prefix: (settings as any).dine_in_table_prefix || 'Mesa',
+        takeaway_enabled: (settings as any).takeaway_enabled ?? false,
         meta_title: settings.meta_title || '',
         meta_description: settings.meta_description || '',
         meta_keywords: settings.meta_keywords || [],
@@ -424,6 +436,83 @@ export function PublicMenuTab() {
                 onChange={(e) => setFormData({ ...formData, estimated_prep_time_minutes: parseInt(e.target.value) })}
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modos de Pedido */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Modos de Pedido</CardTitle>
+          <CardDescription>Configure como os clientes podem fazer pedidos</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Delivery - always enabled */}
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div>
+              <Label className="flex items-center gap-2">
+                🚚 Entrega (Delivery)
+              </Label>
+              <p className="text-sm text-muted-foreground">Pedidos com endereço de entrega</p>
+            </div>
+            <Badge variant="secondary">Sempre ativo</Badge>
+          </div>
+
+          {/* Dine-in */}
+          <div className="space-y-4 p-4 rounded-lg border">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="flex items-center gap-2">
+                  🍽️ Consumo no Local (Mesa)
+                </Label>
+                <p className="text-sm text-muted-foreground">Clientes indicam número da mesa</p>
+              </div>
+              <Switch
+                checked={formData.dine_in_enabled}
+                onCheckedChange={(checked) => setFormData({ ...formData, dine_in_enabled: checked })}
+              />
+            </div>
+            
+            {formData.dine_in_enabled && (
+              <div className="pl-4 border-l-2 border-primary/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Número da mesa obrigatório</Label>
+                    <p className="text-xs text-muted-foreground">Se desativado, mesa é opcional</p>
+                  </div>
+                  <Switch
+                    checked={formData.dine_in_require_table_number}
+                    onCheckedChange={(checked) => setFormData({ ...formData, dine_in_require_table_number: checked })}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="table_prefix">Prefixo da mesa</Label>
+                  <Input
+                    id="table_prefix"
+                    value={formData.dine_in_table_prefix}
+                    onChange={(e) => setFormData({ ...formData, dine_in_table_prefix: e.target.value })}
+                    placeholder="Mesa"
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground">Ex: "Mesa 12", "Table 5"</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Take and Go */}
+          <div className="flex items-center justify-between p-4 rounded-lg border">
+            <div>
+              <Label className="flex items-center gap-2">
+                🛍️ Take and Go
+              </Label>
+              <p className="text-sm text-muted-foreground">Cliente retira no balcão</p>
+            </div>
+            <Switch
+              checked={formData.takeaway_enabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, takeaway_enabled: checked })}
+            />
           </div>
         </CardContent>
       </Card>
