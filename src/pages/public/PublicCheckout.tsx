@@ -18,6 +18,8 @@ import { DeliveryZoneMap } from '@/components/delivery/DeliveryZoneMap';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CouponInput, AppliedCoupon } from '@/components/public/CouponInput';
 import { Badge } from '@/components/ui/badge';
+import { OrderTypeSelector } from '@/components/public/OrderTypeSelector';
+import type { OrderType } from '@/types/public-menu';
 
 export default function PublicCheckout() {
   const { slug } = useParams<{ slug: string }>();
@@ -28,6 +30,8 @@ export default function PublicCheckout() {
   const { apiKey } = useGoogleMapsApiKey();
 
   const [loading, setLoading] = useState(false);
+  const [orderType, setOrderType] = useState<OrderType>('delivery');
+  const [tableNumber, setTableNumber] = useState('');
   const [formData, setFormData] = useState({
     customer_name: '',
     customer_phone: '',
@@ -42,22 +46,36 @@ export default function PublicCheckout() {
   const { validateDeliveryAddress } = useGeocoding();
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [orderSettings, setOrderSettings] = useState<{
+    dine_in_enabled: boolean;
+    dine_in_require_table_number: boolean;
+    dine_in_table_prefix: string;
+    takeaway_enabled: boolean;
+  } | null>(null);
 
-  // Check if Stripe is enabled for this restaurant
+  // Check order settings for this restaurant
   useEffect(() => {
-    const checkStripeStatus = async () => {
+    const fetchOrderSettings = async () => {
       if (!menuData?.restaurant?.id) return;
-      
+
       const { data } = await supabase
         .from('restaurant_settings')
-        .select('online_payments_enabled, stripe_charges_enabled')
+        .select('dine_in_enabled, dine_in_require_table_number, dine_in_table_prefix, takeaway_enabled, online_payments_enabled, stripe_charges_enabled')
         .eq('restaurant_id', menuData.restaurant.id)
         .single();
-      
-      setStripeEnabled(data?.online_payments_enabled && data?.stripe_charges_enabled);
+
+      if (data) {
+        setOrderSettings({
+          dine_in_enabled: data.dine_in_enabled ?? false,
+          dine_in_require_table_number: data.dine_in_require_table_number ?? true,
+          dine_in_table_prefix: data.dine_in_table_prefix || 'Mesa',
+          takeaway_enabled: data.takeaway_enabled ?? false,
+        });
+        setStripeEnabled(data.online_payments_enabled && data.stripe_charges_enabled);
+      }
     };
-    
-    checkStripeStatus();
+
+    fetchOrderSettings();
   }, [menuData?.restaurant?.id]);
 
   const formatPrice = (price: number) => {
@@ -97,9 +115,27 @@ export default function PublicCheckout() {
 
   const subtotal = getSubtotal();
   const deliveryFee = menuData?.restaurant.delivery_fee || 0;
-  const calculatedDeliveryFee = deliveryValidation?.delivery_fee ?? deliveryFee;
+  // No delivery fee for dine_in and takeaway
+  const isDelivery = orderType === 'delivery';
+  const calculatedDeliveryFee = isDelivery ? (deliveryValidation?.delivery_fee ?? deliveryFee) : 0;
   const discount = appliedCoupon?.discount_amount || 0;
   const total = subtotal + calculatedDeliveryFee - discount;
+
+  // Check if form is valid
+  const isFormValid = () => {
+    if (!formData.customer_name || !formData.customer_phone) return false;
+    
+    if (orderType === 'delivery') {
+      if (!formData.delivery_address) return false;
+      if (deliveryValidation && !deliveryValidation.valid) return false;
+    }
+    
+    if (orderType === 'dine_in' && orderSettings?.dine_in_require_table_number) {
+      if (!tableNumber.trim()) return false;
+    }
+    
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +172,14 @@ export default function PublicCheckout() {
 
       if (itemsError) throw new Error('Erro ao adicionar items ao carrinho');
 
+      // Determine delivery address based on order type
+      let deliveryAddress = formData.delivery_address;
+      if (orderType === 'dine_in') {
+        deliveryAddress = `${orderSettings?.dine_in_table_prefix || 'Mesa'} ${tableNumber}`;
+      } else if (orderType === 'takeaway') {
+        deliveryAddress = 'Take & Go - Retirar no balcão';
+      }
+
       // Create web order
       const { data: webOrder, error: orderError } = await supabase
         .from('web_orders')
@@ -145,10 +189,10 @@ export default function PublicCheckout() {
           customer_name: formData.customer_name,
           customer_phone: formData.customer_phone,
           customer_email: formData.customer_email || null,
-          delivery_address: formData.delivery_address,
-          delivery_instructions: formData.delivery_instructions || null,
-          delivery_lat: addressCoords?.lat || null,
-          delivery_lng: addressCoords?.lng || null,
+          delivery_address: deliveryAddress,
+          delivery_instructions: orderType === 'delivery' ? (formData.delivery_instructions || null) : null,
+          delivery_lat: orderType === 'delivery' ? (addressCoords?.lat || null) : null,
+          delivery_lng: orderType === 'delivery' ? (addressCoords?.lng || null) : null,
           items: items.map((item) => ({
             product_id: item.product.id,
             product_name: item.product.name,
@@ -171,6 +215,8 @@ export default function PublicCheckout() {
           payment_method: formData.payment_method,
           payment_status: formData.payment_method === 'stripe' ? 'pending' : 'pending_delivery',
           source: 'web',
+          order_type: orderType,
+          table_number: orderType === 'dine_in' ? tableNumber : null,
         })
         .select()
         .single();
@@ -281,6 +327,19 @@ export default function PublicCheckout() {
 
       <div className="container mx-auto px-4 py-6 max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Order Type Selector */}
+          <OrderTypeSelector
+            selectedType={orderType}
+            onTypeChange={setOrderType}
+            tableNumber={tableNumber}
+            onTableNumberChange={setTableNumber}
+            tablePrefix={orderSettings?.dine_in_table_prefix}
+            deliveryEnabled={true}
+            dineInEnabled={orderSettings?.dine_in_enabled}
+            takeawayEnabled={orderSettings?.takeaway_enabled}
+            requireTableNumber={orderSettings?.dine_in_require_table_number}
+          />
+
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Dados de Contato</h2>
             
@@ -321,85 +380,88 @@ export default function PublicCheckout() {
             </div>
           </Card>
 
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Endereço de Entrega</h2>
-            
-            <div className="space-y-4">
-              <AddressInput
-                value={formData.delivery_address}
-                onChange={(value) => setFormData({ ...formData, delivery_address: value })}
-                onGeocoded={handleAddressGeocoded}
-                required
-              />
-
-              <div>
-                <Label htmlFor="instructions">Instruções de entrega</Label>
-                <Textarea
-                  id="instructions"
-                  value={formData.delivery_instructions}
-                  onChange={(e) =>
-                    setFormData({ ...formData, delivery_instructions: e.target.value })
-                  }
-                  placeholder="Apartamento, andar, ponto de referência..."
-                  rows={3}
+          {/* Only show address section for delivery */}
+          {orderType === 'delivery' && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Endereço de Entrega</h2>
+              
+              <div className="space-y-4">
+                <AddressInput
+                  value={formData.delivery_address}
+                  onChange={(value) => setFormData({ ...formData, delivery_address: value })}
+                  onGeocoded={handleAddressGeocoded}
+                  required
                 />
+
+                <div>
+                  <Label htmlFor="instructions">Instruções de entrega</Label>
+                  <Textarea
+                    id="instructions"
+                    value={formData.delivery_instructions}
+                    onChange={(e) =>
+                      setFormData({ ...formData, delivery_instructions: e.target.value })
+                    }
+                    placeholder="Apartamento, andar, ponto de referência..."
+                    rows={3}
+                  />
+                </div>
               </div>
-            </div>
 
-            {validatingDelivery && (
-              <Alert className="mt-4">
-                <AlertDescription className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-                  Validando endereço de entrega...
-                </AlertDescription>
-              </Alert>
-            )}
+              {validatingDelivery && (
+                <Alert className="mt-4">
+                  <AlertDescription className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+                    Validando endereço de entrega...
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            {deliveryValidation && !deliveryValidation.valid && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {deliveryValidation.error}
-                </AlertDescription>
-              </Alert>
-            )}
+              {deliveryValidation && !deliveryValidation.valid && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {deliveryValidation.error}
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            {deliveryValidation && deliveryValidation.valid && (
-              <Alert className="mt-4 border-green-500 bg-green-50">
-                <AlertDescription className="space-y-2">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <MapPinIcon className="h-4 w-4" />
-                    <span className="font-medium">Endereço dentro da área de entrega</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-green-600">
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      <span>Entrega em ~{deliveryValidation.estimated_time_minutes} min</span>
+              {deliveryValidation && deliveryValidation.valid && (
+                <Alert className="mt-4 border-green-500 bg-green-50">
+                  <AlertDescription className="space-y-2">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <MapPinIcon className="h-4 w-4" />
+                      <span className="font-medium">Endereço dentro da área de entrega</span>
                     </div>
-                    <span>•</span>
-                    <span>Distância: {deliveryValidation.distance_km.toFixed(1)} km</span>
-                    {deliveryValidation.zone && (
-                      <>
-                        <span>•</span>
-                        <span>Zona: {deliveryValidation.zone.name}</span>
-                      </>
-                    )}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
+                    <div className="flex items-center gap-4 text-sm text-green-600">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Entrega em ~{deliveryValidation.estimated_time_minutes} min</span>
+                      </div>
+                      <span>•</span>
+                      <span>Distância: {deliveryValidation.distance_km.toFixed(1)} km</span>
+                      {deliveryValidation.zone && (
+                        <>
+                          <span>•</span>
+                          <span>Zona: {deliveryValidation.zone.name}</span>
+                        </>
+                      )}
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            {addressCoords && menuData?.restaurant.latitude && menuData?.restaurant.longitude && apiKey && (
-              <div className="mt-4">
-                <DeliveryZoneMap
-                  center={[menuData.restaurant.latitude, menuData.restaurant.longitude]}
-                  deliveryAddress={addressCoords}
-                  height="300px"
-                  apiKey={apiKey}
-                />
-              </div>
-            )}
-          </Card>
+              {addressCoords && menuData?.restaurant.latitude && menuData?.restaurant.longitude && apiKey && (
+                <div className="mt-4">
+                  <DeliveryZoneMap
+                    center={[menuData.restaurant.latitude, menuData.restaurant.longitude]}
+                    deliveryAddress={addressCoords}
+                    height="300px"
+                    apiKey={apiKey}
+                  />
+                </div>
+              )}
+            </Card>
+          )}
 
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Forma de Pagamento</h2>
@@ -424,7 +486,9 @@ export default function PublicCheckout() {
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="card" id="card" />
-                <Label htmlFor="card" className="cursor-pointer">Cartão na entrega</Label>
+                <Label htmlFor="card" className="cursor-pointer">
+                  {orderType === 'delivery' ? 'Cartão na entrega' : 'Cartão no local'}
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="mbway" id="mbway" />
@@ -461,10 +525,12 @@ export default function PublicCheckout() {
                 <span>{formatPrice(subtotal)}</span>
               </div>
               
-              <div className="flex justify-between text-foreground">
-                <span>Taxa de Entrega</span>
-                <span>{formatPrice(calculatedDeliveryFee)}</span>
-              </div>
+              {orderType === 'delivery' && (
+                <div className="flex justify-between text-foreground">
+                  <span>Taxa de Entrega</span>
+                  <span>{formatPrice(calculatedDeliveryFee)}</span>
+                </div>
+              )}
 
               {appliedCoupon && (
                 <div className="flex justify-between text-green-600">
@@ -484,7 +550,7 @@ export default function PublicCheckout() {
             type="submit"
             className="w-full bg-orange hover:bg-orange/90"
             size="lg"
-            disabled={loading || (deliveryValidation && !deliveryValidation.valid) || validatingDelivery}
+            disabled={loading || !isFormValid() || validatingDelivery}
           >
             {loading ? (
               <>

@@ -1758,6 +1758,9 @@ export type Database = {
           checkout_whatsapp_enabled: boolean | null
           created_at: string | null
           custom_domain: string | null
+          dine_in_enabled: boolean | null
+          dine_in_require_table_number: boolean | null
+          dine_in_table_prefix: string | null
           estimated_prep_time_minutes: number | null
           facebook_url: string | null
           id: string
@@ -1779,6 +1782,7 @@ export type Database = {
           stripe_connected_at: string | null
           stripe_onboarding_complete: boolean | null
           stripe_payouts_enabled: boolean | null
+          takeaway_enabled: boolean | null
           updated_at: string | null
         }
         Insert: {
@@ -1789,6 +1793,9 @@ export type Database = {
           checkout_whatsapp_enabled?: boolean | null
           created_at?: string | null
           custom_domain?: string | null
+          dine_in_enabled?: boolean | null
+          dine_in_require_table_number?: boolean | null
+          dine_in_table_prefix?: string | null
           estimated_prep_time_minutes?: number | null
           facebook_url?: string | null
           id?: string
@@ -1810,6 +1817,7 @@ export type Database = {
           stripe_connected_at?: string | null
           stripe_onboarding_complete?: boolean | null
           stripe_payouts_enabled?: boolean | null
+          takeaway_enabled?: boolean | null
           updated_at?: string | null
         }
         Update: {
@@ -1820,6 +1828,9 @@ export type Database = {
           checkout_whatsapp_enabled?: boolean | null
           created_at?: string | null
           custom_domain?: string | null
+          dine_in_enabled?: boolean | null
+          dine_in_require_table_number?: boolean | null
+          dine_in_table_prefix?: string | null
           estimated_prep_time_minutes?: number | null
           facebook_url?: string | null
           id?: string
@@ -1841,6 +1852,7 @@ export type Database = {
           stripe_connected_at?: string | null
           stripe_onboarding_complete?: boolean | null
           stripe_payouts_enabled?: boolean | null
+          takeaway_enabled?: boolean | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2357,6 +2369,7 @@ export type Database = {
           id: string
           ip_address: unknown
           items: Json
+          order_type: string | null
           payment_method: string
           payment_status: string | null
           restaurant_id: string
@@ -2365,6 +2378,7 @@ export type Database = {
           stripe_payment_intent_id: string | null
           stripe_session_id: string | null
           subtotal: number
+          table_number: string | null
           total_amount: number
           updated_at: string | null
           user_agent: string | null
@@ -2386,6 +2400,7 @@ export type Database = {
           id?: string
           ip_address?: unknown
           items: Json
+          order_type?: string | null
           payment_method: string
           payment_status?: string | null
           restaurant_id: string
@@ -2394,6 +2409,7 @@ export type Database = {
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
           subtotal: number
+          table_number?: string | null
           total_amount: number
           updated_at?: string | null
           user_agent?: string | null
@@ -2415,6 +2431,7 @@ export type Database = {
           id?: string
           ip_address?: unknown
           items?: Json
+          order_type?: string | null
           payment_method?: string
           payment_status?: string | null
           restaurant_id?: string
@@ -2423,6 +2440,7 @@ export type Database = {
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
           subtotal?: number
+          table_number?: string | null
           total_amount?: number
           updated_at?: string | null
           user_agent?: string | null

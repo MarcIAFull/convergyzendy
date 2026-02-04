@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { OrderDetailsPanel } from '@/components/OrderDetailsPanel';
+import { OrderTypeBadge } from '@/components/orders/OrderTypeBadge';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { OrderWithDetails } from '@/types/database';
+import type { OrderType } from '@/types/public-menu';
 import { Clock, Package, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -94,12 +96,19 @@ export function OrdersList({ orders, onStatusChange, searchQuery }: OrdersListPr
         onClick={() => setSelectedOrder(order)}
       >
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             {isUrgent && (
               <Badge variant="destructive" className="text-xs">
                 <AlertCircle className="h-3 w-3 mr-1" />
                 Urgente
               </Badge>
+            )}
+            {((order as any).order_type === 'dine_in' || (order as any).order_type === 'takeaway') && (
+              <OrderTypeBadge 
+                orderType={((order as any).order_type || 'delivery') as OrderType}
+                tableNumber={(order as any).table_number}
+                className="text-xs"
+              />
             )}
             {order.order_notes && (
               <Badge variant="outline" className="text-xs">

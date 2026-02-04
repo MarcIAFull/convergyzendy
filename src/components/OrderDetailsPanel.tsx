@@ -16,8 +16,10 @@ import {
 import { PrintableOrder } from '@/components/PrintableOrder';
 import { GlovoDeliveryPanel } from '@/components/orders/GlovoDeliveryPanel';
 import { ZoneSoftSyncPanel } from '@/components/orders/ZoneSoftSyncPanel';
+import { OrderTypeBadge } from '@/components/orders/OrderTypeBadge';
 import { toast } from '@/hooks/use-toast';
 import type { OrderWithDetails } from '@/types/database';
+import type { OrderType } from '@/types/public-menu';
 import { 
   Phone, 
   MapPin, 
@@ -26,7 +28,9 @@ import {
   Printer,
   MessageSquare,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  UtensilsCrossed,
+  ShoppingBag
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -185,12 +189,37 @@ export function OrderDetailsPanel({ order, onStatusChange, onContactCustomer }: 
           </>
         )}
 
-        {/* Endereço de Entrega */}
+        {/* Location / Delivery Address */}
         <div className="flex items-start gap-3">
-          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+          {(order as any).order_type === 'dine_in' ? (
+            <UtensilsCrossed className="h-4 w-4 text-muted-foreground mt-0.5" />
+          ) : (order as any).order_type === 'takeaway' ? (
+            <ShoppingBag className="h-4 w-4 text-muted-foreground mt-0.5" />
+          ) : (
+            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+          )}
           <div className="flex-1">
-            <p className="text-sm text-muted-foreground">Endereço de Entrega</p>
-            <p className="font-medium text-sm mt-1">{order.delivery_address}</p>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm text-muted-foreground">
+                {(order as any).order_type === 'dine_in' 
+                  ? 'Consumo no Local'
+                  : (order as any).order_type === 'takeaway'
+                    ? 'Take & Go'
+                    : 'Endereço de Entrega'}
+              </p>
+              <OrderTypeBadge 
+                orderType={((order as any).order_type || 'delivery') as OrderType} 
+                tableNumber={(order as any).table_number}
+                showIcon={false}
+              />
+            </div>
+            <p className="font-medium text-sm mt-1">
+              {(order as any).order_type === 'dine_in' && (order as any).table_number
+                ? `Mesa ${(order as any).table_number}`
+                : (order as any).order_type === 'takeaway'
+                  ? 'Retirar no balcão'
+                  : order.delivery_address}
+            </p>
           </div>
         </div>
 

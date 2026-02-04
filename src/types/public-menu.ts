@@ -72,6 +72,8 @@ export interface CheckoutData {
   change_for?: number;
 }
 
+export type OrderType = 'delivery' | 'dine_in' | 'takeaway';
+
 export interface WebOrder {
   id: string;
   restaurant_id: string;
@@ -91,5 +93,7 @@ export interface WebOrder {
   payment_status: string;
   status: string;
   source: string;
+  order_type: OrderType;
+  table_number: string | null;
   created_at: string;
 }

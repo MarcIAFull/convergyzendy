@@ -11,6 +11,12 @@ interface NotifyOrderRequest {
   restaurant_id: string;
 }
 
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  delivery: '🚚 Entrega',
+  dine_in: '🍽️ Na Mesa',
+  takeaway: '🛍️ Take & Go',
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -113,21 +119,37 @@ serve(async (req) => {
     const orderDate = new Date(order.created_at);
     const timeStr = orderDate.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
 
+    // Format order type
+    const orderType = order.order_type || 'delivery';
+    const orderTypeLabel = ORDER_TYPE_LABELS[orderType] || ORDER_TYPE_LABELS.delivery;
+    
+    // Build location info based on order type
+    let locationInfo = '';
+    if (orderType === 'dine_in') {
+      locationInfo = order.table_number 
+        ? `🍽️ *Mesa:* ${order.table_number}`
+        : '🍽️ Consumo no Local';
+    } else if (orderType === 'takeaway') {
+      locationInfo = '🛍️ *Retirada:* No balcão';
+    } else {
+      locationInfo = `📍 *Endereço:*\n${order.delivery_address}${order.delivery_instructions ? `\n${order.delivery_instructions}` : ''}`;
+    }
+
     // Build message
     const shortOrderId = order_id.substring(0, 8).toUpperCase();
     const message = `🛒 *NOVO PEDIDO WEB #${shortOrderId}*
 
+📦 *Tipo:* ${orderTypeLabel}
+
 👤 *Cliente:* ${order.customer_name}
 📱 *Telefone:* ${order.customer_phone}${order.customer_email ? `\n📧 *Email:* ${order.customer_email}` : ''}
 
-📍 *Endereço:*
-${order.delivery_address}${order.delivery_instructions ? `\n${order.delivery_instructions}` : ''}
+${locationInfo}
 
 📋 *Itens:*
 ${itemsText}
 
-💰 *Subtotal:* €${order.subtotal.toFixed(2)}
-🚚 *Taxa de Entrega:* €${order.delivery_fee.toFixed(2)}
+💰 *Subtotal:* €${order.subtotal.toFixed(2)}${orderType === 'delivery' ? `\n🚚 *Taxa de Entrega:* €${order.delivery_fee.toFixed(2)}` : ''}
 💵 *TOTAL:* €${order.total_amount.toFixed(2)}
 
 💳 *Pagamento:* ${paymentText}

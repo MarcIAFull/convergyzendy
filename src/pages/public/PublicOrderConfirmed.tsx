@@ -3,13 +3,21 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2 } from 'lucide-react';
-import { WebOrder } from '@/types/public-menu';
+import { CheckCircle2, Loader2, UtensilsCrossed, ShoppingBag, Truck } from 'lucide-react';
+
+interface WebOrderData {
+  id: string;
+  customer_name: string;
+  total_amount: number;
+  payment_method: string;
+  order_type: string;
+  table_number: string | null;
+}
 
 export default function PublicOrderConfirmed() {
   const { slug, orderId } = useParams<{ slug: string; orderId: string }>();
   const navigate = useNavigate();
-  const [order, setOrder] = useState<WebOrder | null>(null);
+  const [order, setOrder] = useState<WebOrderData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,7 +30,7 @@ export default function PublicOrderConfirmed() {
     try {
       const { data, error } = await supabase
         .from('web_orders')
-        .select('*')
+        .select('id, customer_name, total_amount, payment_method, order_type, table_number')
         .eq('id', orderId)
         .single();
 
@@ -40,6 +48,31 @@ export default function PublicOrderConfirmed() {
       style: 'currency',
       currency: 'EUR',
     }).format(price);
+  };
+
+  const getOrderTypeInfo = (orderType: string, tableNumber: string | null) => {
+    switch (orderType) {
+      case 'dine_in':
+        return {
+          icon: UtensilsCrossed,
+          label: tableNumber ? `Mesa ${tableNumber}` : 'Consumo no Local',
+          message: tableNumber 
+            ? `Seu pedido será entregue na Mesa ${tableNumber}`
+            : 'Seu pedido será entregue na sua mesa',
+        };
+      case 'takeaway':
+        return {
+          icon: ShoppingBag,
+          label: 'Take & Go',
+          message: 'Por favor, dirija-se ao balcão quando for chamado',
+        };
+      default:
+        return {
+          icon: Truck,
+          label: 'Entrega',
+          message: 'Você receberá em breve no endereço informado',
+        };
+    }
   };
 
   if (loading) {
@@ -66,6 +99,9 @@ export default function PublicOrderConfirmed() {
     );
   }
 
+  const orderTypeInfo = getOrderTypeInfo(order.order_type, order.table_number);
+  const OrderTypeIcon = orderTypeInfo.icon;
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="p-8 max-w-md w-full text-center">
@@ -89,6 +125,14 @@ export default function PublicOrderConfirmed() {
           </div>
 
           <div className="flex justify-between mb-2">
+            <span className="text-muted-foreground">Tipo</span>
+            <span className="flex items-center gap-1 font-medium">
+              <OrderTypeIcon className="h-4 w-4" />
+              {orderTypeInfo.label}
+            </span>
+          </div>
+
+          <div className="flex justify-between mb-2">
             <span className="text-muted-foreground">Total</span>
             <span className="font-bold text-primary text-lg">
               {formatPrice(order.total_amount)}
@@ -103,7 +147,7 @@ export default function PublicOrderConfirmed() {
 
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Você receberá atualizações sobre seu pedido em breve
+            {orderTypeInfo.message}
           </p>
 
           <Button
