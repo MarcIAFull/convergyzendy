@@ -79,8 +79,27 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    // Handle actions that don't require Glovo API token first
+    if (action === 'get-delivery') {
+      const { orderId } = body;
 
-    // Get token
+      const { data: delivery } = await supabase
+        .from('glovo_deliveries')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      return new Response(JSON.stringify({
+        success: true,
+        delivery,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get token for actions that require Glovo API
     const tokenInfo = await getGlovoToken(supabase, restaurantId);
     if (!tokenInfo) {
       return new Response(JSON.stringify({ 
@@ -365,25 +384,6 @@ serve(async (req) => {
         status: statusData.status,
         courier: statusData.courier,
         trackingLink: statusData.trackingLink,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (action === 'get-delivery') {
-      const { orderId } = body;
-
-      const { data: delivery } = await supabase
-        .from('glovo_deliveries')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      return new Response(JSON.stringify({
-        success: true,
-        delivery,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
