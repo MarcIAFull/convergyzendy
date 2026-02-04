@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.glovo-webhook]
 verify_jwt = false
+
+[functions.zonesoft-api]
+verify_jwt = false

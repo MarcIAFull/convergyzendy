@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PrintableOrder } from '@/components/PrintableOrder';
 import { GlovoDeliveryPanel } from '@/components/orders/GlovoDeliveryPanel';
+import { ZoneSoftSyncPanel } from '@/components/orders/ZoneSoftSyncPanel';
 import { toast } from '@/hooks/use-toast';
 import type { OrderWithDetails } from '@/types/database';
 import { 
@@ -282,6 +283,18 @@ export function OrderDetailsPanel({ order, onStatusChange, onContactCustomer }: 
           customerName={customerName}
           customerPhone={order.user_phone}
           orderDescription={`Pedido #${order.id.slice(0, 8)} - ${order.items.length} item(s)`}
+        />
+
+        <Separator />
+
+        {/* ZoneSoft Sync Panel */}
+        <ZoneSoftSyncPanel
+          orderId={order.id}
+          restaurantId={order.restaurant_id}
+          zoneSoftDocumentNumber={(order as any).zonesoft_document_number}
+          zoneSoftDocumentType={(order as any).zonesoft_document_type}
+          zoneSoftDocumentSeries={(order as any).zonesoft_document_series}
+          zoneSoftSyncedAt={(order as any).zonesoft_synced_at}
         />
 
         <Separator />
