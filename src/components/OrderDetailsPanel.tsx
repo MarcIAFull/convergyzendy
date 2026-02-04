@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PrintableOrder } from '@/components/PrintableOrder';
+import { GlovoDeliveryPanel } from '@/components/orders/GlovoDeliveryPanel';
 import { toast } from '@/hooks/use-toast';
 import type { OrderWithDetails } from '@/types/database';
 import { 
@@ -274,7 +275,16 @@ export function OrderDetailsPanel({ order, onStatusChange, onContactCustomer }: 
 
         <Separator />
 
-        {/* Botões de Ação */}
+        {/* Glovo Delivery Panel */}
+        <GlovoDeliveryPanel
+          orderId={order.id}
+          deliveryAddress={order.delivery_address}
+          customerName={customerName}
+          customerPhone={order.user_phone}
+          orderDescription={`Pedido #${order.id.slice(0, 8)} - ${order.items.length} item(s)`}
+        />
+
+        <Separator />
         <div className="space-y-2">
           {order.status === 'new' && (
             <Button 

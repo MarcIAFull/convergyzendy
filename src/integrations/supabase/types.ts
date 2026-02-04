@@ -1010,6 +1010,99 @@ export type Database = {
         }
         Relationships: []
       }
+      glovo_deliveries: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          courier_latitude: number | null
+          courier_longitude: number | null
+          courier_name: string | null
+          courier_phone: string | null
+          created_at: string | null
+          delivered_at: string | null
+          estimated_delivery_at: string | null
+          estimated_pickup_at: string | null
+          final_fee: number | null
+          id: string
+          order_code: string | null
+          order_id: string | null
+          picked_at: string | null
+          quote_id: string | null
+          quote_price: number | null
+          raw_response: Json | null
+          restaurant_id: string | null
+          status: string
+          tracking_link: string | null
+          tracking_number: string
+          updated_at: string | null
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          courier_latitude?: number | null
+          courier_longitude?: number | null
+          courier_name?: string | null
+          courier_phone?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          estimated_delivery_at?: string | null
+          estimated_pickup_at?: string | null
+          final_fee?: number | null
+          id?: string
+          order_code?: string | null
+          order_id?: string | null
+          picked_at?: string | null
+          quote_id?: string | null
+          quote_price?: number | null
+          raw_response?: Json | null
+          restaurant_id?: string | null
+          status?: string
+          tracking_link?: string | null
+          tracking_number: string
+          updated_at?: string | null
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          courier_latitude?: number | null
+          courier_longitude?: number | null
+          courier_name?: string | null
+          courier_phone?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          estimated_delivery_at?: string | null
+          estimated_pickup_at?: string | null
+          final_fee?: number | null
+          id?: string
+          order_code?: string | null
+          order_id?: string | null
+          picked_at?: string | null
+          quote_id?: string | null
+          quote_price?: number | null
+          raw_response?: Json | null
+          restaurant_id?: string | null
+          status?: string
+          tracking_link?: string | null
+          tracking_number?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "glovo_deliveries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "glovo_deliveries_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           amount_due: number
@@ -1235,6 +1328,7 @@ export type Database = {
           cart_id: string
           created_at: string
           delivery_address: string
+          delivery_provider: string | null
           id: string
           order_notes: string | null
           payment_method: string
@@ -1248,6 +1342,7 @@ export type Database = {
           cart_id: string
           created_at?: string
           delivery_address: string
+          delivery_provider?: string | null
           id?: string
           order_notes?: string | null
           payment_method: string
@@ -1261,6 +1356,7 @@ export type Database = {
           cart_id?: string
           created_at?: string
           delivery_address?: string
+          delivery_provider?: string | null
           id?: string
           order_notes?: string | null
           payment_method?: string
@@ -1496,6 +1592,74 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "restaurant_ai_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_glovo_config: {
+        Row: {
+          access_token: string | null
+          address_book_id: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          enabled: boolean | null
+          environment: string | null
+          id: string
+          pickup_address: string | null
+          pickup_latitude: number | null
+          pickup_longitude: number | null
+          pickup_phone: string | null
+          refresh_token: string | null
+          restaurant_id: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          address_book_id?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          enabled?: boolean | null
+          environment?: string | null
+          id?: string
+          pickup_address?: string | null
+          pickup_latitude?: number | null
+          pickup_longitude?: number | null
+          pickup_phone?: string | null
+          refresh_token?: string | null
+          restaurant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          address_book_id?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          enabled?: boolean | null
+          environment?: string | null
+          id?: string
+          pickup_address?: string | null
+          pickup_latitude?: number | null
+          pickup_longitude?: number | null
+          pickup_phone?: string | null
+          refresh_token?: string | null
+          restaurant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_glovo_config_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
             referencedRelation: "restaurants"
