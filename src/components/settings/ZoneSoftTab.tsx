@@ -7,6 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from '@/hooks/use-toast';
 import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useZoneSoftStore } from '@/stores/zonesoftStore';
@@ -19,7 +21,11 @@ import {
   Eye, 
   EyeOff,
   RefreshCw,
-  Link2
+  Link2,
+  ChevronDown,
+  AlertTriangle,
+  ExternalLink,
+  Bug
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -68,6 +74,14 @@ export function ZoneSoftTab() {
   const [formData, setFormData] = useState<ZoneSoftFormData>({ ...DEFAULT_ZONESOFT_FORM_DATA });
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'success' | 'error'>('unknown');
   const [hasChanges, setHasChanges] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{
+    url: string;
+    bodyPreview: string;
+    signatureVariantsTried: string[];
+    storeId: number | null;
+    clientIdPreview: string;
+  } | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
   
   useEffect(() => {
     if (restaurant?.id) {
@@ -76,6 +90,8 @@ export function ZoneSoftTab() {
       setShowSecret(false);
       setConnectionStatus('unknown');
       setHasChanges(false);
+      setDebugInfo(null);
+      setShowDebug(false);
 
       fetchConfig(restaurant.id);
       fetchMappings(restaurant.id);
@@ -141,16 +157,23 @@ export function ZoneSoftTab() {
   const handleTestConnection = async () => {
     if (!restaurant?.id) return;
     
+    setDebugInfo(null);
     const result = await testConnection(restaurant.id);
     
     if (result.success) {
       setConnectionStatus('success');
+      setDebugInfo(null);
       toast({
         title: '✅ Conexão bem sucedida',
         description: 'A ligação ao ZoneSoft está a funcionar corretamente.',
       });
     } else {
       setConnectionStatus('error');
+      // Store debug info if available
+      if (result.debug) {
+        setDebugInfo(result.debug);
+        setShowDebug(true);
+      }
       toast({
         variant: 'destructive',
         title: '❌ Falha na conexão',
@@ -407,6 +430,65 @@ export function ZoneSoftTab() {
           </div>
           
           <Separator />
+          
+          {/* Debug Info Panel - shows when there's an error */}
+          {debugInfo && connectionStatus === 'error' && (
+            <Collapsible open={showDebug} onOpenChange={setShowDebug}>
+              <Alert variant="destructive" className="border-destructive/50">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Erro de autenticação (401 Unauthorized)</span>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1">
+                        <Bug className="h-3.5 w-3.5" />
+                        {showDebug ? 'Ocultar detalhes' : 'Ver detalhes'}
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showDebug ? 'rotate-180' : ''}`} />
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  
+                  <CollapsibleContent className="space-y-3 pt-2">
+                    <div className="rounded-md bg-destructive/10 p-3 text-xs font-mono space-y-2">
+                      <div>
+                        <span className="text-muted-foreground">URL: </span>
+                        <span className="break-all">{debugInfo.url}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Store ID: </span>
+                        <span>{debugInfo.storeId ?? 'não definido'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Client ID: </span>
+                        <span>{debugInfo.clientIdPreview}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Body enviado: </span>
+                        <span className="break-all">{debugInfo.bodyPreview}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Assinaturas testadas: </span>
+                        <span>{debugInfo.signatureVariantsTried.join(', ')}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">Compare com a documentação:</span>
+                      <a 
+                        href="https://developer.zonesoft.org" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        Portal ZoneSoft Developer
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </CollapsibleContent>
+                </AlertDescription>
+              </Alert>
+            </Collapsible>
+          )}
           
           {/* Actions */}
           <div className="flex items-center justify-between pt-4">

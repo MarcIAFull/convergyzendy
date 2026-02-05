@@ -14,7 +14,7 @@ interface ZoneSoftState {
   // Actions
   fetchConfig: (restaurantId: string) => Promise<void>;
   saveConfig: (restaurantId: string, config: Partial<ZoneSoftConfig>) => Promise<boolean>;
-  testConnection: (restaurantId: string) => Promise<{ success: boolean; error?: string }>;
+  testConnection: (restaurantId: string) => Promise<{ success: boolean; error?: string; debug?: { url: string; bodyPreview: string; signatureVariantsTried: string[]; storeId: number | null; clientIdPreview: string } }>;
   syncProducts: (restaurantId: string) => Promise<{ success: boolean; products?: ZoneSoftProduct[]; error?: string }>;
   sendOrderToZoneSoft: (restaurantId: string, orderId: string) => Promise<{ success: boolean; documentNumber?: number; error?: string }>;
   fetchMappings: (restaurantId: string) => Promise<void>;
@@ -85,7 +85,7 @@ export const useZoneSoftStore = create<ZoneSoftState>((set, get) => ({
       if (data.success) {
         return { success: true };
       } else {
-        return { success: false, error: data.error };
+        return { success: false, error: data.error, debug: data.debug };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro de conexão';
