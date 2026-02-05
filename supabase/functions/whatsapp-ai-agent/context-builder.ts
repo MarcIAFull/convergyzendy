@@ -640,7 +640,8 @@ function formatRestaurantInfoForPrompt(restaurant: any): string {
     const formattedHours = Object.entries(days)
       .map(([key, label]) => {
         const dayHours = hours[key];
-        if (!dayHours || (!dayHours.open && !dayHours.close)) {
+        // Check if day is marked as closed OR has no hours defined
+        if (!dayHours || dayHours.closed === true || (!dayHours.open && !dayHours.close)) {
           return `${label}: Fechado`;
         }
         return `${label}: ${dayHours.open || '?'} - ${dayHours.close || '?'}`;
