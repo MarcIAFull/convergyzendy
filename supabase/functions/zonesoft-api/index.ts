@@ -46,6 +46,15 @@ function secretToKeyBytes(appSecret: string): Uint8Array {
   return bytes;
 }
 
+// Encode bytes to base64
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 async function generateSignature(body: string, appSecret: string): Promise<string> {
   const encoder = new TextEncoder();
   const keyData = secretToKeyBytes(appSecret);
@@ -59,12 +68,20 @@ async function generateSignature(body: string, appSecret: string): Promise<strin
     ["sign"],
   );
 
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, data);
+  const signatureBytes = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, data));
 
-  // ZoneSoft docs commonly show hex signature; keep lowercase hex by default
-  return Array.from(new Uint8Array(signature))
+  // Try both formats and log them for debugging
+  const hexLower = Array.from(signatureBytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+  const hexUpper = hexLower.toUpperCase();
+  const base64Sig = bytesToBase64(signatureBytes);
+
+  console.log(`[ZoneSoft] Signature formats - hex: ${hexLower.slice(0, 16)}..., base64: ${base64Sig.slice(0, 16)}...`);
+
+  // ZoneSoft API documentation is unclear - try Base64 as some HMAC APIs prefer it
+  // If hex doesn't work, Base64 is the common alternative
+  return base64Sig;
 }
 
 // Make authenticated request to ZoneSoft API
