@@ -42,6 +42,7 @@ interface GlovoState {
   
   clearQuote: () => void;
   clearError: () => void;
+  reset: () => void;
 }
 
 export const useGlovoStore = create<GlovoState>((set, get) => ({
@@ -261,4 +262,12 @@ export const useGlovoStore = create<GlovoState>((set, get) => ({
 
   clearQuote: () => set({ currentQuote: null }),
   clearError: () => set({ error: null }),
+  
+  reset: () => set({
+    config: null,
+    isLoading: false,
+    error: null,
+    currentQuote: null,
+    deliveries: {},
+  }),
 }));
