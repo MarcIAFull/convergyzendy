@@ -256,11 +256,13 @@ export default function PublicCheckout() {
         }
       }
 
-      // For non-Stripe payments, notify restaurant and redirect
-      console.log('[Checkout] Order created, sending WhatsApp notification...', webOrder.id);
+      // For non-Stripe payments, notify restaurant and customer, then redirect
+      console.log('[Checkout] Order created, sending WhatsApp notifications...', webOrder.id);
       
-      try {
-        const notifyResponse = await fetch(
+      // Send notifications in parallel
+      const notificationPromises = [
+        // Notify restaurant
+        fetch(
           'https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/notify-web-order',
           {
             method: 'POST',
@@ -270,16 +272,27 @@ export default function PublicCheckout() {
               restaurant_id: menuData.restaurant.id 
             }),
           }
-        );
-        
-        const notifyResult = await notifyResponse.json();
-        console.log('[Checkout] WhatsApp notification result:', notifyResult);
-        
-        if (!notifyResponse.ok) {
-          console.error('[Checkout] WhatsApp notification failed:', notifyResult);
-        }
+        ),
+        // Notify customer
+        fetch(
+          'https://tgbfqcbqfdzrtbtlycve.supabase.co/functions/v1/notify-customer-order',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              order_id: webOrder.id,
+              restaurant_id: menuData.restaurant.id 
+            }),
+          }
+        )
+      ];
+
+      try {
+        const [restaurantNotify, customerNotify] = await Promise.all(notificationPromises);
+        console.log('[Checkout] Restaurant notification:', restaurantNotify.ok ? 'sent' : 'failed');
+        console.log('[Checkout] Customer notification:', customerNotify.ok ? 'sent' : 'failed');
       } catch (notifyError) {
-        console.error('[Checkout] Failed to send WhatsApp notification:', notifyError);
+        console.error('[Checkout] Failed to send WhatsApp notifications:', notifyError);
       }
 
       clearCart();

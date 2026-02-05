@@ -33,6 +33,7 @@ export function buildConversationalAIPrompt(context: {
   faqResponses?: string;
   unavailableItemsHandling?: string;
   specialOffersInfo?: string;
+  aiOrderingEnabled?: boolean;
   // RAG extras
   menuUrl?: string;
 }): string {
@@ -59,8 +60,14 @@ export function buildConversationalAIPrompt(context: {
     faqResponses,
     unavailableItemsHandling,
     specialOffersInfo,
+    aiOrderingEnabled = true,
     menuUrl = ''
   } = context;
+
+  // ============================================================
+  // RECEPTION MODE CHECK
+  // ============================================================
+  const isReceptionMode = !aiOrderingEnabled;
 
   // ============================================================
   // EXTRACT CATEGORIES (RAG - no full menu)
@@ -101,9 +108,37 @@ export function buildConversationalAIPrompt(context: {
   // ============================================================
   // BUILD PROMPT V16 - MÁQUINA DE VENDAS INTELIGENTE
   // ============================================================
+  
+  // Reception Mode Section (only if ordering is disabled)
+  const receptionModeSection = isReceptionMode ? `
+═══════════════════════════════════════════════════════════════
+🎯 MODO RECEPÇÃO ATIVO
+═══════════════════════════════════════════════════════════════
+
+⚠️ VOCÊ É APENAS RECEPCIONISTA. NÃO anota pedidos diretamente.
+
+QUANDO cliente quiser fazer pedido:
+1. NÃO use ferramentas de carrinho (add_to_cart, add_pending_item, etc.)
+2. ENVIE o link do cardápio: ${menuUrl}
+3. INFORME que após finalizar, ele receberá confirmação aqui
+
+Exemplo de resposta para pedido:
+"Claro! 😊 Acesse nosso cardápio digital:
+${menuUrl}
+
+Depois de finalizar o pedido lá, te envio a confirmação aqui!"
+
+VOCÊ AINDA PODE:
+- Responder perguntas sobre o cardápio (use search_menu)
+- Dar informações sobre o restaurante (horários, endereço)
+- Tirar dúvidas sobre produtos e preços
+- Fazer follow-up após pedidos finalizados
+
+` : '';
+  
   return `# SYSTEM PROMPT V16 - VENDEDOR INTELIGENTE
 # Restaurante: ${restaurantName}
-
+${receptionModeSection}
 ═══════════════════════════════════════════════════════════════
 📊 SEÇÃO 1: CONTEXTO EM TEMPO REAL
 ═══════════════════════════════════════════════════════════════

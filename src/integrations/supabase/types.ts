@@ -1551,6 +1551,7 @@ export type Database = {
       }
       restaurant_ai_settings: {
         Row: {
+          ai_ordering_enabled: boolean | null
           business_rules: string | null
           closing_message: string | null
           created_at: string
@@ -1568,6 +1569,7 @@ export type Database = {
           upsell_aggressiveness: string
         }
         Insert: {
+          ai_ordering_enabled?: boolean | null
           business_rules?: string | null
           closing_message?: string | null
           created_at?: string
@@ -1585,6 +1587,7 @@ export type Database = {
           upsell_aggressiveness?: string
         }
         Update: {
+          ai_ordering_enabled?: boolean | null
           business_rules?: string | null
           closing_message?: string | null
           created_at?: string

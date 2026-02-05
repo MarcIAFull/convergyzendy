@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2, Info, Bot, ExternalLink } from 'lucide-react';
 import { RestaurantAISettings, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
 
 export function AIPersonalizationTab() {
@@ -48,7 +49,8 @@ export function AIPersonalizationTab() {
             tone: 'friendly',
             upsell_aggressiveness: 'medium',
             max_additional_questions_before_checkout: 2,
-            language: 'pt-BR'
+            language: 'pt-BR',
+            ai_ordering_enabled: true
           })
           .select()
           .single();
@@ -86,7 +88,8 @@ export function AIPersonalizationTab() {
           business_rules: settings.business_rules,
           faq_responses: settings.faq_responses,
           unavailable_items_handling: settings.unavailable_items_handling,
-          special_offers_info: settings.special_offers_info
+          special_offers_info: settings.special_offers_info,
+          ai_ordering_enabled: settings.ai_ordering_enabled
         })
         .eq('id', settings.id);
 
@@ -135,6 +138,52 @@ export function AIPersonalizationTab() {
             As configurações técnicas dos agentes são geridas por administradores.
           </AlertDescription>
         </Alert>
+
+        {/* AI Ordering Mode Toggle */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Modo de Operação da IA
+            </CardTitle>
+            <CardDescription>
+              Configure como a IA interage com pedidos
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="ai-ordering">IA Anota Pedidos</Label>
+                <p className="text-sm text-muted-foreground">
+                  {settings.ai_ordering_enabled 
+                    ? 'A IA anota pedidos diretamente pelo WhatsApp'
+                    : (
+                      <span className="flex items-center gap-1">
+                        A IA envia o link do cardápio digital para o cliente fazer o pedido
+                        <ExternalLink className="h-3 w-3" />
+                      </span>
+                    )
+                  }
+                </p>
+              </div>
+              <Switch
+                id="ai-ordering"
+                checked={settings.ai_ordering_enabled !== false}
+                onCheckedChange={(checked) => updateSetting('ai_ordering_enabled', checked)}
+              />
+            </div>
+            {!settings.ai_ordering_enabled && (
+              <Alert className="mt-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                <Info className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 dark:text-amber-400">
+                  <strong>Modo Recepção Ativo:</strong> Quando o cliente quiser fazer um pedido, 
+                  a IA enviará o link do cardápio digital. Após a finalização, o cliente receberá 
+                  confirmação no WhatsApp.
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

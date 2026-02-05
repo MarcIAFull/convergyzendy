@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.zonesoft-api]
 verify_jwt = false
+
+[functions.notify-customer-order]
+verify_jwt = false

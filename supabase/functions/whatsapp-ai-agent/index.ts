@@ -194,6 +194,31 @@ serve(async (req) => {
       stateMetadata,
       formatted
     } = context;
+    
+    // ============================================================
+    // RECEPTION MODE: Filter ordering tools if disabled
+    // ============================================================
+    const aiOrderingEnabled = restaurantAISettings?.ai_ordering_enabled !== false;
+    
+    if (!aiOrderingEnabled) {
+      console.log('[Agent Config] 🎯 RECEPTION MODE ACTIVE - Filtering ordering tools');
+      const orderingTools = [
+        'add_to_cart', 
+        'add_pending_item', 
+        'confirm_pending_items',
+        'remove_pending_item',
+        'clear_pending_items',
+        'remove_from_cart',
+        'clear_cart',
+        'set_payment_method',
+        'validate_and_set_delivery_address',
+        'finalize_order'
+      ];
+      enabledToolsConfig = enabledToolsConfig.filter(
+        t => !orderingTools.includes(t.tool_name)
+      );
+      console.log(`[Agent Config] Filtered tools: ${enabledToolsConfig.map(t => t.tool_name).join(', ')}`);
+    }
 
     // Log context loaded
     interactionLog.state_before = currentState;
@@ -585,7 +610,9 @@ serve(async (req) => {
       businessRules: restaurantAISettings?.business_rules,
       faqResponses: restaurantAISettings?.faq_responses,
       unavailableItemsHandling: restaurantAISettings?.unavailable_items_handling,
-      specialOffersInfo: restaurantAISettings?.special_offers_info
+      specialOffersInfo: restaurantAISettings?.special_offers_info,
+      aiOrderingEnabled: aiOrderingEnabled,
+      menuUrl: context.menuUrl
     });
     
     let conversationalSystemPrompt = buildSystemPromptFromBlocks(
