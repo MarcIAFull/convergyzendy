@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Store, Clock, DollarSign, Loader2, MapPin, RefreshCw } from 'lucide-react';
 import type { OpeningHours } from '@/types/database';
@@ -422,48 +423,70 @@ export function RestaurantTab() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {daysOfWeek.map(({ key, label }) => (
-              <div key={key} className="space-y-2">
-                <Label className="text-base font-medium">{label}</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name={`opening_hours.${key}.open`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Abertura</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="time"
-                            {...field}
-                            disabled={form.watch(`opening_hours.${key}.closed`)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`opening_hours.${key}.close`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Fecho</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="time"
-                            {...field}
-                            disabled={form.watch(`opening_hours.${key}.closed`)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {daysOfWeek.map(({ key, label }) => {
+              const isClosed = form.watch(`opening_hours.${key}.closed`);
+              return (
+                <div key={key} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-medium">{label}</Label>
+                    <FormField
+                      control={form.control}
+                      name={`opening_hours.${key}.closed`}
+                      render={({ field }) => (
+                        <FormItem className="flex items-center gap-2 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              checked={!field.value}
+                              onCheckedChange={(checked) => field.onChange(!checked)}
+                            />
+                          </FormControl>
+                          <FormLabel className="text-sm font-normal cursor-pointer">
+                            Aberto
+                          </FormLabel>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className={`grid grid-cols-2 gap-4 ${isClosed ? 'opacity-50' : ''}`}>
+                    <FormField
+                      control={form.control}
+                      name={`opening_hours.${key}.open`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Abertura</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="time"
+                              {...field}
+                              disabled={isClosed}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`opening_hours.${key}.close`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fecho</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="time"
+                              {...field}
+                              disabled={isClosed}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  {key !== 'sunday' && <Separator className="mt-4" />}
                 </div>
-                {key !== 'sunday' && <Separator className="mt-4" />}
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 
