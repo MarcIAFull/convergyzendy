@@ -29,16 +29,23 @@ interface ZoneSoftAPIResult {
   error?: string;
 }
 
-// Generate HMAC-SHA256 signature
-// NOTE: ZoneSoft credentials are often provided as HEX strings. Some APIs expect the secret
-// to be decoded from HEX into raw bytes before computing HMAC.
-function secretToKeyBytes(appSecret: string): Uint8Array {
-  const trimmed = appSecret.trim();
-  const isHex = /^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0;
-  if (!isHex) {
-    return new TextEncoder().encode(trimmed);
-  }
+// Generate HMAC-SHA256 signature candidates
+// ZoneSoft documentation examples typically show the signature as HEX, but real credentials
+// can vary (secret as plain text vs HEX). To make this robust we try a small set of
+// candidate signatures and retry on 401.
 
+type SignatureCandidate = {
+  label: string;
+  signature: string;
+};
+
+function isEvenHex(input: string): boolean {
+  const s = input.trim();
+  return /^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const trimmed = hex.trim();
   const bytes = new Uint8Array(trimmed.length / 2);
   for (let i = 0; i < trimmed.length; i += 2) {
     bytes[i / 2] = parseInt(trimmed.slice(i, i + 2), 16);
@@ -46,7 +53,13 @@ function secretToKeyBytes(appSecret: string): Uint8Array {
   return bytes;
 }
 
-// Encode bytes to base64
+function bytesToHex(bytes: Uint8Array, upper: boolean): string {
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return upper ? hex.toUpperCase() : hex;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
@@ -55,9 +68,8 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function generateSignature(body: string, appSecret: string): Promise<string> {
+async function signHmacSha256(body: string, keyData: Uint8Array): Promise<Uint8Array> {
   const encoder = new TextEncoder();
-  const keyData = secretToKeyBytes(appSecret);
   const data = encoder.encode(body);
 
   const cryptoKey = await crypto.subtle.importKey(
@@ -68,20 +80,52 @@ async function generateSignature(body: string, appSecret: string): Promise<strin
     ["sign"],
   );
 
-  const signatureBytes = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, data));
+  return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, data));
+}
 
-  // Try both formats and log them for debugging
-  const hexLower = Array.from(signatureBytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const hexUpper = hexLower.toUpperCase();
-  const base64Sig = bytesToBase64(signatureBytes);
+async function buildSignatureCandidates(body: string, appSecret: string): Promise<SignatureCandidate[]> {
+  const secret = appSecret.trim();
+  const encoder = new TextEncoder();
 
-  console.log(`[ZoneSoft] Signature formats - hex: ${hexLower.slice(0, 16)}..., base64: ${base64Sig.slice(0, 16)}...`);
+  const keyModes: Array<{ label: string; keyData: Uint8Array }> = [
+    { label: "utf8", keyData: encoder.encode(secret) },
+  ];
 
-  // ZoneSoft API documentation is unclear - try Base64 as some HMAC APIs prefer it
-  // If hex doesn't work, Base64 is the common alternative
-  return base64Sig;
+  if (isEvenHex(secret)) {
+    keyModes.push({ label: "hex", keyData: hexToBytes(secret) });
+  }
+
+  const candidates: SignatureCandidate[] = [];
+
+  for (const km of keyModes) {
+    const signatureBytes = await signHmacSha256(body, km.keyData);
+
+    // Prefer HEX (as per our integration manual), then Base64 as fallback.
+    const hexLower = bytesToHex(signatureBytes, false);
+    const hexUpper = bytesToHex(signatureBytes, true);
+    const base64Sig = bytesToBase64(signatureBytes);
+
+    candidates.push({ label: `${km.label}:hexLower`, signature: hexLower });
+    candidates.push({ label: `${km.label}:hexUpper`, signature: hexUpper });
+    candidates.push({ label: `${km.label}:base64`, signature: base64Sig });
+  }
+
+  // De-duplicate by signature value (some combinations can match)
+  const uniq = new Map<string, SignatureCandidate>();
+  for (const c of candidates) {
+    if (!uniq.has(c.signature)) uniq.set(c.signature, c);
+  }
+
+  const ordered = Array.from(uniq.values());
+
+  console.log(`[ZoneSoft] Signature candidates: ${ordered.map((c) => c.label).join(", ")}`);
+  console.log(
+    `[ZoneSoft] Signature preview: ${ordered
+      .map((c) => `${c.label}=${c.signature.slice(0, 16)}...`)
+      .join(" | ")}`,
+  );
+
+  return ordered;
 }
 
 // Make authenticated request to ZoneSoft API
@@ -93,56 +137,81 @@ async function zoneSoftRequest(
 ): Promise<ZoneSoftAPIResult> {
   // ZoneSoft API expects compact JSON (no extra spaces)
   const bodyString = JSON.stringify(body);
-  const signature = await generateSignature(bodyString, config.app_secret);
-  
+
   const url = `${ZONESOFT_API_BASE}/${interfaceName}/${action}`;
-  
+
   console.log(`[ZoneSoft] Calling ${url}`);
   console.log(`[ZoneSoft] Body: ${bodyString}`);
 
   const mask = (v: string) => (v.length <= 8 ? "***" : `${v.slice(0, 4)}...${v.slice(-4)}`);
-  console.log(`[ZoneSoft] Auth: client_id=${mask(config.client_id)} app_key=${mask(config.app_key)} signature=${mask(signature)}`);
-  
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "X-ZS-CLIENT-ID": config.client_id.trim(),
-      "X-ZS-APP-KEY": config.app_key.trim(),
-      "X-ZS-SIGNATURE": signature,
-    };
 
-    console.log(`[ZoneSoft] Headers sent: ${Object.keys(headers).join(', ')}`);
-    
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: bodyString,
-    });
-    
-    const responseText = await response.text();
-    console.log(`[ZoneSoft] Response status: ${response.status}`);
-    console.log(`[ZoneSoft] Response body: ${responseText}`);
-    
-    if (!response.ok) {
+  const signatureCandidates = await buildSignatureCandidates(bodyString, config.app_secret);
+
+  let lastStatus = 0;
+  let lastBody = "";
+
+  for (let i = 0; i < signatureCandidates.length; i++) {
+    const candidate = signatureCandidates[i];
+
+    console.log(
+      `[ZoneSoft] Auth attempt ${i + 1}/${signatureCandidates.length}: client_id=${mask(config.client_id)} app_key=${mask(config.app_key)} signature(${candidate.label})=${mask(candidate.signature)}`,
+    );
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-ZS-CLIENT-ID": config.client_id.trim(),
+        "X-ZS-APP-KEY": config.app_key.trim(),
+        "X-ZS-SIGNATURE": candidate.signature,
+      };
+
+      console.log(`[ZoneSoft] Headers sent: ${Object.keys(headers).join(", ")}`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: bodyString,
+      });
+
+      const responseText = await response.text();
+      lastStatus = response.status;
+      lastBody = responseText;
+
+      console.log(`[ZoneSoft] Response status: ${response.status}`);
+      console.log(`[ZoneSoft] Response body: ${responseText}`);
+
+      if (response.ok) {
+        try {
+          const data = JSON.parse(responseText);
+          return { success: true, data };
+        } catch {
+          return { success: true, data: { raw: responseText } };
+        }
+      }
+
+      // Retry only on auth failures
+      if (response.status === 401 && i < signatureCandidates.length - 1) {
+        console.log(`[ZoneSoft] Unauthorized with ${candidate.label}; retrying with next signature...`);
+        continue;
+      }
+
       return {
         success: false,
         error: `HTTP ${response.status}: ${responseText}`,
       };
+    } catch (error) {
+      console.error(`[ZoneSoft] Request error:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
-    
-    try {
-      const data = JSON.parse(responseText);
-      return { success: true, data };
-    } catch {
-      return { success: true, data: { raw: responseText } };
-    }
-  } catch (error) {
-    console.error(`[ZoneSoft] Request error:`, error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
   }
+
+  return {
+    success: false,
+    error: `HTTP ${lastStatus}: ${lastBody}`,
+  };
 }
 
 // Get ZoneSoft config for restaurant
