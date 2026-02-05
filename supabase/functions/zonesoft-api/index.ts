@@ -192,6 +192,103 @@ serve(async (req) => {
       });
     }
     
+    // Actions that do NOT require ZoneSoft API credentials (internal DB only)
+    if (!restaurantId) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Missing restaurantId",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get product mappings (should be available even before credentials are configured)
+    if (action === "get-mappings") {
+      const { data, error } = await supabase
+        .from("zonesoft_product_mapping")
+        .select("*")
+        .eq("restaurant_id", restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to get mappings: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({ success: true, data }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Save product mapping (doesn't require ZoneSoft credentials)
+    if (action === "save-mapping") {
+      const {
+        localProductId,
+        zoneSoftProductId,
+        zoneSoftProductCode,
+        zoneSoftProductName,
+      } = params as {
+        localProductId?: string;
+        zoneSoftProductId?: number;
+        zoneSoftProductCode?: string;
+        zoneSoftProductName?: string;
+      };
+
+      if (!localProductId || !zoneSoftProductId) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Missing localProductId or zoneSoftProductId",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error } = await supabase
+        .from("zonesoft_product_mapping")
+        .upsert({
+          restaurant_id: restaurantId,
+          local_product_id: localProductId,
+          zonesoft_product_id: zoneSoftProductId,
+          zonesoft_product_code: zoneSoftProductCode,
+          zonesoft_product_name: zoneSoftProductName,
+          last_synced_at: new Date().toISOString(),
+        }, { onConflict: "restaurant_id,local_product_id" });
+
+      if (error) {
+        throw new Error(`Failed to save mapping: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get sync logs (doesn't require ZoneSoft credentials)
+    if (action === "get-sync-logs") {
+      const { orderId, limit = 10 } = params as { orderId?: string; limit?: number };
+
+      let query = supabase
+        .from("zonesoft_sync_logs")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (orderId) {
+        query = query.eq("order_id", orderId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw new Error(`Failed to get logs: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({ success: true, data }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Actions that need config
     const config = await getZoneSoftConfig(supabase, restaurantId);
     
