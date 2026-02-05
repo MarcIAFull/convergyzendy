@@ -27,6 +27,13 @@ interface ZoneSoftAPIResult {
   success: boolean;
   data?: Record<string, unknown>;
   error?: string;
+  debug?: {
+    url: string;
+    bodyPreview: string;
+    signatureVariantsTried: string[];
+    storeId: number | null;
+    clientIdPreview: string;
+  };
 }
 
 // Generate HMAC-SHA256 signature candidates
@@ -146,12 +153,14 @@ async function zoneSoftRequest(
   const mask = (v: string) => (v.length <= 8 ? "***" : `${v.slice(0, 4)}...${v.slice(-4)}`);
 
   const signatureCandidates = await buildSignatureCandidates(bodyString, config.app_secret);
+  const variantsTried: string[] = [];
 
   let lastStatus = 0;
   let lastBody = "";
 
   for (let i = 0; i < signatureCandidates.length; i++) {
     const candidate = signatureCandidates[i];
+    variantsTried.push(candidate.label);
 
     console.log(
       `[ZoneSoft] Auth attempt ${i + 1}/${signatureCandidates.length}: client_id=${mask(config.client_id)} app_key=${mask(config.app_key)} signature(${candidate.label})=${mask(candidate.signature)}`,
@@ -195,9 +204,19 @@ async function zoneSoftRequest(
         continue;
       }
 
+      // Build debug info for error response
+      const debugInfo = {
+        url,
+        bodyPreview: bodyString.length > 200 ? bodyString.slice(0, 200) + "..." : bodyString,
+        signatureVariantsTried: variantsTried,
+        storeId: (body as { loja?: number }).loja || null,
+        clientIdPreview: mask(config.client_id),
+      };
+
       return {
         success: false,
         error: `HTTP ${response.status}: ${responseText}`,
+        debug: debugInfo,
       };
     } catch (error) {
       console.error(`[ZoneSoft] Request error:`, error);
@@ -208,9 +227,19 @@ async function zoneSoftRequest(
     }
   }
 
+  // Build debug info for final failure
+  const debugInfo = {
+    url,
+    bodyPreview: bodyString.length > 200 ? bodyString.slice(0, 200) + "..." : bodyString,
+    signatureVariantsTried: variantsTried,
+    storeId: (body as { loja?: number }).loja || null,
+    clientIdPreview: mask(config.client_id),
+  };
+
   return {
     success: false,
     error: `HTTP ${lastStatus}: ${lastBody}`,
+    debug: debugInfo,
   };
 }
 
@@ -397,11 +426,22 @@ serve(async (req) => {
     
     // Test connection
     if (action === "test-connection") {
-      // Try to get products list as a connection test
-      const result = await zoneSoftRequest(apiConfig, "products", "getInstances", {
+      console.log(`[ZoneSoft] Testing connection with store_id=${config.store_id}`);
+      
+      // Try products/getInstances first
+      let result = await zoneSoftRequest(apiConfig, "products", "getInstances", {
         loja: config.store_id || 1,
         limit: 1,
       });
+      
+      // If 401, try documents/getInstances as fallback (different module permissions)
+      if (!result.success && result.error?.includes("401")) {
+        console.log(`[ZoneSoft] products/getInstances failed with 401, trying documents/getInstances...`);
+        result = await zoneSoftRequest(apiConfig, "documents", "getInstances", {
+          loja: config.store_id || 1,
+          limit: 1,
+        });
+      }
       
       // Update config with test result
       await supabase
