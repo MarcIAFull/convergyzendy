@@ -57,27 +57,37 @@ async function zoneSoftRequest(
   action: string,
   body: Record<string, unknown>
 ): Promise<ZoneSoftAPIResult> {
+  // ZoneSoft API expects compact JSON (no extra spaces)
   const bodyString = JSON.stringify(body);
   const signature = await generateSignature(bodyString, config.app_secret);
   
   const url = `${ZONESOFT_API_BASE}/${interfaceName}/${action}`;
   
   console.log(`[ZoneSoft] Calling ${url}`);
+  console.log(`[ZoneSoft] Body: ${bodyString}`);
+  console.log(`[ZoneSoft] Client ID: ${config.client_id}`);
+  console.log(`[ZoneSoft] App Key: ${config.app_key}`);
+  console.log(`[ZoneSoft] Signature: ${signature}`);
   
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-ZS-CLIENT-ID": config.client_id,
+      "X-ZS-APP-KEY": config.app_key,
+      "X-ZS-SIGNATURE": signature,
+    };
+    
+    console.log(`[ZoneSoft] Headers:`, JSON.stringify(headers));
+    
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-ZS-CLIENT-ID": config.client_id,
-        "X-ZS-APP-KEY": config.app_key,
-        "X-ZS-SIGNATURE": signature,
-      },
+      headers,
       body: bodyString,
     });
     
     const responseText = await response.text();
     console.log(`[ZoneSoft] Response status: ${response.status}`);
+    console.log(`[ZoneSoft] Response body: ${responseText}`);
     
     if (!response.ok) {
       return {
