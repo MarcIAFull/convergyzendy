@@ -24,6 +24,32 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+type ZoneSoftFormData = {
+  enabled: boolean;
+  client_id: string;
+  app_key: string;
+  app_secret: string;
+  store_id: string;
+  warehouse_id: string;
+  operator_id: string;
+  document_type: string;
+  document_series: string;
+  payment_type_id: string;
+};
+
+const DEFAULT_ZONESOFT_FORM_DATA: ZoneSoftFormData = {
+  enabled: false,
+  client_id: '',
+  app_key: '',
+  app_secret: '',
+  store_id: '',
+  warehouse_id: '1',
+  operator_id: '',
+  document_type: 'TK',
+  document_series: '',
+  payment_type_id: '1',
+};
+
 export function ZoneSoftTab() {
   const { restaurant } = useRestaurantStore();
   const { 
@@ -39,23 +65,18 @@ export function ZoneSoftTab() {
   } = useZoneSoftStore();
   
   const [showSecret, setShowSecret] = useState(false);
-  const [formData, setFormData] = useState({
-    enabled: false,
-    client_id: '',
-    app_key: '',
-    app_secret: '',
-    store_id: '',
-    warehouse_id: '1',
-    operator_id: '',
-    document_type: 'TK',
-    document_series: '',
-    payment_type_id: '1',
-  });
+  const [formData, setFormData] = useState<ZoneSoftFormData>({ ...DEFAULT_ZONESOFT_FORM_DATA });
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'success' | 'error'>('unknown');
   const [hasChanges, setHasChanges] = useState(false);
   
   useEffect(() => {
     if (restaurant?.id) {
+      // Reset local UI state immediately to avoid showing data from the previous restaurant
+      setFormData({ ...DEFAULT_ZONESOFT_FORM_DATA });
+      setShowSecret(false);
+      setConnectionStatus('unknown');
+      setHasChanges(false);
+
       fetchConfig(restaurant.id);
       fetchMappings(restaurant.id);
     }

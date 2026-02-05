@@ -12,6 +12,30 @@ import { useRestaurantStore } from '@/stores/restaurantStore';
 import { useGlovoStore } from '@/stores/glovoStore';
 import { toast } from '@/hooks/use-toast';
 
+type GlovoFormData = {
+  enabled: boolean;
+  client_id: string;
+  client_secret: string;
+  environment: 'staging' | 'production';
+  pickup_address: string;
+  pickup_phone: string;
+  pickup_latitude: string;
+  pickup_longitude: string;
+  webhook_secret: string;
+};
+
+const DEFAULT_GLOVO_FORM_DATA: GlovoFormData = {
+  enabled: false,
+  client_id: '',
+  client_secret: '',
+  environment: 'staging',
+  pickup_address: '',
+  pickup_phone: '',
+  pickup_latitude: '',
+  pickup_longitude: '',
+  webhook_secret: '',
+};
+
 export function GlovoTab() {
   const { restaurant } = useRestaurantStore();
   const { 
@@ -24,17 +48,7 @@ export function GlovoTab() {
     clearError 
   } = useGlovoStore();
 
-  const [formData, setFormData] = useState({
-    enabled: false,
-    client_id: '',
-    client_secret: '',
-    environment: 'staging' as 'staging' | 'production',
-    pickup_address: '',
-    pickup_phone: '',
-    pickup_latitude: '',
-    pickup_longitude: '',
-    webhook_secret: '',
-  });
+  const [formData, setFormData] = useState<GlovoFormData>({ ...DEFAULT_GLOVO_FORM_DATA });
 
   const [showSecret, setShowSecret] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -42,6 +56,13 @@ export function GlovoTab() {
 
   useEffect(() => {
     if (restaurant?.id) {
+      // Reset local UI state immediately to avoid showing data from the previous restaurant
+      setFormData({ ...DEFAULT_GLOVO_FORM_DATA });
+      setShowSecret(false);
+      setIsTesting(false);
+      setConnectionStatus('unknown');
+      clearError();
+
       fetchConfig(restaurant.id);
     }
   }, [restaurant?.id]);
