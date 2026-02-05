@@ -12,6 +12,7 @@ export interface RestaurantAISettings {
   faq_responses: string | null;
   unavailable_items_handling: string | null;
   special_offers_info: string | null;
+  ai_ordering_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

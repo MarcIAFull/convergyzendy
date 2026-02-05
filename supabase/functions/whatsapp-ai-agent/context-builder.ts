@@ -110,7 +110,8 @@ export async function buildConversationContext(
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
   
-  console.log(`[Context Builder] AI Settings: ${restaurantAISettings ? 'Loaded' : 'Using defaults'}`);
+  const aiOrderingEnabled = restaurantAISettings?.ai_ordering_enabled !== false;
+  console.log(`[Context Builder] AI Settings: ${restaurantAISettings ? 'Loaded' : 'Using defaults'} | Ordering: ${aiOrderingEnabled ? 'Enabled' : 'RECEPTION MODE'}`);
 
   const { data: promptOverrides } = await supabase
     .from('restaurant_prompt_overrides')
