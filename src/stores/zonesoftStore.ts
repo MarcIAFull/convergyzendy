@@ -21,6 +21,7 @@ interface ZoneSoftState {
   saveMapping: (restaurantId: string, localProductId: string, zoneSoftProduct: ZoneSoftProduct) => Promise<boolean>;
   fetchSyncLogs: (restaurantId: string, orderId?: string) => Promise<void>;
   clearError: () => void;
+  reset: () => void;
 }
 
 export const useZoneSoftStore = create<ZoneSoftState>((set, get) => ({
@@ -201,4 +202,14 @@ export const useZoneSoftStore = create<ZoneSoftState>((set, get) => ({
   },
   
   clearError: () => set({ error: null }),
+  
+  reset: () => set({
+    config: null,
+    mappings: [],
+    syncLogs: [],
+    zoneSoftProducts: [],
+    isLoading: false,
+    isSyncing: false,
+    error: null,
+  }),
 }));

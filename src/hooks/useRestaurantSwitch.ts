@@ -6,6 +6,8 @@ import { useMenuStore } from '@/stores/menuStore';
 import { useCustomersStore } from '@/stores/customersStore';
 import { useConversationsStore } from '@/stores/conversationsStore';
 import { usePublicMenuSettingsStore } from '@/stores/publicMenuSettingsStore';
+import { useZoneSoftStore } from '@/stores/zonesoftStore';
+import { useGlovoStore } from '@/stores/glovoStore';
 import type { Restaurant } from '@/types/database';
 
 const STORAGE_KEY = 'zendy_active_restaurant';
@@ -29,6 +31,8 @@ export const useRestaurantSwitch = () => {
     useCustomersStore.getState().reset();
     useConversationsStore.getState().reset();
     usePublicMenuSettingsStore.getState().reset();
+    useZoneSoftStore.getState().reset();
+    useGlovoStore.getState().reset();
     
     console.log('[useRestaurantSwitch] ✅ All stores reset');
   }, []);
