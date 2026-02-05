@@ -30,23 +30,40 @@ interface ZoneSoftAPIResult {
 }
 
 // Generate HMAC-SHA256 signature
+// NOTE: ZoneSoft credentials are often provided as HEX strings. Some APIs expect the secret
+// to be decoded from HEX into raw bytes before computing HMAC.
+function secretToKeyBytes(appSecret: string): Uint8Array {
+  const trimmed = appSecret.trim();
+  const isHex = /^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0;
+  if (!isHex) {
+    return new TextEncoder().encode(trimmed);
+  }
+
+  const bytes = new Uint8Array(trimmed.length / 2);
+  for (let i = 0; i < trimmed.length; i += 2) {
+    bytes[i / 2] = parseInt(trimmed.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
 async function generateSignature(body: string, appSecret: string): Promise<string> {
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(appSecret);
+  const keyData = secretToKeyBytes(appSecret);
   const data = encoder.encode(body);
-  
+
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
     keyData,
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
-  
+
   const signature = await crypto.subtle.sign("HMAC", cryptoKey, data);
-  
+
+  // ZoneSoft docs commonly show hex signature; keep lowercase hex by default
   return Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
@@ -65,19 +82,19 @@ async function zoneSoftRequest(
   
   console.log(`[ZoneSoft] Calling ${url}`);
   console.log(`[ZoneSoft] Body: ${bodyString}`);
-  console.log(`[ZoneSoft] Client ID: ${config.client_id}`);
-  console.log(`[ZoneSoft] App Key: ${config.app_key}`);
-  console.log(`[ZoneSoft] Signature: ${signature}`);
+
+  const mask = (v: string) => (v.length <= 8 ? "***" : `${v.slice(0, 4)}...${v.slice(-4)}`);
+  console.log(`[ZoneSoft] Auth: client_id=${mask(config.client_id)} app_key=${mask(config.app_key)} signature=${mask(signature)}`);
   
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-ZS-CLIENT-ID": config.client_id,
-      "X-ZS-APP-KEY": config.app_key,
+      "X-ZS-CLIENT-ID": config.client_id.trim(),
+      "X-ZS-APP-KEY": config.app_key.trim(),
       "X-ZS-SIGNATURE": signature,
     };
-    
-    console.log(`[ZoneSoft] Headers:`, JSON.stringify(headers));
+
+    console.log(`[ZoneSoft] Headers sent: ${Object.keys(headers).join(', ')}`);
     
     const response = await fetch(url, {
       method: "POST",
