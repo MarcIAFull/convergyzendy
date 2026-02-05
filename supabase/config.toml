@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.notify-customer-order]
 verify_jwt = false
+
+[functions.zonesoft-webhook]
+verify_jwt = false
