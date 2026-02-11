@@ -196,10 +196,12 @@ export async function buildConversationContext(
   // LOAD ACTIVE CART
   // ============================================================
   
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
   const { data: activeCarts } = await supabase
     .from('carts')
     .select(`
-      id, status, created_at, metadata,
+      id, status, created_at, updated_at, metadata,
       cart_items (
         id, quantity, notes, product_id,
         products (id, name, price)
@@ -208,9 +210,14 @@ export async function buildConversationContext(
     .eq('restaurant_id', restaurantId)
     .eq('user_phone', customerPhone)
     .eq('status', 'active')
+    .gt('updated_at', twentyFourHoursAgo)
     .order('created_at', { ascending: false });
 
   let activeCart = activeCarts?.[0] || null;
+  
+  if (!activeCart && activeCarts?.length === 0) {
+    console.log(`[Context Builder] No active cart found within 24h window, treating as empty`);
+  }
   
   // Load cart items with addons
   let cartItems: any[] = [];
