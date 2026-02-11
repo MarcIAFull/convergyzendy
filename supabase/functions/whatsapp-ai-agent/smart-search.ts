@@ -306,9 +306,10 @@ export function smartSearchProducts(
       );
     });
     
-    // If no query, return all products in category
+    // If no query, return ALL products in category (no limit)
     if (!query) {
-      return filtered.slice(0, maxResults).map(product => ({
+      console.log(`[SmartSearch] Category-only search: returning all ${filtered.length} products from category`);
+      return filtered.map(product => ({
         product,
         similarity: 0.8,
         matchType: 'name' as const

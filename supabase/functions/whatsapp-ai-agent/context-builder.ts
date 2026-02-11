@@ -196,7 +196,7 @@ export async function buildConversationContext(
   // LOAD ACTIVE CART
   // ============================================================
   
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
   
   const { data: activeCarts } = await supabase
     .from('carts')
@@ -210,13 +210,13 @@ export async function buildConversationContext(
     .eq('restaurant_id', restaurantId)
     .eq('user_phone', customerPhone)
     .eq('status', 'active')
-    .gt('updated_at', twentyFourHoursAgo)
+    .gt('updated_at', twelveHoursAgo)
     .order('created_at', { ascending: false });
 
   let activeCart = activeCarts?.[0] || null;
   
   if (!activeCart && activeCarts?.length === 0) {
-    console.log(`[Context Builder] No active cart found within 24h window, treating as empty`);
+    console.log(`[Context Builder] No active cart found within 12h window, treating as empty`);
   }
   
   // Load cart items with addons
@@ -631,24 +631,23 @@ function formatPendingItemsForPrompt(pendingItems: any[]): string {
 function formatRestaurantInfoForPrompt(restaurant: any): string {
   if (!restaurant) return 'Informações do restaurante não disponíveis';
   
+  const days: Record<string, string> = {
+    monday: 'Segunda',
+    tuesday: 'Terça',
+    wednesday: 'Quarta',
+    thursday: 'Quinta',
+    friday: 'Sexta',
+    saturday: 'Sábado',
+    sunday: 'Domingo'
+  };
+  
   // Format opening hours
   let hoursText = 'Não definido';
   if (restaurant.opening_hours) {
-    const days: Record<string, string> = {
-      monday: 'Segunda',
-      tuesday: 'Terça',
-      wednesday: 'Quarta',
-      thursday: 'Quinta',
-      friday: 'Sexta',
-      saturday: 'Sábado',
-      sunday: 'Domingo'
-    };
-    
     const hours = restaurant.opening_hours;
     const formattedHours = Object.entries(days)
       .map(([key, label]) => {
         const dayHours = hours[key];
-        // Check if day is marked as closed OR has no hours defined
         if (!dayHours || dayHours.closed === true || (!dayHours.open && !dayHours.close)) {
           return `${label}: Fechado`;
         }
@@ -658,13 +657,76 @@ function formatRestaurantInfoForPrompt(restaurant: any): string {
     hoursText = formattedHours;
   }
   
+  // Dynamic open/closed status based on current time and opening_hours
+  const { isOpen, statusMessage } = isRestaurantCurrentlyOpen(restaurant);
+  
   return `📍 DADOS DO RESTAURANTE:
 • Nome: ${restaurant.name}
 • Telefone: ${restaurant.phone || 'Não informado'}
 • Endereço: ${restaurant.address || 'Não informado'}
 • Taxa de Entrega Fixa: €${restaurant.delivery_fee?.toFixed(2) || '0.00'}
-• Status: ${restaurant.is_open ? '🟢 Aberto' : '🔴 Fechado'}
+• Status: ${isOpen ? '🟢' : '🔴'} ${statusMessage}
 • Horários: ${hoursText}`;
+}
+
+/**
+ * Calculate if restaurant is currently open based on opening_hours and timezone
+ */
+function isRestaurantCurrentlyOpen(restaurant: any): { isOpen: boolean; statusMessage: string } {
+  if (!restaurant.opening_hours) {
+    // Fallback to static field if no hours configured
+    return { 
+      isOpen: restaurant.is_open ?? true, 
+      statusMessage: restaurant.is_open ? 'Aberto' : 'Fechado' 
+    };
+  }
+  
+  const timezone = detectTimezone(restaurant);
+  const now = new Date();
+  
+  // Get current day and time in restaurant's timezone
+  const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' });
+  const currentDay = dayFormatter.format(now).toLowerCase(); // e.g., 'monday'
+  
+  const timeFormatter = new Intl.DateTimeFormat('en-US', { 
+    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false 
+  });
+  const currentTime = timeFormatter.format(now); // e.g., '14:30'
+  
+  const dayHours = restaurant.opening_hours[currentDay];
+  
+  // Day is closed
+  if (!dayHours || dayHours.closed === true || (!dayHours.open && !dayHours.close)) {
+    // Find next open day
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const todayIndex = dayOrder.indexOf(currentDay);
+    const days: Record<string, string> = {
+      monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta',
+      friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo'
+    };
+    
+    for (let i = 1; i <= 7; i++) {
+      const nextDayKey = dayOrder[(todayIndex + i) % 7];
+      const nextDayHours = restaurant.opening_hours[nextDayKey];
+      if (nextDayHours && !nextDayHours.closed && (nextDayHours.open || nextDayHours.close)) {
+        const label = i === 1 ? 'amanhã' : days[nextDayKey];
+        return { isOpen: false, statusMessage: `Fechado hoje (Abre ${label} às ${nextDayHours.open})` };
+      }
+    }
+    return { isOpen: false, statusMessage: 'Fechado hoje' };
+  }
+  
+  // Day is open - check time range
+  const openTime = dayHours.open || '00:00';
+  const closeTime = dayHours.close || '23:59';
+  
+  if (currentTime >= openTime && currentTime <= closeTime) {
+    return { isOpen: true, statusMessage: `Aberto (Fecha às ${closeTime})` };
+  } else if (currentTime < openTime) {
+    return { isOpen: false, statusMessage: `Fechado (Abre hoje às ${openTime})` };
+  } else {
+    return { isOpen: false, statusMessage: `Fechado (Encerrou às ${closeTime})` };
+  }
 }
 
 /**

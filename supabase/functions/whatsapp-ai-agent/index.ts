@@ -1386,7 +1386,9 @@ async function executeToolCall(
   
   switch (functionName) {
     case 'search_menu': {
-      const { query, category, max_results = 5 } = args;
+      // When searching by category only (no query), return all products
+      const { query, category, max_results } = args;
+      const effectiveMaxResults = (!query && category) ? 100 : (max_results || 5);
       
       console.log(`[Tool] 🔍 Searching menu for "${query || '(category only)'}" (category: ${category || 'all'}, max: ${max_results})`);
       
@@ -1425,7 +1427,7 @@ async function executeToolCall(
       }
       
       // Perform smart search with synonyms support
-      const results = smartSearchProducts(availableProducts, query, category, dbSynonyms, { maxResults: max_results });
+      const results = smartSearchProducts(availableProducts, query, category, dbSynonyms, { maxResults: effectiveMaxResults });
       
       // Save results for positional selection
       if (results.length > 0) {
