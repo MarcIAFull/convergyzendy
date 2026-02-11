@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { CartItem } from '@/types/public-menu';
 import { Product, Addon } from '@/types/database';
 
-const CART_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CART_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 interface PublicCartState {
   items: CartItem[];
