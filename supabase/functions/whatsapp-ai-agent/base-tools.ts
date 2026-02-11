@@ -315,7 +315,7 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
         properties: {
           product_id: {
             type: "string",
-            description: "UUID of the product to get addons for"
+            description: "UUID do produto (preferencial, vindo do search_menu). Se não tiveres o UUID, podes passar o NOME exato do produto e o sistema tentará resolver."
           }
         },
         required: ["product_id"]

@@ -782,11 +782,12 @@ ${rawMessage}
       { role: 'system', content: conversationalSystemPrompt },  // FIXED - cacheable!
       { role: 'user', content: dynamicContext }                  // DYNAMIC - changes each message
     ];
-    
+
     let finalResponse = '';
     let allToolCallsRaw: any[] = [];
     let allToolCallsValidated: any[] = [];
     let allToolResults: any[] = [];
+
     // V19: Dynamic MAX_ITERATIONS by intent to reduce token waste
     const MAX_ITERATIONS_BY_INTENT: Record<string, number> = {
       greeting: 1,
@@ -810,28 +811,61 @@ ${rawMessage}
     let iterations = 0;
     console.log(`[Token Optimization] MAX_ITERATIONS for intent "${intent}": ${MAX_ITERATIONS}`);
     let totalTokensUsed = orchestratorTokens; // Start with Orchestrator tokens
-    
+
     // State management variables
     // FIX: Forçar transição de estado baseado no target_state do Orchestrator
     // O Orchestrator define para onde a conversa DEVE ir, não apenas classifica
     let newState = (targetState === 'unknown' || !targetState) ? currentState : targetState;
     console.log(`[State Machine] Orchestrator target_state: ${targetState} → newState: ${newState}`);
-    
+
     let newMetadata = { ...stateMetadata };
     let finalizeSuccess = false;
     let cartModified = false;
-    
+
+    // ============================================================
+    // V19: RECEPTION MODE GUARDRail
+    // If ordering is disabled, do NOT let order-related intents enter the LLM/tool loop.
+    // This prevents the model from "trying" to add items when tools are filtered.
+    // ============================================================
+    let skipLLM = false;
+    if (!aiOrderingEnabled) {
+      const orderLikeIntents = new Set([
+        'confirm_item',
+        'finalize',
+        'provide_address',
+        'provide_payment',
+        'modify_cart',
+        'manage_pending_items',
+        'prefilled_order',
+        'collect_customer_data'
+      ]);
+
+      if (orderLikeIntents.has(intent)) {
+        skipLLM = true;
+        // Keep state stable in reception mode
+        newState = currentState;
+
+        if (context.menuUrl) {
+          finalResponse = `Faz o teu pedido pelo nosso menu digital:\n${context.menuUrl}\n\nDepois de finalizar, envio a confirmação aqui! 😊`;
+        } else {
+          finalResponse = 'De momento não consigo anotar pedidos por aqui. Podes pedir pelo nosso menu digital e eu confirmo por aqui.';
+        }
+
+        console.log('[Reception Mode] ✅ Short-circuiting LLM/tool loop for order intent:', intent);
+      }
+    }
+
     console.log('\n[Iterative Loop] Starting iterative function calling loop...');
     console.log(`[Iterative Loop] Initial messages count: ${messages.length} (history in system prompt only)`);
-    
+
     // CRITICAL FIX: Force tool usage for browse intents
     // This prevents AI from responding "não temos" without calling search_menu
     const shouldForceToolUse = ['browse_product', 'browse_menu'].includes(intent) && tools.length > 0 && iterations === 0;
     if (shouldForceToolUse) {
       console.log(`[Tool Forcing] ⚠️ Intent is ${intent} - forcing tool_choice: required for first iteration`);
     }
-    
-    while (iterations < MAX_ITERATIONS) {
+
+    while (!skipLLM && iterations < MAX_ITERATIONS) {
       iterations++;
       console.log(`\n[Iteration ${iterations}] ========== CALLING AI ==========`);
       
@@ -1752,8 +1786,9 @@ async function executeToolCall(
     
     case 'get_product_addons': {
       const { product_id } = args;
-      
-      if (!product_id) {
+
+      const requested = (product_id ?? '').toString().trim();
+      if (!requested) {
         return {
           output: {
             success: false,
@@ -1761,8 +1796,27 @@ async function executeToolCall(
           }
         };
       }
-      
-      const product = availableProducts.find(p => p.id === product_id);
+
+      // Accept either UUID (preferred) or product name (LLM sometimes passes name)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let resolvedProductId = requested;
+
+      let product = availableProducts.find(p => p.id === resolvedProductId);
+
+      if (!product && !uuidRegex.test(requested)) {
+        const normalized = requested.toLowerCase();
+
+        product =
+          availableProducts.find(p => (p.name || '').toLowerCase() === normalized) ||
+          availableProducts.find(p => normalized.includes((p.name || '').toLowerCase())) ||
+          availableProducts.find(p => (p.name || '').toLowerCase().includes(normalized));
+
+        if (product) {
+          resolvedProductId = product.id;
+          console.log(`[Tool] ℹ️ get_product_addons recebeu nome, resolvido para UUID: "${requested}" → ${resolvedProductId}`);
+        }
+      }
+
       if (!product) {
         return {
           output: {
@@ -1771,13 +1825,13 @@ async function executeToolCall(
           }
         };
       }
-      
+
       // Fetch addons from database
       const { data: addons, error: addonsError } = await supabase
         .from('addons')
         .select('id, name, price')
-        .eq('product_id', product_id);
-      
+        .eq('product_id', resolvedProductId);
+
       if (addonsError) {
         console.error('[Tool] Error fetching addons:', addonsError);
         return {
@@ -1787,15 +1841,15 @@ async function executeToolCall(
           }
         };
       }
-      
+
       const hasAddons = addons && addons.length > 0;
-      
+
       console.log(`[Tool] 🍕 Found ${addons?.length || 0} addons for ${product.name}`);
-      
+
       return {
         output: {
           success: true,
-          product_id,
+          product_id: resolvedProductId,
           product_name: product.name,
           has_addons: hasAddons,
           addons: (addons || []).map((a: any) => ({
@@ -1803,7 +1857,7 @@ async function executeToolCall(
             name: a.name,
             price: a.price
           })),
-          message: hasAddons 
+          message: hasAddons
             ? `${product.name} tem ${addons?.length} opção(ões) de complemento: ${addons?.map((a: any) => `${a.name} (+€${a.price.toFixed(2)})`).join(', ')}`
             : `${product.name} não tem complementos disponíveis.`
         }
