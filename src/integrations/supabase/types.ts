@@ -2640,6 +2640,7 @@ export type Database = {
         Returns: undefined
       }
       cleanup_expired_caches: { Args: never; Returns: undefined }
+      cleanup_expired_carts: { Args: never; Returns: undefined }
       create_default_tenant_settings: {
         Args: { p_restaurant_id: string }
         Returns: undefined

@@ -3,9 +3,12 @@ import { persist } from 'zustand/middleware';
 import { CartItem } from '@/types/public-menu';
 import { Product, Addon } from '@/types/database';
 
+const CART_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 interface PublicCartState {
   items: CartItem[];
   slug: string | null;
+  lastUpdated: number | null;
   addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => void;
   removeItem: (productId: string, addonIds: string[]) => void;
   updateItemQuantity: (productId: string, addonIds: string[], quantity: number) => void;
@@ -20,14 +23,14 @@ export const usePublicCartStore = create<PublicCartState>()(
     (set, get) => ({
       items: [],
       slug: null,
+      lastUpdated: null,
 
       setSlug: (slug: string) => {
         const currentSlug = get().slug;
-        // Se mudou de restaurante, limpa o carrinho
         if (currentSlug && currentSlug !== slug) {
-          set({ items: [], slug });
+          set({ items: [], slug, lastUpdated: null });
         } else {
-          set({ slug });
+          set({ slug, lastUpdated: Date.now() });
         }
       },
 
@@ -52,7 +55,7 @@ export const usePublicCartStore = create<PublicCartState>()(
           const updatedItems = [...items];
           updatedItems[existingItemIndex].quantity += quantity;
           updatedItems[existingItemIndex].totalPrice += totalPrice;
-          set({ items: updatedItems });
+          set({ items: updatedItems, lastUpdated: Date.now() });
         } else {
           // Adicionar novo item
           set({
@@ -66,6 +69,7 @@ export const usePublicCartStore = create<PublicCartState>()(
                 totalPrice,
               },
             ],
+            lastUpdated: Date.now(),
           });
         }
       },
@@ -111,7 +115,7 @@ export const usePublicCartStore = create<PublicCartState>()(
         set({ items: updatedItems });
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: () => set({ items: [], lastUpdated: null }),
 
       getTotalItems: () => {
         const items = get().items;
@@ -125,6 +129,13 @@ export const usePublicCartStore = create<PublicCartState>()(
     }),
     {
       name: 'zendy-public-cart',
+      onRehydrateStorage: () => (state) => {
+        if (state?.lastUpdated && Date.now() - state.lastUpdated > CART_TTL_MS) {
+          state.items = [];
+          state.lastUpdated = null;
+          console.log('[PublicCart] Cart expired (>24h), cleared automatically');
+        }
+      },
     }
   )
 );
