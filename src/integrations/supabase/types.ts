@@ -1870,6 +1870,7 @@ export type Database = {
       }
       restaurant_zonesoft_config: {
         Row: {
+          api_type: string | null
           app_key: string | null
           app_secret: string | null
           client_id: string | null
@@ -1888,8 +1889,12 @@ export type Database = {
           sync_mode: string | null
           updated_at: string | null
           warehouse_id: number | null
+          zsapi_app_key: string | null
+          zsapi_app_secret: string | null
+          zsapi_client_id: string | null
         }
         Insert: {
+          api_type?: string | null
           app_key?: string | null
           app_secret?: string | null
           client_id?: string | null
@@ -1908,8 +1913,12 @@ export type Database = {
           sync_mode?: string | null
           updated_at?: string | null
           warehouse_id?: number | null
+          zsapi_app_key?: string | null
+          zsapi_app_secret?: string | null
+          zsapi_client_id?: string | null
         }
         Update: {
+          api_type?: string | null
           app_key?: string | null
           app_secret?: string | null
           client_id?: string | null
@@ -1928,6 +1937,9 @@ export type Database = {
           sync_mode?: string | null
           updated_at?: string | null
           warehouse_id?: number | null
+          zsapi_app_key?: string | null
+          zsapi_app_secret?: string | null
+          zsapi_client_id?: string | null
         }
         Relationships: [
           {

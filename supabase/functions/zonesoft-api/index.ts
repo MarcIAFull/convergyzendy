@@ -6,7 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ZONESOFT_API_BASE = "https://api.zonesoft.org/v3";
+// ZSAPIFood/ZSROI endpoint (for Restaurant Ordering)
+const ZONESOFT_ZSROI_BASE = "https://zsroi.zonesoft.org/v1.0";
+// ZSAPI endpoint (for sync: products, documents)
+const ZONESOFT_ZSAPI_BASE = "https://zsapi.zonesoft.org/v1.0";
 
 interface ZoneSoftConfig {
   id: string;
@@ -15,12 +18,17 @@ interface ZoneSoftConfig {
   client_id: string | null;
   app_key: string | null;
   app_secret: string | null;
+  // Optional ZSAPI credentials (for product sync / document creation)
+  zsapi_client_id: string | null;
+  zsapi_app_key: string | null;
+  zsapi_app_secret: string | null;
   store_id: number | null;
   warehouse_id: number | null;
   operator_id: number | null;
   document_type: string;
   document_series: string | null;
   payment_type_id: number;
+  api_type: string | null; // 'zsroi' | 'zsapi' | 'both'
 }
 
 interface ZoneSoftAPIResult {
@@ -136,18 +144,21 @@ async function buildSignatureCandidates(body: string, appSecret: string): Promis
 }
 
 // Make authenticated request to ZoneSoft API
+// apiType: 'zsroi' uses ZSROI endpoint (ordering), 'zsapi' uses ZSAPI endpoint (sync)
 async function zoneSoftRequest(
   config: { client_id: string; app_key: string; app_secret: string },
   interfaceName: string,
   action: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  apiType: 'zsroi' | 'zsapi' = 'zsroi'
 ): Promise<ZoneSoftAPIResult> {
   // ZoneSoft API expects compact JSON (no extra spaces)
   const bodyString = JSON.stringify(body);
 
-  const url = `${ZONESOFT_API_BASE}/${interfaceName}/${action}`;
+  const baseUrl = apiType === 'zsapi' ? ZONESOFT_ZSAPI_BASE : ZONESOFT_ZSROI_BASE;
+  const url = `${baseUrl}/${interfaceName}/${action}`;
 
-  console.log(`[ZoneSoft] Calling ${url}`);
+  console.log(`[ZoneSoft] Calling ${url} (${apiType})`);
   console.log(`[ZoneSoft] Body: ${bodyString}`);
 
   const mask = (v: string) => (v.length <= 8 ? "***" : `${v.slice(0, 4)}...${v.slice(-4)}`);
@@ -167,57 +178,95 @@ async function zoneSoftRequest(
     );
 
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "X-ZS-CLIENT-ID": config.client_id.trim(),
-        "X-ZS-APP-KEY": config.app_key.trim(),
-        "X-ZS-SIGNATURE": candidate.signature,
-      };
+      // Per ZoneSoft support: headers are 'Authorization' and 'X-Integration-Signature'
+      // Authorization = Client ID (or App Key), X-Integration-Signature = HMAC signature
+      // We try multiple auth header combinations on 401
+      const headerVariants = [
+        {
+          label: "clientId-in-auth",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": config.client_id.trim(),
+            "X-Integration-Signature": candidate.signature,
+          },
+        },
+        {
+          label: "appKey-in-auth",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": config.app_key.trim(),
+            "X-Integration-Signature": candidate.signature,
+          },
+        },
+        {
+          label: "bearer-clientId",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${config.client_id.trim()}`,
+            "X-Integration-Signature": candidate.signature,
+          },
+        },
+      ];
 
-      console.log(`[ZoneSoft] Headers sent: ${Object.keys(headers).join(", ")}`);
+      for (let h = 0; h < headerVariants.length; h++) {
+        const hv = headerVariants[h];
+        console.log(`[ZoneSoft] Header variant ${h + 1}/${headerVariants.length}: ${hv.label}`);
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: bodyString,
-      });
+        const response = await fetch(url, {
+          method: "POST",
+          headers: hv.headers,
+          body: bodyString,
+        });
 
-      const responseText = await response.text();
-      lastStatus = response.status;
-      lastBody = responseText;
+        const responseText = await response.text();
+        lastStatus = response.status;
+        lastBody = responseText;
 
-      console.log(`[ZoneSoft] Response status: ${response.status}`);
-      console.log(`[ZoneSoft] Response body: ${responseText}`);
+        console.log(`[ZoneSoft] Response status: ${response.status} (${hv.label})`);
+        console.log(`[ZoneSoft] Response body: ${responseText}`);
 
-      if (response.ok) {
-        try {
-          const data = JSON.parse(responseText);
-          return { success: true, data };
-        } catch {
-          return { success: true, data: { raw: responseText } };
+        if (response.ok) {
+          console.log(`[ZoneSoft] ✅ Success with signature=${candidate.label}, headers=${hv.label}`);
+          try {
+            const data = JSON.parse(responseText);
+            return { success: true, data };
+          } catch {
+            return { success: true, data: { raw: responseText } };
+          }
         }
+
+        // Only retry header variants on auth failures
+        if (response.status === 401 && h < headerVariants.length - 1) {
+          console.log(`[ZoneSoft] 401 with ${hv.label}; trying next header variant...`);
+          continue;
+        }
+
+        // If not 401, don't try more header variants
+        if (response.status !== 401) break;
       }
 
-      // Retry only on auth failures
-      if (response.status === 401 && i < signatureCandidates.length - 1) {
-        console.log(`[ZoneSoft] Unauthorized with ${candidate.label}; retrying with next signature...`);
+      // If last attempt was 401, try next signature candidate
+      if (lastStatus === 401 && i < signatureCandidates.length - 1) {
+        console.log(`[ZoneSoft] All header variants failed with ${candidate.label}; trying next signature...`);
         continue;
       }
 
-      // Build debug info for error response
-      const debugInfo = {
-        url,
-        bodyPreview: bodyString.length > 200 ? bodyString.slice(0, 200) + "..." : bodyString,
-        signatureVariantsTried: variantsTried,
-        storeId: (body as { loja?: number }).loja || null,
-        clientIdPreview: mask(config.client_id),
-      };
+      // Non-401 error or last candidate
+      if (lastStatus !== 200) {
+        const debugInfo = {
+          url,
+          bodyPreview: bodyString.length > 200 ? bodyString.slice(0, 200) + "..." : bodyString,
+          signatureVariantsTried: variantsTried,
+          storeId: (body as { loja?: number }).loja || null,
+          clientIdPreview: mask(config.client_id),
+        };
 
-      return {
-        success: false,
-        error: `HTTP ${response.status}: ${responseText}`,
-        debug: debugInfo,
-      };
+        return {
+          success: false,
+          error: `HTTP ${lastStatus}: ${lastBody}`,
+          debug: debugInfo,
+        };
+      }
     } catch (error) {
       console.error(`[ZoneSoft] Request error:`, error);
       return {
@@ -418,29 +467,51 @@ serve(async (req) => {
       });
     }
     
+    // Primary credentials (ZSROI - ordering)
     const apiConfig = {
       client_id: config.client_id,
       app_key: config.app_key,
       app_secret: config.app_secret,
     };
     
+    // ZSAPI credentials (for sync) - fall back to primary if not set
+    const zsapiConfig = (config.zsapi_client_id && config.zsapi_app_key && config.zsapi_app_secret)
+      ? {
+          client_id: config.zsapi_client_id,
+          app_key: config.zsapi_app_key,
+          app_secret: config.zsapi_app_secret,
+        }
+      : apiConfig;
+    
+    // Determine which API to use based on config
+    const apiType = (config.api_type as 'zsroi' | 'zsapi') || 'zsroi';
+    
     // Test connection
     if (action === "test-connection") {
       console.log(`[ZoneSoft] Testing connection with store_id=${config.store_id}`);
       
-      // Try products/getInstances first
+      // Try with primary config on configured API type
       let result = await zoneSoftRequest(apiConfig, "products", "getInstances", {
         loja: config.store_id || 1,
         limit: 1,
-      });
+      }, apiType);
       
-      // If 401, try documents/getInstances as fallback (different module permissions)
+      // If 401, try documents/getInstances as fallback
       if (!result.success && result.error?.includes("401")) {
         console.log(`[ZoneSoft] products/getInstances failed with 401, trying documents/getInstances...`);
         result = await zoneSoftRequest(apiConfig, "documents", "getInstances", {
           loja: config.store_id || 1,
           limit: 1,
-        });
+        }, apiType);
+      }
+      
+      // If still failing and we have ZSAPI credentials, try those
+      if (!result.success && result.error?.includes("401") && zsapiConfig !== apiConfig) {
+        console.log(`[ZoneSoft] Retrying with ZSAPI credentials...`);
+        result = await zoneSoftRequest(zsapiConfig, "products", "getInstances", {
+          loja: config.store_id || 1,
+          limit: 1,
+        }, 'zsapi');
       }
       
       // Update config with test result
@@ -459,10 +530,11 @@ serve(async (req) => {
     
     // Sync products from ZoneSoft
     if (action === "sync-products") {
-      const result = await zoneSoftRequest(apiConfig, "products", "getInstances", {
+      // Product sync uses ZSAPI credentials if available
+      const result = await zoneSoftRequest(zsapiConfig, "products", "getInstances", {
         loja: config.store_id || 1,
         limit: 1000,
-      });
+      }, zsapiConfig !== apiConfig ? 'zsapi' : apiType);
       
       if (!result.success) {
         return new Response(JSON.stringify(result), {
@@ -598,10 +670,12 @@ serve(async (req) => {
       
       console.log(`[ZoneSoft] Sending document:`, JSON.stringify(document, null, 2));
       
-      // Send to ZoneSoft
-      const result = await zoneSoftRequest(apiConfig, "documents", "saveInstances", {
+      // Send to ZoneSoft - documents use ZSAPI if available, otherwise primary
+      const sendConfig = zsapiConfig !== apiConfig ? zsapiConfig : apiConfig;
+      const sendApiType = zsapiConfig !== apiConfig ? 'zsapi' as const : apiType;
+      const result = await zoneSoftRequest(sendConfig, "documents", "saveInstances", {
         document: [document],
-      });
+      }, sendApiType);
       
       // Extract document info from result
       const documentData = result.data?.document as Array<{ numero?: number; serie?: string; doc?: string }> | undefined;
