@@ -1,19 +1,7 @@
+
 -- ============================================================
--- SEED DATA: AI Agent Prompt Blocks V19 - Optimized
--- ============================================================
--- 
--- V19 Changes:
--- - Orchestrator: compact (~2KB), table-based intent definitions
--- - Conversational AI: removed TOOLS section (duplicated), 
---   added RECEPTION MODE, ADDON FLOW, COMBO RULES
--- - ~50% token reduction vs V18
---
--- Template variables:
--- Fixed (cacheable): restaurant_name, restaurant_info, menu_categories, 
---   menu_url, tone, payment_methods, custom_instructions, business_rules,
---   faq_responses, special_offers_info, reception_mode_section
--- Dynamic (per message): current_state, target_state, user_intent,
---   cart_summary, pending_items, customer_info, conversation_history
+-- V19 PROMPT: Optimized for token reduction + new features
+-- Removes duplicated TOOLS section, adds RECEPTION MODE, ADDON FLOW, COMBO RULES
 -- ============================================================
 
 DO $$
@@ -24,9 +12,14 @@ BEGIN
   SELECT id INTO orchestrator_id FROM agents WHERE name = 'orchestrator';
   SELECT id INTO conversational_id FROM agents WHERE name = 'conversational_ai';
   
+  -- Delete existing prompt blocks
   DELETE FROM agent_prompt_blocks WHERE agent_id IN (orchestrator_id, conversational_id);
   
-  -- ORCHESTRATOR V19 - Compact classification
+  -- ============================================================
+  -- ORCHESTRATOR V19 - COMPACT (~2KB instead of ~6KB)
+  -- Only classification logic, no examples, no regex patterns
+  -- ============================================================
+  
   INSERT INTO agent_prompt_blocks (agent_id, title, content, ordering, is_locked) VALUES
   (
     orchestrator_id,
@@ -69,7 +62,13 @@ Histórico: {{conversation_history}}',
     true
   );
   
-  -- CONVERSATIONAL AI V19 - Optimized
+  -- ============================================================
+  -- CONVERSATIONAL AI V19 - Optimized prompt (~3.5KB instead of ~7KB)
+  -- Removed: TOOLS section (duplicated with OpenAI tool defs)
+  -- Removed: AUTO-ESCALATION (already in code)
+  -- Added: RECEPTION MODE, ADDON FLOW, COMBO RULES
+  -- ============================================================
+  
   INSERT INTO agent_prompt_blocks (agent_id, title, content, ordering, is_locked) VALUES
   (
     conversational_id,
@@ -123,5 +122,5 @@ SEGURANÇA:
     true
   );
   
-  RAISE NOTICE 'V19 prompts seeded successfully!';
+  RAISE NOTICE 'V19 prompts installed successfully!';
 END $$;
