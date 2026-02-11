@@ -4,6 +4,12 @@
 
 A integração ZoneSoft POS permite enviar pedidos confirmados diretamente para o sistema de caixa e cozinha ZoneSoft, onde são impressos automaticamente os tickets/cupons.
 
+> ⚠️ **IMPORTANTE**: A ZoneSoft tem **duas APIs diferentes**:
+> - **ZSROI (ZS Restaurant Ordering)** - Para encomendas e takeaway. Endpoint: `zsroi.zonesoft.org/v1.0/`
+> - **ZSAPI** - Para sincronização de produtos e criação de documentos. Endpoint diferente.
+> 
+> Cada API requer uma **integração separada** no portal [developer.zonesoft.org](https://developer.zonesoft.org).
+
 ---
 
 ## Pré-requisitos
@@ -11,25 +17,51 @@ A integração ZoneSoft POS permite enviar pedidos confirmados diretamente para 
 ### Do lado do Restaurante
 
 1. **Licença ZS Rest ativa** na ZoneSoft
-2. **Módulo ZSAPIFood (Developer)** ativado - solicitar à ZoneSoft
-3. **Registo na plataforma de integração**: [developer.zonesoft.org](https://developer.zonesoft.org)
-4. **Credenciais de API**:
+2. **Integração ZSROI** (ZS Restaurant Ordering) - para envio de pedidos
+3. **Integração ZSAPI** (opcional) - para sincronização de produtos e documentos
+4. **Registo na plataforma de integração**: [developer.zonesoft.org](https://developer.zonesoft.org)
+5. **Credenciais de API** (para cada integração):
    - Client ID
    - App Key
    - App Secret
-5. **Store ID** da loja a integrar
+6. **Store ID** da loja a integrar
 
 ### Como Obter Credenciais
 
 1. Aceda a [developer.zonesoft.org](https://developer.zonesoft.org)
 2. Registe a sua aplicação
-3. Solicite acesso à API ZSAPIFood
-4. Receberá:
+3. Crie uma integração com permissão **ZSROI** (para encomendas)
+4. Opcionalmente, crie outra integração com permissão **ZSAPI** (para sincronização)
+5. Para cada integração receberá:
    - **Client ID**: Identificador do cliente/loja
    - **App Key**: Chave pública da aplicação
-   - **App Secret**: Chave secreta para assinaturas HMAC
+   - **App Secret**: Chave secreta para assinaturas HMAC (usar como **string UTF-8**)
 
-**Suporte ZoneSoft**: geral@zonesoft.org
+**Suporte ZoneSoft**: suporte@zonesoft.pt
+
+---
+
+## APIs e Endpoints
+
+### ZSROI (ZS Restaurant Ordering)
+
+| Campo | Valor |
+|-------|-------|
+| **Endpoint** | `https://zsroi.zonesoft.org/v1.0/` |
+| **Headers** | `Authorization`, `X-Integration-Signature` |
+| **Permissão** | ZS Restaurant Ordering |
+| **Uso** | Encomendas e takeaway |
+
+### ZSAPI (Sincronização)
+
+| Campo | Valor |
+|-------|-------|
+| **Endpoint** | `https://zsapi.zonesoft.org/v1.0/` |
+| **Headers** | `Authorization`, `X-Integration-Signature` |
+| **Permissão** | ZSAPI |
+| **Uso** | Sincronização de produtos, criação de documentos |
+
+> **Nota**: As duas APIs são diferentes no endpoint e nos headers. Consulte os manuais em [developer.zonesoft.org](https://developer.zonesoft.org) nas respetivas abas.
 
 ---
 
@@ -44,15 +76,25 @@ A integração ZoneSoft POS permite enviar pedidos confirmados diretamente para 
 
 Ative o switch **Ativar Integração ZoneSoft**.
 
-### Passo 3: Introduzir Credenciais API
+### Passo 3: Introduzir Credenciais ZSROI (Obrigatório)
 
 | Campo | Descrição | Exemplo |
 |-------|-----------|---------|
-| Client ID | ID do cliente na ZoneSoft | `12345` |
-| App Key | Chave da aplicação | `app_key_abc123` |
-| App Secret | Chave secreta (nunca partilhar) | `••••••••••` |
+| Client ID | ID do cliente ZSROI | `442FFE2F...` |
+| App Key | Chave da aplicação ZSROI | `2AB458CE...` |
+| App Secret | Chave secreta ZSROI (string UTF-8) | `••••••••••` |
 
-> ⚠️ **Segurança**: O App Secret é usado para gerar assinaturas HMAC-SHA256 e nunca é exposto no frontend.
+### Passo 3b: Credenciais ZSAPI (Opcional)
+
+Se tiver uma integração ZSAPI separada para sincronização de produtos:
+
+| Campo | Descrição |
+|-------|-----------|
+| ZSAPI Client ID | ID do cliente ZSAPI |
+| ZSAPI App Key | Chave da aplicação ZSAPI |
+| ZSAPI App Secret | Chave secreta ZSAPI |
+
+> ⚠️ **Segurança**: Os App Secrets são usados para gerar assinaturas HMAC-SHA256 e nunca são expostos no frontend.
 
 ### Passo 4: Configuração da Loja
 
@@ -228,38 +270,30 @@ Todas as chamadas à API ZoneSoft são autenticadas via HMAC:
 
 ```
 Headers:
-- X-ZS-CLIENT-ID: {client_id}
-- X-ZS-APP-KEY: {app_key}
-- X-ZS-SIGNATURE: {hmac_sha256(body, app_secret)}
+- Authorization: {client_id}
+- X-Integration-Signature: {hmac_sha256(body, app_secret)}
 ```
 
 A assinatura é gerada automaticamente pela nossa edge function.
 
-### Processo de Assinatura
-
-```typescript
-// 1. Stringify do body JSON
-const bodyString = JSON.stringify(requestBody);
-
-// 2. Gerar HMAC-SHA256 com app_secret
-const signature = HMAC_SHA256(bodyString, appSecret);
-
-// 3. Converter para hexadecimal
-const signatureHex = toHex(signature);
-```
+O App Secret deve ser usado como **string UTF-8** (não como bytes hex decodificados).
 
 ---
 
 ## Resolução de Problemas
 
-### Erro: "Invalid signature"
+### Erro: "401 Unauthorized"
 
-**Causa**: A assinatura HMAC não corresponde.
+**Causas possíveis**:
+1. Credenciais incorretas
+2. **Permissão errada** - usando credenciais ZSROI para endpoints ZSAPI ou vice-versa
+3. Assinatura HMAC incorreta
 
 **Solução**:
-1. Verifique se o App Secret está correto
-2. Confirme que não há espaços extra nas credenciais
-3. Teste a conexão novamente
+1. Verifique se está a usar as credenciais corretas para cada API
+2. Para sincronização de produtos: precisa de permissão **ZSAPI**
+3. Para envio de pedidos: precisa de permissão **ZSROI** (ou ZSAPI)
+4. Contacte suporte@zonesoft.pt se necessário
 
 ### Erro: "Client not found"
 
@@ -334,29 +368,12 @@ Se um envio falhou:
 
 ---
 
-## Endpoints da API
-
-### URL Base
-```
-https://api.zonesoft.org/v3/
-```
-
-### Interfaces Utilizadas
-
-| Interface | Ação | Descrição |
-|-----------|------|-----------|
-| `documents` | `saveInstances` | Criar documentos (pedidos) |
-| `documents` | `getInstances` | Consultar documentos |
-| `products` | `getInstances` | Listar produtos |
-
----
-
 ## Suporte
 
 ### ZoneSoft
-- Email: geral@zonesoft.org
+- Email: suporte@zonesoft.pt
 - Portal Developer: [developer.zonesoft.org](https://developer.zonesoft.org)
-- Documentação: Fornecida no portal developer
+- Documentação: Fornecida no portal developer nas abas ZSROI e ZSAPI
 
 ---
 
@@ -364,4 +381,5 @@ https://api.zonesoft.org/v3/
 
 | Versão | Data | Alterações |
 |--------|------|------------|
+| 2.0 | 2026-02 | Corrigido endpoint para zsroi.zonesoft.org/v1.0, headers para Authorization + X-Integration-Signature, suporte a duas APIs (ZSROI + ZSAPI) |
 | 1.0 | 2024-02 | Versão inicial com envio de documentos e mapeamento de produtos |
