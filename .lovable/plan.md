@@ -1,97 +1,87 @@
 
-# Plano: Resolver Erro 401 na Integração ZoneSoft
 
-## Diagnóstico Atual
+# Plano: Limpeza Automática de Carrinhos após 24 Horas
 
-O erro `401 Unauthorized` persiste mesmo após:
-- Store ID preenchido corretamente (loja 1 e 2)
-- Credenciais compartilhadas (App Key/Secret iguais, Client ID diferente por unidade)
-- Múltiplos formatos de assinatura HMAC tentados (hex, base64, uppercase)
+## Problema
 
-### Dados Confirmados no Banco
+Carrinhos WhatsApp com status `active` ficam indefinidamente na base de dados. Quando o cliente volta dias depois, o agente IA carrega o carrinho antigo como se fosse atual, causando confusão.
 
-| Restaurante | Client ID | Store ID | Erro |
-|-------------|-----------|----------|------|
-| Bona Bocca Graça | `442FFE2F...` | 1 | 401 |
-| Bona Bocca Barreiro | `0C9B9212...` | 2 | 401 |
+Atualmente existem **10+ carrinhos ativos** com mais de 24 horas no banco.
 
-## Causas Prováveis
+## Solução
 
-1. **Endpoint de teste incorreto**: O endpoint `products/getInstances` pode não ser acessível para o módulo ZSAPIFood contratado
-2. **Formato do body**: A ZoneSoft pode esperar campos específicos que não estão sendo enviados
-3. **Client ID não associado ao Store ID**: O ID de cliente pode não ter permissão para a loja específica
+Três alterações complementares:
 
-## Solução Proposta
+### 1. Filtrar carrinhos antigos no Context Builder
 
-### 1. Adicionar logs detalhados do request completo
+**Ficheiro:** `supabase/functions/whatsapp-ai-agent/context-builder.ts`
 
-Antes de enviar, logar:
-- URL completa
-- Headers (mascarados)
-- Body exato (JSON string)
-- Assinatura usada
+- Na query que carrega o carrinho ativo (linha ~199-211), adicionar filtro temporal:
+  - Só carregar carrinhos com `updated_at` nas últimas 24 horas
+  - Se o carrinho for mais antigo, tratar como se não existisse (carrinho vazio)
+- Isto garante que o agente IA nunca vê carrinhos expirados
 
-### 2. Testar com endpoint alternativo
+### 2. Criar função de limpeza automática no banco
 
-Além de `products/getInstances`, tentar:
-- `documents/getInstances` - listar documentos
-- Um endpoint mais básico se disponível
+**Nova migration SQL:**
 
-### 3. Adicionar campo de debug na UI
+- Criar função `cleanup_expired_carts()` que:
+  - Muda status de `active` para `expired` em carrinhos com `updated_at > 24 horas`
+  - Também limpa `conversation_pending_items` com mais de 24h
+  - Reseta `conversation_state` para `idle` quando o carrinho associado expira
+- Agendar via `pg_cron` para rodar a cada hora
 
-Mostrar ao utilizador os dados exatos sendo enviados para facilitar comparação com a documentação da ZoneSoft.
+### 3. Limpeza do carrinho público (frontend)
 
-### 4. Verificação de formato do body
+**Ficheiro:** `src/stores/publicCartStore.ts`
 
-Garantir que o body JSON não tem espaços extras e está em formato compacto.
+- Adicionar timestamp de última atualização ao estado persistido
+- Na inicialização, verificar se o carrinho tem mais de 24h e limpar automaticamente
 
 ---
 
 ## Detalhes Técnicos
 
-### Alterações em `supabase/functions/zonesoft-api/index.ts`
+### Context Builder - Filtro Temporal
 
 ```text
-1. Adicionar log completo do request antes de enviar:
-   - Mostrar URL, headers, body, assinatura (preview)
+Alterar a query de carts (linhas 199-211) para incluir:
+  .gt('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
 
-2. Criar função auxiliar para testar múltiplos endpoints:
-   - Tentar products/getInstances primeiro
-   - Se 401, tentar documents/getInstances como fallback
+Se nenhum carrinho for encontrado, activeCart = null e cartItems = []
+Log: "[Context Builder] Cart expired (>24h), treating as empty"
+```
+
+### Migration SQL - Cleanup + Cron
+
+```text
+1. Criar função cleanup_expired_carts():
+   UPDATE carts SET status = 'expired' 
+   WHERE status = 'active' AND updated_at < NOW() - INTERVAL '24 hours';
    
-3. Retornar no erro o body exato que foi enviado para debug
+   DELETE FROM conversation_pending_items 
+   WHERE status = 'pending' AND created_at < NOW() - INTERVAL '24 hours';
+   
+   UPDATE conversation_state SET state = 'idle', metadata = '{}'
+   WHERE cart_id IN (SELECT id FROM carts WHERE status = 'expired' AND updated_at > NOW() - INTERVAL '25 hours');
+
+2. Agendar cron job (via SQL direto, não migration):
+   SELECT cron.schedule('cleanup-expired-carts-hourly', '0 * * * *', 
+     $$SELECT cleanup_expired_carts()$$);
 ```
 
-### Alterações em `src/components/settings/ZoneSoftTab.tsx`
+### Public Cart Store - TTL no LocalStorage
 
 ```text
-1. Mostrar detalhes do erro 401 de forma mais clara
-2. Adicionar botão "Ver detalhes do request" que mostra o que foi enviado
-3. Incluir link direto para documentação/portal ZoneSoft
+Adicionar campo "lastUpdated" ao estado persistido.
+No setSlug e addItem, atualizar lastUpdated = Date.now().
+Na inicialização, se Date.now() - lastUpdated > 24h, chamar clearCart().
 ```
-
-### Validação das Credenciais
-
-```text
-1. Verificar se Client ID tem exatamente 32 caracteres hex
-2. Verificar se App Key tem o formato esperado
-3. Verificar se App Secret está em formato hex (32 chars = 128 bits)
-```
-
----
-
-## Próximos Passos Manuais
-
-Após implementar as melhorias de debug, será necessário:
-
-1. **Verificar no portal ZoneSoft** se o Client ID está associado à loja correta
-2. **Confirmar com suporte ZoneSoft** qual endpoint usar para teste de conexão
-3. **Comparar** o request enviado com exemplos da documentação oficial
-
----
 
 ## Resultado Esperado
 
-- Logs detalhados para identificar discrepância
-- Mensagens de erro mais claras na UI
-- Possibilidade de identificar se o problema é de permissões no lado da ZoneSoft
+- Carrinhos WhatsApp expiram automaticamente após 24h (backend)
+- Context Builder nunca carrega carrinhos com mais de 24h (segurança extra)
+- Carrinho público no browser também limpa após 24h
+- Dados do cliente (nome, morada, insights) continuam preservados no perfil
+
