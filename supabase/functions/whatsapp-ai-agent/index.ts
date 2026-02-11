@@ -219,6 +219,10 @@ serve(async (req) => {
       );
       console.log(`[Agent Config] Filtered tools: ${enabledToolsConfig.map(t => t.tool_name).join(', ')}`);
     }
+    
+    // V19: Filter get_customer_history for non-greeting intents to save iterations
+    const customerHistoryAllowedIntents = ['greeting', 'browse_menu', 'browse_product'];
+    // Note: intent is not yet classified here, filtering happens in tool building step below
 
     // Log context loaded
     interactionLog.state_before = currentState;
@@ -557,8 +561,16 @@ serve(async (req) => {
     
     if (useConversationalDB) {
       if (enabledToolsConfig.length > 0) {
+        // V19: Filter get_customer_history for ordering intents to prevent wasteful iterations
+        const orderingIntents = ['confirm_item', 'provide_address', 'provide_payment', 'finalize', 'modify_cart', 'manage_pending_items'];
+        let filteredToolsConfig = enabledToolsConfig;
+        if (orderingIntents.includes(intent)) {
+          filteredToolsConfig = enabledToolsConfig.filter(t => t.tool_name !== 'get_customer_history');
+          console.log(`[Tools] V19: Filtered get_customer_history for intent "${intent}"`);
+        }
+        
         // Use database-configured tools
-        tools = enabledToolsConfig.map(toolConfig => {
+        tools = filteredToolsConfig.map(toolConfig => {
           const baseTool = getBaseToolDefinition(toolConfig.tool_name);
           
           if (!baseTool) {
@@ -575,7 +587,7 @@ serve(async (req) => {
           };
         }).filter(Boolean);
         
-        console.log(`[Tools] ✅ Using ${tools.length} database-configured tools: ${enabledToolsConfig.map(t => t.tool_name).join(', ')}`);
+        console.log(`[Tools] ✅ Using ${tools.length} database-configured tools: ${filteredToolsConfig.map(t => t.tool_name).join(', ')}`);
       } else {
         // No tools enabled in DB - agent will respond in natural language only
         tools = [];
@@ -639,6 +651,19 @@ serve(async (req) => {
     
     if (useConversationalDB && conversationalPromptBlocks.length > 0) {
       // ============================================================
+      // V19: Build reception_mode_section conditionally
+      // ============================================================
+      let receptionModeSection = '';
+      if (!aiOrderingEnabled) {
+        receptionModeSection = `⚠️ MODO RECEPÇÃO ATIVO - NÃO anotas pedidos.
+Quando cliente quiser pedir:
+1. Envia o link do cardápio: ${context.menuUrl || ''}
+2. Informa: "Faz o teu pedido pelo nosso menu digital, depois envio a confirmação aqui!"
+Podes: responder dúvidas sobre produtos (search_menu), dar info do restaurante, enviar link do menu.
+NÃO podes: add_to_cart, add_pending_item, finalize_order, set_payment_method, validate_and_set_delivery_address.`;
+      }
+      
+      // ============================================================
       // STEP 1: Apply ONLY FIXED variables to system prompt (CACHEABLE)
       // ============================================================
       conversationalSystemPrompt = applyTemplateVariables(conversationalSystemPrompt, {
@@ -646,10 +671,16 @@ serve(async (req) => {
         restaurant_name: restaurant.name,
         restaurant_info: formatted.restaurantInfo,
         
+        // V19: Reception mode (conditional)
+        reception_mode_section: receptionModeSection,
+        
         // Menu (changes only when menu is updated)
         menu_products: formatted.menu,
         menu_categories: menuCategories,
         menu_url: context.menuUrl || '',
+        
+        // Payment methods
+        payment_methods: formatted.paymentMethods,
         
         // Restaurant AI Settings (changes rarely)
         tone: restaurantAISettings?.tone || 'friendly',
@@ -756,8 +787,28 @@ ${rawMessage}
     let allToolCallsRaw: any[] = [];
     let allToolCallsValidated: any[] = [];
     let allToolResults: any[] = [];
-    const MAX_ITERATIONS = 5; // Prevent infinite loops
+    // V19: Dynamic MAX_ITERATIONS by intent to reduce token waste
+    const MAX_ITERATIONS_BY_INTENT: Record<string, number> = {
+      greeting: 1,
+      acknowledgment: 1,
+      ask_question: 2,
+      clarify: 2,
+      confirm_item: 2,
+      browse_product: 2,
+      browse_menu: 2,
+      provide_address: 2,
+      provide_payment: 2,
+      modify_cart: 2,
+      collect_customer_data: 2,
+      manage_pending_items: 3,
+      finalize: 3,
+      prefilled_order: 3,
+      needs_human: 1,
+      security_threat: 1
+    };
+    const MAX_ITERATIONS = MAX_ITERATIONS_BY_INTENT[intent] || 3;
     let iterations = 0;
+    console.log(`[Token Optimization] MAX_ITERATIONS for intent "${intent}": ${MAX_ITERATIONS}`);
     let totalTokensUsed = orchestratorTokens; // Start with Orchestrator tokens
     
     // State management variables
@@ -1054,95 +1105,88 @@ ${rawMessage}
     console.log(`[Response] Tool calls executed: ${allToolCallsValidated.length}`);
     console.log(`[Response] AI-generated message: "${finalResponse || '(empty)'}"`);
     
-    // If AI didn't provide a message after tool execution, construct fallback
+    // V19: Improved fallback - context-aware, excludes noise tools
     if ((!finalResponse || finalResponse.trim() === '') && allToolCallsValidated.length > 0) {
-      console.log('[Response] ⚠️ AI returned empty response after tools, constructing fallback...');
+      console.log('[Response] ⚠️ AI returned empty response after tools, constructing V19 fallback...');
+      
+      // V19: Exclude noisy tools from fallback
+      const excludeFromFallback = ['get_customer_history', 'get_product_addons', 'show_cart'];
       
       const confirmations: string[] = [];
       
       for (const toolResult of allToolResults) {
         const { function_name, result } = toolResult;
         
-        // ============================================================
-        // FILTER ERRORS: Skip failed tool results in customer response
-        // Only include successful results in the fallback message
-        // ============================================================
+        // Skip excluded tools
+        if (excludeFromFallback.includes(function_name)) {
+          console.log(`[Response] ⏭️ V19: Excluding ${function_name} from fallback`);
+          continue;
+        }
+        
+        // Skip failed results
         if (result.success === false || result.error) {
-          console.log(`[Response] ⏭️ Skipping failed tool result: ${function_name} - ${result.error || result.message || 'unknown error'}`);
+          console.log(`[Response] ⏭️ Skipping failed: ${function_name}`);
           continue;
         }
         
         switch (function_name) {
           case 'search_menu': {
             if (result.found && result.products && result.products.length > 0) {
+              // V19: Limit to 3 products in fallback
               const productList = result.products
-                .slice(0, 5)
+                .slice(0, 3)
                 .map((p: any) => `• ${p.name} - €${p.price.toFixed(2)}`)
                 .join('\n');
-              confirmations.push(`🔍 Encontrei estas opções:\n${productList}`);
+              const moreText = result.products.length > 3 ? `\n...e mais ${result.products.length - 3} opções!` : '';
+              confirmations.push(`Encontrei estas opções:\n${productList}${moreText}\nQual preferes?`);
             }
-            // Don't show "not found" errors in fallback
             break;
           }
-          
           case 'add_to_cart': 
           case 'add_pending_item': {
-            if (result.success) {
-              confirmations.push(`✅ ${result.message || 'Produto adicionado!'}`);
-            }
+            if (result.success) confirmations.push(`✅ ${result.message || 'Produto adicionado!'}`);
             break;
           }
-          
           case 'confirm_pending_items': {
-            if (result.success && result.count > 0) {
-              confirmations.push(`✅ ${result.message || `${result.count} item(s) confirmado(s)!`}`);
-            }
+            if (result.success && result.count > 0) confirmations.push(`✅ ${result.message || `${result.count} item(s) confirmado(s)!`}`);
             break;
           }
-          
           case 'validate_and_set_delivery_address': {
-            if (result.valid === true) {
-              confirmations.push(`📍 Endereço confirmado! Taxa de entrega: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
-            }
-            // Don't show address errors in fallback - let AI handle gracefully
+            if (result.valid === true) confirmations.push(`📍 Endereço confirmado! Taxa: €${result.delivery_fee?.toFixed(2) || '0.00'}.`);
             break;
           }
-          
           case 'set_payment_method': {
             if (result.success) {
-              const methodNames: { [key: string]: string } = {
-                cash: 'Dinheiro',
-                card: 'Cartão',
-                mbway: 'MBWay'
-              };
-              confirmations.push(`💳 Pagamento: ${methodNames[result.method] || result.method}`);
+              const mn: Record<string, string> = { cash: 'Dinheiro', card: 'Cartão', mbway: 'MBWay' };
+              confirmations.push(`💳 Pagamento: ${mn[result.method] || result.method}`);
             }
             break;
           }
-          
           case 'finalize_order': {
-            if (result.success) {
-              confirmations.push(`🎉 ${result.message || 'Pedido confirmado!'}`);
-            }
-            // Don't show finalize errors in fallback - let AI explain what's missing
+            if (result.success) confirmations.push(`🎉 ${result.message || 'Pedido confirmado!'}`);
             break;
           }
-          
           default:
-            if (result.success && result.message) {
-              confirmations.push(result.message);
-            }
+            if (result.success && result.message) confirmations.push(result.message);
         }
       }
       
-      // If no successful results, provide a generic message
+      // V19: Context-aware generic fallback messages
       if (confirmations.length === 0) {
-        console.log('[Response] ⚠️ No successful tool results for fallback, using generic message');
-        finalResponse = 'Deixa-me verificar isso. O que gostarias de pedir?';
+        console.log('[Response] ⚠️ V19: No successful results, using intent-based fallback');
+        if (!aiOrderingEnabled && context.menuUrl) {
+          finalResponse = `Faz o teu pedido pelo nosso menu digital:\n${context.menuUrl}\n\nDepois de finalizar, envio a confirmação aqui! 😊`;
+        } else if (intent === 'confirm_item') {
+          finalResponse = 'Desculpa, não consegui processar. Podes repetir quais complementos queres? 😊';
+        } else if (intent === 'browse_product' || intent === 'browse_menu') {
+          finalResponse = 'Não encontrei esse produto. Podes dizer de outra forma ou ver as categorias disponíveis?';
+        } else {
+          finalResponse = 'Deixa-me verificar isso. O que gostarias de pedir?';
+        }
       } else {
         finalResponse = confirmations.join('\n\n');
       }
-      console.log(`[Response] Fallback message constructed: "${finalResponse.substring(0, 150)}..."`);
+      console.log(`[Response] V19 fallback: "${finalResponse.substring(0, 150)}..."`);
     }
     
     // CRITICAL CHECK: If we still have no response, something went wrong
