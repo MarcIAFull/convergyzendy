@@ -8,7 +8,7 @@ interface GeocodingResult {
   formatted_address: string;
   place_id?: string;
   address_components?: any;
-  source?: 'cache' | 'nominatim';
+  source?: 'cache' | 'nominatim' | 'photon' | 'google';
 }
 
 interface ValidationResult {
@@ -50,6 +50,30 @@ export const useGeocoding = () => {
     }
   };
 
+  const geocodeAddressMulti = async (
+    address: string
+  ): Promise<GeocodingResult[]> => {
+    if (!address || address.trim().length < 3) {
+      return [];
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('geocode-address-free', {
+        body: { address, multi: true }
+      });
+
+      if (error) throw error;
+
+      return (data as any)?.suggestions || [];
+    } catch (error: any) {
+      console.error('Geocoding multi error:', error);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const validateDeliveryAddress = async (
     restaurant_id: string,
     lat: number,
@@ -77,6 +101,7 @@ export const useGeocoding = () => {
   return {
     loading,
     geocodeAddress,
+    geocodeAddressMulti,
     validateDeliveryAddress
   };
 };

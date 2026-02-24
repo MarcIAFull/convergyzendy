@@ -29,13 +29,13 @@ function extractPostalCode(address: string): string | null {
   return match ? match[0] : null;
 }
 
-// Provider 0: Google Geocoding API (maximum accuracy)
-async function tryGoogleGeocoding(address: string): Promise<GeocodingResult | null> {
+// Provider 0: Google Geocoding API (maximum accuracy) - returns multiple
+async function tryGoogleGeocoding(address: string, limit: number = 1): Promise<GeocodingResult[]> {
   const apiKey = Deno.env.get('GOOGLE_GEOCODING_API_KEY');
   
   if (!apiKey) {
     console.log('Google: API key not configured, skipping...');
-    return null;
+    return [];
   }
   
   try {
@@ -51,36 +51,34 @@ async function tryGoogleGeocoding(address: string): Promise<GeocodingResult | nu
     
     if (data.status !== 'OK' || !data.results?.length) {
       console.log('Google: No results, status:', data.status);
-      return null;
+      return [];
     }
     
-    const result = data.results[0];
-    console.log('Google: Success!', result.formatted_address);
-    
-    return {
+    const results = data.results.slice(0, limit).map((result: any) => ({
       lat: result.geometry.location.lat,
       lng: result.geometry.location.lng,
       formatted_address: result.formatted_address,
       place_id: result.place_id,
       address_components: result.address_components,
       source: 'google'
-    };
+    }));
+    
+    console.log(`Google: Found ${results.length} results`);
+    return results;
   } catch (error) {
     console.error('Google Geocoding error:', error);
-    return null;
+    return [];
   }
 }
 
-// Provider 1: Photon (Komoot) - More accurate, free
-async function tryPhoton(address: string, cityContext?: string): Promise<GeocodingResult | null> {
+// Provider 1: Photon (Komoot) - returns multiple
+async function tryPhoton(address: string, cityContext?: string, limit: number = 1): Promise<GeocodingResult[]> {
   try {
-    // Photon works better with more complete addresses
-    // PHASE 2: Try with city context (Quarteira/Algarve) first for better accuracy
     const contextSuffix = cityContext || 'Quarteira, Algarve, Portugal';
     const urls = [
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ', ' + contextSuffix)}&limit=1&lang=pt`,
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ' Portugal')}&limit=1&lang=pt`,
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=pt`
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ', ' + contextSuffix)}&limit=${limit}&lang=pt`,
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address + ' Portugal')}&limit=${limit}&lang=pt`,
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=${limit}&lang=pt`
     ];
     
     for (const url of urls) {
@@ -104,47 +102,48 @@ async function tryPhoton(address: string, cityContext?: string): Promise<Geocodi
         continue;
       }
 
-      const feature = data.features[0];
-      const props = feature.properties;
-      
-      const formattedAddress = [
-        props.name,
-        props.street,
-        props.housenumber,
-        props.postcode,
-        props.city,
-        props.state,
-        props.country
-      ].filter(Boolean).join(', ');
+      const results = data.features.slice(0, limit).map((feature: any) => {
+        const props = feature.properties;
+        const formattedAddress = [
+          props.name,
+          props.street,
+          props.housenumber,
+          props.postcode,
+          props.city,
+          props.state,
+          props.country
+        ].filter(Boolean).join(', ');
 
-      console.log('Photon: Success!', formattedAddress);
+        return {
+          lat: feature.geometry.coordinates[1],
+          lng: feature.geometry.coordinates[0],
+          formatted_address: formattedAddress,
+          place_id: props.osm_id?.toString(),
+          address_components: props,
+          source: 'photon'
+        };
+      });
 
-      return {
-        lat: feature.geometry.coordinates[1],
-        lng: feature.geometry.coordinates[0],
-        formatted_address: formattedAddress,
-        place_id: props.osm_id?.toString(),
-        address_components: props,
-        source: 'photon'
-      };
+      console.log(`Photon: Found ${results.length} results`);
+      return results;
     }
     
-    return null;
+    return [];
   } catch (error) {
     console.error('Photon error:', error);
-    return null;
+    return [];
   }
 }
 
-// Provider 2: Nominatim (fallback)
-async function tryNominatim(address: string, countryCode: boolean = true, addPortugal: boolean = false): Promise<GeocodingResult | null> {
+// Provider 2: Nominatim (fallback) - returns multiple
+async function tryNominatim(address: string, countryCode: boolean = true, addPortugal: boolean = false, limit: number = 1): Promise<GeocodingResult[]> {
   try {
     const searchAddress = addPortugal ? `${address}, Portugal` : address;
     let url = `https://nominatim.openstreetmap.org/search?` +
       `q=${encodeURIComponent(searchAddress)}&` +
       `format=json&` +
       `addressdetails=1&` +
-      `limit=3`;
+      `limit=${limit}`;
     
     if (countryCode) {
       url += `&countrycodes=pt`;
@@ -161,51 +160,60 @@ async function tryNominatim(address: string, countryCode: boolean = true, addPor
 
     if (!response.ok) {
       console.log('Nominatim: API error:', response.status);
-      return null;
+      return [];
     }
 
     const data = await response.json();
 
     if (!data || data.length === 0) {
       console.log('Nominatim: No results found');
-      return null;
+      return [];
     }
 
-    // Pick best result (prefer ones with street/housenumber)
-    const result = data.find((r: any) => r.address?.road || r.address?.street) || data[0];
-    console.log('Nominatim: Success!', result.display_name);
-
-    return {
+    const results = data.slice(0, limit).map((result: any) => ({
       lat: parseFloat(result.lat),
       lng: parseFloat(result.lon),
       formatted_address: result.display_name,
       place_id: result.place_id?.toString(),
       address_components: result.address,
       source: 'nominatim'
-    };
+    }));
+    
+    console.log(`Nominatim: Found ${results.length} results`);
+    return results;
   } catch (error) {
     console.error('Nominatim error:', error);
-    return null;
+    return [];
   }
 }
 
 // Provider 3: Nominatim with postal code only
-async function tryNominatimPostalCode(address: string): Promise<GeocodingResult | null> {
+async function tryNominatimPostalCode(address: string, limit: number = 1): Promise<GeocodingResult[]> {
   const postalCode = extractPostalCode(address);
   
   if (!postalCode) {
     console.log('PostalCode: No postal code found in address');
-    return null;
+    return [];
   }
 
-  // Try with postal code + last part (usually city)
   const parts = address.split(',').map((p: string) => p.trim());
   const cityPart = parts[parts.length - 1];
   const searchQuery = `${postalCode} ${cityPart}`;
 
   console.log('PostalCode: Trying simplified search:', searchQuery);
   
-  return tryNominatim(searchQuery, true);
+  return tryNominatim(searchQuery, true, false, limit);
+}
+
+// Deduplicate results by formatted_address similarity
+function deduplicateResults(results: GeocodingResult[]): GeocodingResult[] {
+  const seen = new Set<string>();
+  return results.filter(r => {
+    const key = r.formatted_address.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 serve(async (req) => {
@@ -214,7 +222,7 @@ serve(async (req) => {
   }
 
   try {
-    const { address, force_refresh } = await req.json();
+    const { address, force_refresh, multi } = await req.json();
 
     if (!address || address.trim().length < 3) {
       return new Response(
@@ -224,10 +232,14 @@ serve(async (req) => {
     }
 
     const normalizedAddress = normalizeAddress(address);
+    const wantMulti = multi === true;
+    const resultLimit = wantMulti ? 5 : 1;
+    
     console.log('=== Geocoding request ===');
     console.log('Original:', address);
     console.log('Normalized:', normalizedAddress);
     console.log('Force refresh:', force_refresh);
+    console.log('Multi:', wantMulti);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -249,8 +261,8 @@ serve(async (req) => {
       }
     }
 
-    // Check cache first (only if not forcing refresh)
-    if (!force_refresh) {
+    // Check cache first (only for single result, not multi)
+    if (!force_refresh && !wantMulti) {
       console.log('Checking cache...');
       const { data: cachedAddress } = await supabase
         .from('address_cache')
@@ -277,50 +289,55 @@ serve(async (req) => {
 
     console.log('Cache miss or force refresh, trying providers...');
 
-    // Try providers in order of accuracy with multiple strategies
-    // PHASE 2: Added Quarteira/Algarve context for better local accuracy
+    // Collect all results from multiple providers
+    let allResults: GeocodingResult[] = [];
+
     console.log('--- Strategy 0: Google Geocoding API ---');
-    let result = await tryGoogleGeocoding(normalizedAddress);
+    const googleResults = await tryGoogleGeocoding(normalizedAddress, resultLimit);
+    allResults.push(...googleResults);
     
-    if (!result) {
+    if (allResults.length < resultLimit) {
       console.log('--- Strategy 1: Photon with Quarteira/Algarve context ---');
-      result = await tryPhoton(normalizedAddress, 'Quarteira, Algarve, Portugal');
+      const photonResults = await tryPhoton(normalizedAddress, 'Quarteira, Algarve, Portugal', resultLimit);
+      allResults.push(...photonResults);
     }
     
-    if (!result) {
+    if (allResults.length < resultLimit) {
       console.log('--- Strategy 2: Photon without context ---');
-      result = await tryPhoton(normalizedAddress);
+      const photonResults2 = await tryPhoton(normalizedAddress, undefined, resultLimit);
+      allResults.push(...photonResults2);
     }
     
-    if (!result) {
+    if (allResults.length < resultLimit) {
       console.log('--- Strategy 3: Nominatim PT + Portugal suffix ---');
-      result = await tryNominatim(normalizedAddress, true, true);
+      const nomResults = await tryNominatim(normalizedAddress, true, true, resultLimit);
+      allResults.push(...nomResults);
     }
     
-    if (!result) {
+    if (allResults.length < resultLimit) {
       console.log('--- Strategy 4: Nominatim PT only ---');
-      result = await tryNominatim(normalizedAddress, true, false);
+      const nomResults2 = await tryNominatim(normalizedAddress, true, false, resultLimit);
+      allResults.push(...nomResults2);
     }
     
-    if (!result) {
+    if (allResults.length < resultLimit) {
       console.log('--- Strategy 5: Nominatim no filter + Portugal ---');
-      result = await tryNominatim(normalizedAddress, false, true);
+      const nomResults3 = await tryNominatim(normalizedAddress, false, true, resultLimit);
+      allResults.push(...nomResults3);
     }
     
-    if (!result) {
-      console.log('--- Strategy 6: Nominatim no filter ---');
-      result = await tryNominatim(normalizedAddress, false, false);
-    }
-    
-    if (!result && address.includes(',')) {
+    if (allResults.length === 0 && address.includes(',')) {
       console.log('--- Strategy 6: Postal code extraction ---');
-      result = await tryNominatimPostalCode(address);
+      const postalResults = await tryNominatimPostalCode(address, resultLimit);
+      allResults.push(...postalResults);
     }
 
-    if (!result) {
+    // Deduplicate
+    allResults = deduplicateResults(allResults);
+
+    if (allResults.length === 0) {
       console.log('❌ All geocoding strategies failed');
       
-      // Check if address is too incomplete
       const hasPostalCode = /\d{4}-\d{3}/.test(address);
       const hasComma = address.includes(',');
       
@@ -339,7 +356,18 @@ serve(async (req) => {
       );
     }
 
-    console.log('✅ Geocoding successful via:', result.source);
+    console.log(`✅ Geocoding successful, ${allResults.length} result(s)`);
+
+    // For multi mode, return array of suggestions
+    if (wantMulti) {
+      return new Response(
+        JSON.stringify({ suggestions: allResults.slice(0, 5) }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Single result mode (backward compatible)
+    const result = allResults[0];
 
     // Cache the result (90 days TTL)
     const expiresAt = new Date();
