@@ -158,6 +158,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   updateOrderStatus: async (id, status) => {
     set({ loading: true, error: null });
     try {
+      // Get the order's restaurant_id before updating
+      const order = get().orders.find(o => o.id === id);
+      const restaurantId = order?.restaurant_id;
+
       const { error } = await supabase
         .from('orders')
         .update({ status })
@@ -167,11 +171,24 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
       // Update local state
       set(state => ({
-        orders: state.orders.map(order =>
-          order.id === id ? { ...order, status } : order
+        orders: state.orders.map(o =>
+          o.id === id ? { ...o, status } : o
         ),
         loading: false,
       }));
+
+      // Send WhatsApp status notification in background (don't block UI)
+      if (restaurantId && status !== 'new') {
+        supabase.functions.invoke('notify-order-status', {
+          body: { order_id: id, restaurant_id: restaurantId, new_status: status },
+        }).then(({ error: notifyError }) => {
+          if (notifyError) {
+            console.warn('[OrderStore] Failed to send status notification:', notifyError);
+          } else {
+            console.log('[OrderStore] Status notification sent for', status);
+          }
+        });
+      }
     } catch (error) {
       set({ 
         error: error instanceof Error ? error.message : 'Failed to update order status',
