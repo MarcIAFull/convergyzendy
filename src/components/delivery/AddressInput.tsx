@@ -25,25 +25,21 @@ export const AddressInput = ({
   required = false,
   className
 }: AddressInputProps) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
   const [geocodingStatus, setGeocodingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const { loading, geocodeAddress } = useGeocoding();
 
-  // Debounce address input
+  // Debounce address input — wait 2s after user stops typing
   useEffect(() => {
+    setGeocodingStatus('idle');
+    
+    if (!value || value.length < 10) return;
+
     const timer = setTimeout(() => {
-      setDebouncedValue(value);
-    }, 800);
+      handleGeocode();
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, [value]);
-
-  // Trigger geocoding when debounced value changes
-  useEffect(() => {
-    if (debouncedValue && debouncedValue.length >= 10) {
-      handleGeocode();
-    }
-  }, [debouncedValue]);
 
   const handleGeocode = async () => {
     if (!value || value.length < 10) {
