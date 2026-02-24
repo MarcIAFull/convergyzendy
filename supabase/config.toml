@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.zonesoft-webhook]
 verify_jwt = false
+
+[functions.notify-order-status]
+verify_jwt = false
