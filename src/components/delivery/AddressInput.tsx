@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
 import { Loader2, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { cn } from '@/lib/utils';
+
+interface GeocodingResult {
+  lat: number;
+  lng: number;
+  formatted_address: string;
+  place_id?: string;
+  address_components?: any;
+  source?: string;
+}
 
 interface AddressInputProps {
   value: string;
@@ -25,45 +33,78 @@ export const AddressInput = ({
   required = false,
   className
 }: AddressInputProps) => {
-  const [geocodingStatus, setGeocodingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const { loading, geocodeAddress } = useGeocoding();
+  const [status, setStatus] = useState<'idle' | 'loading' | 'suggestions' | 'selected' | 'error'>('idle');
+  const [suggestions, setSuggestions] = useState<GeocodingResult[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const { geocodeAddressMulti } = useGeocoding();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Debounce address input — wait 2s after user stops typing
+  // Close dropdown on outside click
   useEffect(() => {
-    setGeocodingStatus('idle');
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounce: wait 2s after user stops typing, then fetch suggestions
+  useEffect(() => {
+    // Reset when typing
+    if (status === 'selected') return; // don't re-search after selecting
     
+    setStatus('idle');
+    setSuggestions([]);
+    setShowDropdown(false);
+
     if (!value || value.length < 10) return;
 
-    const timer = setTimeout(() => {
-      handleGeocode();
+    timerRef.current = setTimeout(async () => {
+      setStatus('loading');
+      const results = await geocodeAddressMulti(value);
+      
+      if (results.length > 0) {
+        setSuggestions(results);
+        setShowDropdown(true);
+        setStatus('suggestions');
+      } else {
+        setStatus('error');
+      }
     }, 2000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [value]);
 
-  const handleGeocode = async () => {
-    if (!value || value.length < 10) {
-      setGeocodingStatus('idle');
-      return;
+  const handleInputChange = (newValue: string) => {
+    // When user types, reset the selected state so debounce works again
+    if (status === 'selected') {
+      setStatus('idle');
     }
+    onChange(newValue);
+  };
 
-    setGeocodingStatus('loading');
-    
-    const result = await geocodeAddress(value);
-    
-    if (result) {
-      setGeocodingStatus('success');
-      onGeocoded?.(result);
-    } else {
-      setGeocodingStatus('error');
-    }
+  const handleSelect = (result: GeocodingResult) => {
+    onChange(result.formatted_address);
+    setStatus('selected');
+    setSuggestions([]);
+    setShowDropdown(false);
+    onGeocoded?.({
+      lat: result.lat,
+      lng: result.lng,
+      formatted_address: result.formatted_address
+    });
   };
 
   const getStatusIcon = () => {
-    switch (geocodingStatus) {
+    switch (status) {
       case 'loading':
         return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
-      case 'success':
+      case 'selected':
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case 'error':
         return <XCircle className="h-4 w-4 text-destructive" />;
@@ -73,7 +114,7 @@ export const AddressInput = ({
   };
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div ref={wrapperRef} className={cn('space-y-2 relative', className)}>
       <Label htmlFor="address">
         {label}
         {required && <span className="text-destructive ml-1">*</span>}
@@ -82,25 +123,49 @@ export const AddressInput = ({
         <Input
           id="address"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           placeholder={placeholder}
           required={required}
+          autoComplete="off"
           className={cn(
             'pr-10',
-            geocodingStatus === 'success' && 'border-green-500',
-            geocodingStatus === 'error' && 'border-destructive'
+            status === 'selected' && 'border-green-500',
+            status === 'error' && 'border-destructive'
           )}
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2">
           {getStatusIcon()}
         </div>
       </div>
-      {geocodingStatus === 'error' && (
+
+      {/* Suggestions dropdown */}
+      {showDropdown && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md max-h-60 overflow-y-auto">
+          <div className="p-1">
+            <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+              Selecione o endereço correto:
+            </p>
+            {suggestions.map((s, i) => (
+              <button
+                key={`${s.place_id || i}-${s.lat}`}
+                type="button"
+                onClick={() => handleSelect(s)}
+                className="flex items-start gap-2 w-full rounded-sm px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+              >
+                <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <span className="line-clamp-2">{s.formatted_address}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {status === 'error' && (
         <p className="text-sm text-destructive">
           Endereço não encontrado. Tente adicionar mais detalhes (rua, número, cidade).
         </p>
       )}
-      {geocodingStatus === 'success' && (
+      {status === 'selected' && (
         <p className="text-sm text-green-600">
           ✓ Endereço validado
         </p>
