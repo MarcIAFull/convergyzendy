@@ -156,13 +156,8 @@ export function AIPersonalizationTab() {
                 <Label htmlFor="ai-ordering">IA Anota Pedidos</Label>
                 <p className="text-sm text-muted-foreground">
                   {settings.ai_ordering_enabled 
-                    ? 'A IA anota pedidos diretamente pelo WhatsApp'
-                    : (
-                      <span className="flex items-center gap-1">
-                        A IA envia o link do cardápio digital para o cliente fazer o pedido
-                        <ExternalLink className="h-3 w-3" />
-                      </span>
-                    )
+                    ? 'Ativo: A IA recebe e anota pedidos diretamente na conversa do WhatsApp'
+                    : 'Desativado: A IA apenas responde dúvidas e envia o link do cardápio digital'
                   }
                 </p>
               </div>
@@ -172,13 +167,21 @@ export function AIPersonalizationTab() {
                 onCheckedChange={(checked) => updateSetting('ai_ordering_enabled', checked)}
               />
             </div>
-            {!settings.ai_ordering_enabled && (
+            {settings.ai_ordering_enabled ? (
+              <Alert className="mt-4 border-green-500 bg-green-50 dark:bg-green-950/20">
+                <Bot className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-700 dark:text-green-400">
+                  <strong>Modo Vendedor Ativo:</strong> A IA conversa com o cliente, monta o carrinho, 
+                  recolhe morada e método de pagamento, e finaliza o pedido — tudo pelo WhatsApp.
+                </AlertDescription>
+              </Alert>
+            ) : (
               <Alert className="mt-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
                 <Info className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-700 dark:text-amber-400">
-                  <strong>Modo Recepção Ativo:</strong> Quando o cliente quiser fazer um pedido, 
-                  a IA enviará o link do cardápio digital. Após a finalização, o cliente receberá 
-                  confirmação no WhatsApp.
+                  <strong>Modo Recepção Ativo:</strong> A IA responde perguntas e, quando o cliente 
+                  quiser pedir, envia o link do cardápio digital para ele fazer o pedido sozinho. 
+                  Após finalizar, recebe confirmação no WhatsApp.
                 </AlertDescription>
               </Alert>
             )}
