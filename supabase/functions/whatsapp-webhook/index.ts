@@ -472,7 +472,7 @@ async function addToDebounceQueue(
 }
 
 async function scheduleProcessing(supabase: any, queueId: string) {
-  const MAX_RETRIES = 12; // Máximo 60 segundos de espera total (12 * 5s)
+  const MAX_RETRIES = 20; // Máximo ~160 segundos de espera total (20 * 8s)
   
   for (let retry = 0; retry < MAX_RETRIES; retry++) {
     // Esperar DEBOUNCE_SECONDS antes de verificar
@@ -517,9 +517,16 @@ async function scheduleProcessing(supabase: any, queueId: string) {
 
         if (error) {
           console.error('[scheduleProcessing] Error invoking processor:', error);
-        } else {
-          console.log('[scheduleProcessing] Processor response:', data);
+          return;
         }
+        
+        // Se o processador disse "waiting" (nova msg chegou entre checks), continuar o loop
+        if (data?.status === 'waiting') {
+          console.log(`[scheduleProcessing] ⏳ Processor said waiting (${data.remainingSeconds?.toFixed(1)}s), continuing loop...`);
+          continue;
+        }
+        
+        console.log('[scheduleProcessing] Processor response:', data);
         return;
       } else {
         // Nova mensagem chegou dentro do período de debounce, esperar mais
