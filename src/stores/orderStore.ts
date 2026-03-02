@@ -201,7 +201,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           payment_method: wo.payment_method as any,
           delivery_address: wo.delivery_address || '',
           order_notes: wo.delivery_instructions || null,
-          status: (wo.status || 'new') as Order['status'],
+          status: (wo.status === 'pending' ? 'new' : (wo.status || 'new')) as Order['status'],
           created_at: wo.created_at || '',
           updated_at: wo.updated_at || '',
           items,
