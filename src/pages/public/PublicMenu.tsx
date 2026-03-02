@@ -17,7 +17,7 @@ import { Helmet } from 'react-helmet-async';
 export default function PublicMenu() {
   const { slug } = useParams<{ slug: string }>();
   const { menuData, loading, error, fetchMenuBySlug } = usePublicMenuStore();
-  const { addItem } = usePublicCartStore();
+  const { addItem, setSlug } = usePublicCartStore();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -29,6 +29,7 @@ export default function PublicMenu() {
 
   useEffect(() => {
     if (slug) {
+      setSlug(slug);
       fetchMenuBySlug(slug);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
