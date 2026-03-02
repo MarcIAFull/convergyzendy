@@ -72,12 +72,18 @@ export const ProductModal = ({
     }).format(price);
   };
 
+  const freeAddonsCount = product?.free_addons_count ?? 0;
+
+  const calculateAddonsTotal = (selected: Addon[]) => {
+    if (freeAddonsCount <= 0) return selected.reduce((sum, a) => sum + a.price, 0);
+    const paid = selected.slice(freeAddonsCount);
+    return paid.reduce((sum, a) => sum + a.price, 0);
+  };
+
   const calculateTotalPrice = () => {
     if (!product) return 0;
-    const addonsTotal = addons
-      .filter((addon) => selectedAddonIds.has(addon.id))
-      .reduce((sum, addon) => sum + addon.price, 0);
-    return (product.price + addonsTotal) * quantity;
+    const selected = addons.filter((addon) => selectedAddonIds.has(addon.id));
+    return (product.price + calculateAddonsTotal(selected)) * quantity;
   };
 
   if (!product) return null;
@@ -123,25 +129,38 @@ export const ProductModal = ({
           {productAddons.length > 0 && (
             <div className="space-y-3">
               <Label className="text-lg font-semibold">Adicionais</Label>
+              {freeAddonsCount > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Escolha até {freeAddonsCount} adicionais grátis
+                  {selectedAddonIds.size > 0 && selectedAddonIds.size <= freeAddonsCount && (
+                    <> — {freeAddonsCount - selectedAddonIds.size} restante(s)</>
+                  )}
+                </p>
+              )}
               <div className="space-y-2">
-                {productAddons.map((addon) => (
-                  <div key={addon.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={addon.id}
-                      checked={selectedAddonIds.has(addon.id)}
-                      onCheckedChange={() => toggleAddon(addon.id)}
-                    />
-                    <label
-                      htmlFor={addon.id}
-                      className="flex-1 cursor-pointer flex items-center justify-between"
-                    >
-                      <span className="text-foreground">{addon.name}</span>
-                      <span className="text-muted-foreground">
-                        + {formatPrice(addon.price)}
-                      </span>
-                    </label>
-                  </div>
-                ))}
+                {productAddons.map((addon, idx) => {
+                  const selectedList = Array.from(selectedAddonIds);
+                  const addonIndex = selectedList.indexOf(addon.id);
+                  const isFree = addonIndex >= 0 && addonIndex < freeAddonsCount;
+                  return (
+                    <div key={addon.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={addon.id}
+                        checked={selectedAddonIds.has(addon.id)}
+                        onCheckedChange={() => toggleAddon(addon.id)}
+                      />
+                      <label
+                        htmlFor={addon.id}
+                        className="flex-1 cursor-pointer flex items-center justify-between"
+                      >
+                        <span className="text-foreground">{addon.name}</span>
+                        <span className="text-muted-foreground">
+                          {isFree ? 'Grátis' : `+ ${formatPrice(addon.price)}`}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
