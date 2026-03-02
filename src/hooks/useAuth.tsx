@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase, waitForAuth } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useRestaurantStore } from '@/stores/restaurantStore';
@@ -22,56 +22,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  
+  const lastSessionIdRef = useRef<string | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let isMounted = true;
 
-    // Listen for auth changes
+    // 1. Register listener FIRST (recommended pattern)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('[Auth] State change:', _event);
-      
-      if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') {
-        console.log('[Auth] ✅ Token recebido, verificando propagação...');
-        
-        // Aguardar token estar disponível (não bloqueia o callback)
-        waitForAuth(3000).then(() => {
-          console.log('[Auth] ✅ Token propagado');
-        });
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-      } else if (_event === 'SIGNED_OUT') {
-        console.log('[Auth] 🧹 Clearing restaurant store on logout');
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!isMounted) return;
+
+      const newSessionId = newSession?.access_token ?? null;
+
+      // Deduplicate: skip if session hasn't actually changed
+      if (initializedRef.current && newSessionId === lastSessionIdRef.current) {
+        return;
+      }
+
+      lastSessionIdRef.current = newSessionId;
+
+      if (_event === 'SIGNED_OUT') {
         useRestaurantStore.getState().clearRestaurant();
         setSession(null);
         setUser(null);
       } else {
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
       }
-      
-      setLoading(false);
+
+      // Mark loading false only once
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        setLoading(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    // 2. Then get initial session (acts as fallback if INITIAL_SESSION is delayed)
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!isMounted) return;
+      // Only use if listener hasn't fired yet
+      if (!initializedRef.current) {
+        lastSessionIdRef.current = currentSession?.access_token ?? null;
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        initializedRef.current = true;
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-
       toast.success('Login realizado com sucesso!');
       navigate('/dashboard');
     } catch (error: any) {
@@ -86,16 +97,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
       const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: metadata,
-          emailRedirectTo: `${window.location.origin}/`,
-        },
+        email, password,
+        options: { data: metadata, emailRedirectTo: `${window.location.origin}/` },
       });
-
       if (error) throw error;
-
       toast.success('Conta criada! Verifique seu email.');
       navigate('/onboarding');
     } catch (error: any) {
@@ -109,13 +114,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     try {
-      // Clear restaurant store before logout
-      console.log('[Auth] 🧹 Clearing restaurant store before logout');
       useRestaurantStore.getState().clearRestaurant();
-      
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      
       toast.success('Logout realizado com sucesso!');
       navigate('/login');
     } catch (error: any) {
@@ -129,9 +130,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
-
       if (error) throw error;
-
       toast.success('Email de recuperação enviado!');
     } catch (error: any) {
       console.error('Reset password error:', error);
@@ -140,17 +139,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        signIn,
-        signUp,
-        signOut,
-        resetPassword,
-      }}
-    >
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );
