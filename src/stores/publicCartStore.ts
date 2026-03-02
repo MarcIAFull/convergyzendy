@@ -37,8 +37,10 @@ export const usePublicCartStore = create<PublicCartState>()(
       addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => {
         const items = get().items;
         
-        // Calcular preço total do item
-        const addonsTotal = selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+        // Calcular preço total do item respeitando free_addons_count
+        const freeCount = product.free_addons_count ?? 0;
+        const paidAddons = freeCount > 0 ? selectedAddons.slice(freeCount) : selectedAddons;
+        const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
         const totalPrice = (product.price + addonsTotal) * quantity;
 
         // Verificar se item idêntico já existe
@@ -101,7 +103,9 @@ export const usePublicCartStore = create<PublicCartState>()(
             JSON.stringify(item.selectedAddons.map((a) => a.id).sort()) ===
               JSON.stringify(addonIds.sort())
           ) {
-            const addonsTotal = item.selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+            const freeCount = item.product.free_addons_count ?? 0;
+            const paidAddons = freeCount > 0 ? item.selectedAddons.slice(freeCount) : item.selectedAddons;
+            const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
             const unitPrice = item.product.price + addonsTotal;
             return {
               ...item,
