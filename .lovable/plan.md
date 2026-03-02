@@ -1,82 +1,42 @@
 
 
-## Notificações de Atualização de Status do Pedido via WhatsApp
+## Diagnóstico
 
-### Situacao Atual
+Identifiquei **dois problemas** separados:
 
-| Funcionalidade | Status |
-|---|---|
-| Notificar restaurante (WhatsApp) ao receber pedido web | Implementado |
-| Notificar cliente (WhatsApp) com confirmacao do pedido | Implementado |
-| Cliente pode continuar conversa pelo WhatsApp | Funciona naturalmente |
-| Notificar cliente quando status do pedido muda | **Nao implementado** |
+### Problema 1: Notificações WhatsApp falhando (404)
+As edge functions `notify-web-order` e `notify-customer-order` constroem a URL da Evolution API diretamente com `Deno.env.get('EVOLUTION_API_URL')` sem remover a barra final. O resultado é uma URL malformada: `https://evolution.fullbpo.com//message/sendText/...` (barra dupla), que retorna 404.
 
-### O que sera feito
+O módulo compartilhado `evolutionClient.ts` já faz essa normalização (`apiUrl.replace(/\/+$/, '')`), mas essas duas funções não o utilizam.
 
-Quando o restaurante alterar o status de um pedido no painel (Kanban/lista), o cliente recebera automaticamente uma mensagem no WhatsApp informando a atualizacao.
+**Correção:** Adicionar `.replace(/\/+$/, '')` ao `evolutionApiUrl` em ambas as edge functions.
 
-### Mensagens por Status
+### Problema 2: Pedidos web não aparecem no quadro
+O dashboard (`orderStore.ts`) consulta apenas a tabela `orders`. Pedidos do menu digital vão para a tabela `web_orders`. Não existe integração entre as duas — os pedidos web simplesmente não aparecem no painel.
 
-| Status | Mensagem |
-|---|---|
-| preparing | "Seu pedido #ABC123 esta sendo preparado! Aguarde..." |
-| ready | "Seu pedido #ABC123 esta pronto!" (para takeaway/dine_in) |
-| delivering | "Seu pedido #ABC123 saiu para entrega!" (para delivery) |
-| delivered | "Seu pedido #ABC123 foi entregue! Obrigado!" |
-| cancelled | "Seu pedido #ABC123 foi cancelado. Entre em contato para mais informacoes." |
+**Correção:** Modificar o `orderStore` para também buscar `web_orders` e unificá-los na mesma lista, adaptando os campos para o formato `OrderWithDetails`.
 
-Pedidos do tipo `dine_in` e `takeaway` recebem mensagens adaptadas ao contexto.
+---
 
-### Detalhes Tecnicos
+### Plano de Implementação
 
-**1. Nova Edge Function: `notify-order-status`**
-- Recebe: `order_id`, `restaurant_id`, `new_status`
-- Busca o pedido na tabela `orders` para obter `user_phone`
-- Tambem tenta buscar em `web_orders` caso seja pedido web (para obter `customer_phone`)
-- Monta a mensagem adequada ao status e tipo de pedido
-- Envia via Evolution API para o WhatsApp do cliente
-- Registra a mensagem na tabela `messages`
+**1. Corrigir URL da Evolution API (notify-web-order e notify-customer-order)**
+- Adicionar normalização: `const normalizedUrl = evolutionApiUrl.replace(/\/+$/, '');`
+- Usar `normalizedUrl` na chamada fetch em ambas as funções
+- Redesplegar ambas as funções
 
-**2. Alteracao no `orderStore.ts`**
-- Apos o `updateOrderStatus` executar o UPDATE com sucesso, chama a edge function `notify-order-status` passando o novo status
-- A chamada e feita em background (sem bloquear a UI) -- se falhar, o status do pedido ja foi atualizado
+**2. Integrar web_orders no dashboard**
+- Modificar `orderStore.ts` > `fetchOrders` para também buscar `web_orders` filtrados pelo `restaurant_id`
+- Mapear `web_orders` para o formato `OrderWithDetails` (usar `customer_phone` como `user_phone`, montar items a partir do JSONB `items`)
+- Concatenar com os pedidos da tabela `orders` e ordenar por `created_at`
+- Adicionar subscripção realtime para `web_orders` também
 
-**3. Tratamento para pedidos WhatsApp vs Web**
-- Pedidos WhatsApp: o telefone esta no campo `user_phone` da tabela `orders`
-- Pedidos Web: o telefone esta no campo `customer_phone` da tabela `web_orders`
-- A edge function verifica ambas as fontes para garantir o envio
+**3. Adaptar tipos**
+- Garantir que os pedidos web mapeados incluam um campo `source: 'web'` para diferenciação visual no dashboard
 
-**4. Configuracao no `supabase/config.toml`**
-- Adicionar entrada `[functions.notify-order-status]` com `verify_jwt = false`
-
-### Fluxo
-
-```text
-Restaurante muda status no Kanban
-        |
-        v
-orderStore.updateOrderStatus()
-        |
-        +---> UPDATE orders SET status = 'preparing'
-        |
-        +---> POST notify-order-status (background)
-                    |
-                    v
-              Busca telefone do cliente
-                    |
-                    v
-              Monta mensagem adequada ao status
-                    |
-                    v
-              Envia via Evolution API
-                    |
-                    v
-              Registra em messages
-```
-
-### Arquivos a criar/modificar
-
-- **Criar:** `supabase/functions/notify-order-status/index.ts`
-- **Modificar:** `src/stores/orderStore.ts` (adicionar chamada apos update)
-- **Modificar:** `supabase/config.toml` (adicionar entry da nova funcao)
+### Arquivos a modificar
+- `supabase/functions/notify-web-order/index.ts` — normalizar URL
+- `supabase/functions/notify-customer-order/index.ts` — normalizar URL
+- `src/stores/orderStore.ts` — buscar e unificar web_orders
+- Possivelmente `src/types/database.ts` — ajustar tipo se necessário
 
