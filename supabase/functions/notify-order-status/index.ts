@@ -12,6 +12,18 @@ interface NotifyStatusRequest {
   new_status: string;
 }
 
+interface NotificationConfig {
+  enabled: boolean;
+  message: string;
+}
+
+const DEFAULT_NOTIFICATIONS: Record<string, NotificationConfig> = {
+  preparing: { enabled: true, message: "👨‍🍳 Olá {{customer_name}}! Seu pedido *#{{order_id}}* está sendo preparado! ⏳" },
+  out_for_delivery: { enabled: true, message: "🚚 {{customer_name}}, seu pedido *#{{order_id}}* saiu para entrega! 📍" },
+  completed: { enabled: true, message: "🎉 {{customer_name}}, seu pedido *#{{order_id}}* foi entregue! Obrigado! ❤️" },
+  cancelled: { enabled: true, message: "❌ {{customer_name}}, seu pedido *#{{order_id}}* foi cancelado. Entre em contato para mais informações." },
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -33,13 +45,28 @@ serve(async (req) => {
 
     console.log(`[notify-order-status] Order ${order_id} -> ${new_status}`);
 
-    // Try to find the order in both tables
-    let customerPhone: string | null = null;
-    let orderType = 'delivery';
-    let customerName = '';
-    let deliveryAddress = '';
+    // Fetch restaurant notification config
+    const { data: aiSettings } = await supabase
+      .from('restaurant_ai_settings')
+      .select('order_notifications')
+      .eq('restaurant_id', restaurant_id)
+      .maybeSingle();
 
-    // Check orders table first (WhatsApp orders)
+    const notifications: Record<string, NotificationConfig> = aiSettings?.order_notifications || DEFAULT_NOTIFICATIONS;
+    const statusConfig = notifications[new_status];
+
+    if (!statusConfig || !statusConfig.enabled) {
+      console.log(`[notify-order-status] Notification disabled or not configured for status: ${new_status}`);
+      return new Response(
+        JSON.stringify({ success: true, message: 'Notification disabled for this status' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Find customer info
+    let customerPhone: string | null = null;
+    let customerName = '';
+
     const { data: order } = await supabase
       .from('orders')
       .select('id, user_phone, delivery_address, status')
@@ -48,21 +75,28 @@ serve(async (req) => {
 
     if (order) {
       customerPhone = order.user_phone;
-      deliveryAddress = order.delivery_address;
-      orderType = deliveryAddress && deliveryAddress !== 'N/A' ? 'delivery' : 'takeaway';
     }
 
-    // Check web_orders table (web orders)
     const { data: webOrder } = await supabase
       .from('web_orders')
-      .select('customer_phone, customer_name, order_type, delivery_address')
+      .select('customer_phone, customer_name')
       .eq('id', order_id)
       .maybeSingle();
 
     if (webOrder) {
       customerPhone = webOrder.customer_phone;
       customerName = webOrder.customer_name || '';
-      orderType = webOrder.order_type || 'delivery';
+    }
+
+    // Try to get name from customers table if not found
+    if (!customerName && customerPhone) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('name')
+        .eq('phone', customerPhone)
+        .eq('restaurant_id', restaurant_id)
+        .maybeSingle();
+      if (customer?.name) customerName = customer.name;
     }
 
     if (!customerPhone) {
@@ -75,16 +109,10 @@ serve(async (req) => {
 
     const shortOrderId = order_id.substring(0, 8).toUpperCase();
 
-    // Build status message
-    const message = buildStatusMessage(new_status, shortOrderId, orderType, customerName);
-
-    if (!message) {
-      console.log(`[notify-order-status] No message configured for status: ${new_status}`);
-      return new Response(
-        JSON.stringify({ success: true, message: 'No notification for this status' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Build message from template
+    const message = statusConfig.message
+      .replace(/\{\{customer_name\}\}/g, customerName || '')
+      .replace(/\{\{order_id\}\}/g, shortOrderId);
 
     // Fetch WhatsApp instance
     const { data: instance } = await supabase
@@ -171,39 +199,3 @@ serve(async (req) => {
     );
   }
 });
-
-function buildStatusMessage(
-  status: string,
-  shortOrderId: string,
-  orderType: string,
-  customerName: string
-): string | null {
-  const greeting = customerName ? `Olá ${customerName}! ` : '';
-
-  switch (status) {
-    case 'preparing':
-      return `👨‍🍳 ${greeting}Seu pedido *#${shortOrderId}* está sendo preparado! Aguarde... ⏳`;
-
-    case 'ready':
-      if (orderType === 'delivery') {
-        return `✅ ${greeting}Seu pedido *#${shortOrderId}* está pronto e aguardando o entregador! 🚚`;
-      }
-      if (orderType === 'dine_in') {
-        return `🍽️ ${greeting}Seu pedido *#${shortOrderId}* está pronto! Pode retirar no balcão. 😊`;
-      }
-      // takeaway
-      return `✅ ${greeting}Seu pedido *#${shortOrderId}* está pronto para retirada! 🛍️`;
-
-    case 'delivering':
-      return `🚚 ${greeting}Seu pedido *#${shortOrderId}* saiu para entrega! Em breve estará aí! 📍`;
-
-    case 'delivered':
-      return `🎉 ${greeting}Seu pedido *#${shortOrderId}* foi entregue! Obrigado pela preferência! ❤️`;
-
-    case 'cancelled':
-      return `❌ ${greeting}Seu pedido *#${shortOrderId}* foi cancelado. Entre em contato para mais informações.`;
-
-    default:
-      return null;
-  }
-}

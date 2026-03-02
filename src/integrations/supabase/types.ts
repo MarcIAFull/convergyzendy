@@ -1561,6 +1561,7 @@ export type Database = {
           id: string
           language: string
           max_additional_questions_before_checkout: number
+          order_notifications: Json | null
           restaurant_id: string
           special_offers_info: string | null
           tone: string
@@ -1579,6 +1580,7 @@ export type Database = {
           id?: string
           language?: string
           max_additional_questions_before_checkout?: number
+          order_notifications?: Json | null
           restaurant_id: string
           special_offers_info?: string | null
           tone?: string
@@ -1597,6 +1599,7 @@ export type Database = {
           id?: string
           language?: string
           max_additional_questions_before_checkout?: number
+          order_notifications?: Json | null
           restaurant_id?: string
           special_offers_info?: string | null
           tone?: string

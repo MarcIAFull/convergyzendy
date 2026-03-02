@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { OrderNotificationsSettings } from "./OrderNotificationsSettings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -698,6 +699,9 @@ export function WhatsAppTab() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Order Status Notifications */}
+      <OrderNotificationsSettings />
     </div>
   );
 }
