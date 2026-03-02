@@ -1,42 +1,32 @@
 
 
-## Diagnóstico
+## Problema: `free_addons_count` ignorado no menu digital
 
-Identifiquei **dois problemas** separados:
+O campo `free_addons_count` existe no cadastro do produto, mas o menu publico nunca o consulta. Em 3 locais, todos os addons selecionados sao somados ao preco, independentemente do limite gratuito.
 
-### Problema 1: Notificações WhatsApp falhando (404)
-As edge functions `notify-web-order` e `notify-customer-order` constroem a URL da Evolution API diretamente com `Deno.env.get('EVOLUTION_API_URL')` sem remover a barra final. O resultado é uma URL malformada: `https://evolution.fullbpo.com//message/sendText/...` (barra dupla), que retorna 404.
+### Correções
 
-O módulo compartilhado `evolutionClient.ts` já faz essa normalização (`apiUrl.replace(/\/+$/, '')`), mas essas duas funções não o utilizam.
+**1. `src/components/public/ProductModal.tsx`**
 
-**Correção:** Adicionar `.replace(/\/+$/, '')` ao `evolutionApiUrl` em ambas as edge functions.
+- `calculateTotalPrice()`: separar addons em gratuitos e pagos com base em `product.free_addons_count`. Os primeiros N addons (ordenados pela selecao) sao gratuitos; os restantes somam ao total.
+- UI: mostrar visualmente quais addons sao gratuitos (ex: "Gratis" em vez de "+ €X,XX") e informar o usuario quantos adicionais gratuitos restam (ex: "Escolha ate 4 adicionais gratis").
 
-### Problema 2: Pedidos web não aparecem no quadro
-O dashboard (`orderStore.ts`) consulta apenas a tabela `orders`. Pedidos do menu digital vão para a tabela `web_orders`. Não existe integração entre as duas — os pedidos web simplesmente não aparecem no painel.
+**2. `src/stores/publicCartStore.ts`**
 
-**Correção:** Modificar o `orderStore` para também buscar `web_orders` e unificá-los na mesma lista, adaptando os campos para o formato `OrderWithDetails`.
+- `addItem()`: calcular `addonsTotal` considerando `product.free_addons_count` — os primeiros N addons nao somam preco.
+- `updateItemQuantity()`: mesma logica ao recalcular o preco unitario.
 
----
+### Logica de calculo
 
-### Plano de Implementação
-
-**1. Corrigir URL da Evolution API (notify-web-order e notify-customer-order)**
-- Adicionar normalização: `const normalizedUrl = evolutionApiUrl.replace(/\/+$/, '');`
-- Usar `normalizedUrl` na chamada fetch em ambas as funções
-- Redesplegar ambas as funções
-
-**2. Integrar web_orders no dashboard**
-- Modificar `orderStore.ts` > `fetchOrders` para também buscar `web_orders` filtrados pelo `restaurant_id`
-- Mapear `web_orders` para o formato `OrderWithDetails` (usar `customer_phone` como `user_phone`, montar items a partir do JSONB `items`)
-- Concatenar com os pedidos da tabela `orders` e ordenar por `created_at`
-- Adicionar subscripção realtime para `web_orders` também
-
-**3. Adaptar tipos**
-- Garantir que os pedidos web mapeados incluam um campo `source: 'web'` para diferenciação visual no dashboard
+```text
+free = product.free_addons_count ?? 0
+selectedAddons = [...todos os selecionados]
+freeAddons = selectedAddons.slice(0, free)     → preco = 0
+paidAddons = selectedAddons.slice(free)        → preco = soma dos precos
+addonsTotal = paidAddons.reduce(sum, addon.price)
+```
 
 ### Arquivos a modificar
-- `supabase/functions/notify-web-order/index.ts` — normalizar URL
-- `supabase/functions/notify-customer-order/index.ts` — normalizar URL
-- `src/stores/orderStore.ts` — buscar e unificar web_orders
-- Possivelmente `src/types/database.ts` — ajustar tipo se necessário
+- `src/components/public/ProductModal.tsx` — logica de calculo e indicacao visual
+- `src/stores/publicCartStore.ts` — `addItem` e `updateItemQuantity`
 
