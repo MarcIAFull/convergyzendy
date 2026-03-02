@@ -102,7 +102,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     }
   }, [soundEnabled]);
 
-  // Subscribe to new orders
+  // Subscribe to new orders (both WhatsApp orders and web orders)
   useEffect(() => {
     if (!restaurant?.id) return;
 
@@ -119,14 +119,47 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
           filter: `restaurant_id=eq.${restaurant.id}`
         },
         (payload) => {
-          console.log('[Notifications] New order received:', payload);
+          console.log('[Notifications] New WhatsApp order received:', payload);
           
           setUnreadOrders(prev => prev + 1);
           playNotificationSound();
           
-          toast.success('Novo Pedido!', {
-            description: `Pedido #${payload.new.id.substring(0, 8)} recebido`,
-            duration: 5000,
+          toast.success('Novo Pedido WhatsApp!', {
+            description: `Pedido #${payload.new.id.substring(0, 8).toUpperCase()} recebido`,
+            duration: 8000,
+            action: {
+              label: 'Ver Pedidos',
+              onClick: () => window.location.href = '/orders'
+            }
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'web_orders',
+          filter: `restaurant_id=eq.${restaurant.id}`
+        },
+        (payload) => {
+          console.log('[Notifications] New web order received:', payload);
+          
+          setUnreadOrders(prev => prev + 1);
+          playNotificationSound();
+          
+          const customerName = payload.new.customer_name || 'Cliente';
+          const total = typeof payload.new.total_amount === 'number' 
+            ? `€${payload.new.total_amount.toFixed(2)}` 
+            : '';
+          
+          toast.success('🛒 Novo Pedido Web!', {
+            description: `${customerName} - Pedido #${payload.new.id.substring(0, 8).toUpperCase()} ${total}`,
+            duration: 10000,
+            action: {
+              label: 'Ver Pedidos',
+              onClick: () => window.location.href = '/orders'
+            }
           });
         }
       )
