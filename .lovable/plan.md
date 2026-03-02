@@ -1,32 +1,53 @@
 
 
-## Problema: `free_addons_count` ignorado no menu digital
+## Diagnóstico
 
-O campo `free_addons_count` existe no cadastro do produto, mas o menu publico nunca o consulta. Em 3 locais, todos os addons selecionados sao somados ao preco, independentemente do limite gratuito.
+Existem dois problemas:
 
-### Correções
+### 1. Mismatch de status entre Kanban e Edge Function
+O Kanban envia os status `out_for_delivery` e `completed`, mas a edge function `notify-order-status` espera `delivering` e `delivered`. Resultado: nenhuma mensagem é enviada para esses estados (retorna `null` no `buildStatusMessage`).
 
-**1. `src/components/public/ProductModal.tsx`**
+O status `ready` também não existe no Kanban — o fluxo é `new → preparing → out_for_delivery → completed`.
 
-- `calculateTotalPrice()`: separar addons em gratuitos e pagos com base em `product.free_addons_count`. Os primeiros N addons (ordenados pela selecao) sao gratuitos; os restantes somam ao total.
-- UI: mostrar visualmente quais addons sao gratuitos (ex: "Gratis" em vez de "+ €X,XX") e informar o usuario quantos adicionais gratuitos restam (ex: "Escolha ate 4 adicionais gratis").
+### 2. Mensagens hardcoded e não configuráveis
+As mensagens estão hardcoded na edge function. Cada restaurante deveria poder personalizar o texto de cada notificação e ativar/desativar individualmente.
 
-**2. `src/stores/publicCartStore.ts`**
+---
 
-- `addItem()`: calcular `addonsTotal` considerando `product.free_addons_count` — os primeiros N addons nao somam preco.
-- `updateItemQuantity()`: mesma logica ao recalcular o preco unitario.
+## Plano de Implementação
 
-### Logica de calculo
+### 1. Migração: Adicionar coluna `order_notifications` ao `restaurant_ai_settings`
+Adicionar um campo JSONB ao `restaurant_ai_settings` com a configuração de notificações por status:
 
-```text
-free = product.free_addons_count ?? 0
-selectedAddons = [...todos os selecionados]
-freeAddons = selectedAddons.slice(0, free)     → preco = 0
-paidAddons = selectedAddons.slice(free)        → preco = soma dos precos
-addonsTotal = paidAddons.reduce(sum, addon.price)
+```sql
+ALTER TABLE restaurant_ai_settings 
+ADD COLUMN order_notifications jsonb DEFAULT '{
+  "preparing": {"enabled": true, "message": "👨‍🍳 Olá {{customer_name}}! Seu pedido *#{{order_id}}* está sendo preparado! ⏳"},
+  "out_for_delivery": {"enabled": true, "message": "🚚 {{customer_name}}, seu pedido *#{{order_id}}* saiu para entrega! 📍"},
+  "completed": {"enabled": true, "message": "🎉 {{customer_name}}, seu pedido *#{{order_id}}* foi entregue! Obrigado! ❤️"},
+  "cancelled": {"enabled": true, "message": "❌ {{customer_name}}, seu pedido *#{{order_id}}* foi cancelado. Entre em contato para mais informações."}
+}'::jsonb;
 ```
 
-### Arquivos a modificar
-- `src/components/public/ProductModal.tsx` — logica de calculo e indicacao visual
-- `src/stores/publicCartStore.ts` — `addItem` e `updateItemQuantity`
+### 2. Edge Function `notify-order-status`: Buscar config do restaurante
+- Buscar `order_notifications` da tabela `restaurant_ai_settings` do restaurante
+- Se o status não estiver configurado ou estiver `enabled: false`, não enviar
+- Substituir variáveis de template (`{{customer_name}}`, `{{order_id}}`) na mensagem configurada
+- Remover o `buildStatusMessage` hardcoded
+
+### 3. Novo componente: `OrderNotificationsTab.tsx`
+- Criar componente de configuração dentro das settings do restaurante
+- Para cada status (`preparing`, `out_for_delivery`, `completed`, `cancelled`): toggle on/off + campo de texto editável
+- Preview em tempo real da mensagem
+- Variáveis disponíveis: `{{customer_name}}`, `{{order_id}}`
+
+### 4. Integrar na página de Settings
+- Adicionar como sub-secção na tab "WhatsApp" ou como nova sub-tab na secção de IA
+- Ou integrar diretamente na tab "Restaurante" como secção adicional
+
+### Arquivos a modificar/criar
+- **Migração SQL**: adicionar coluna `order_notifications` a `restaurant_ai_settings`
+- **`supabase/functions/notify-order-status/index.ts`**: buscar config, usar templates dinâmicos
+- **`src/components/settings/OrderNotificationsSettings.tsx`** (novo): UI de configuração
+- **`src/pages/SettingsUnified.tsx`**: integrar o novo componente (sugestão: dentro da tab WhatsApp)
 
