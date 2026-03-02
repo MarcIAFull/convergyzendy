@@ -33,34 +33,36 @@ serve(async (req) => {
 
     console.log(`[notify-order-status] Order ${order_id} -> ${new_status}`);
 
-    // Fetch order from orders table
-    const { data: order, error: orderError } = await supabase
+    // Try to find the order in both tables
+    let customerPhone: string | null = null;
+    let orderType = 'delivery';
+    let customerName = '';
+    let deliveryAddress = '';
+
+    // Check orders table first (WhatsApp orders)
+    const { data: order } = await supabase
       .from('orders')
       .select('id, user_phone, delivery_address, status')
       .eq('id', order_id)
-      .single();
+      .maybeSingle();
 
-    if (orderError || !order) {
-      console.error('[notify-order-status] Order not found:', orderError);
-      return new Response(
-        JSON.stringify({ error: 'Order not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (order) {
+      customerPhone = order.user_phone;
+      deliveryAddress = order.delivery_address;
+      orderType = deliveryAddress && deliveryAddress !== 'N/A' ? 'delivery' : 'takeaway';
     }
 
-    // Determine customer phone: try orders.user_phone first, then web_orders.customer_phone
-    let customerPhone = order.user_phone;
-
-    // Check if this is a web order (web_orders links via order_id or similar)
+    // Check web_orders table (web orders)
     const { data: webOrder } = await supabase
       .from('web_orders')
-      .select('customer_phone, customer_name, order_type')
+      .select('customer_phone, customer_name, order_type, delivery_address')
       .eq('id', order_id)
       .maybeSingle();
 
-    // If web order has a different phone, use that
-    if (webOrder?.customer_phone) {
+    if (webOrder) {
       customerPhone = webOrder.customer_phone;
+      customerName = webOrder.customer_name || '';
+      orderType = webOrder.order_type || 'delivery';
     }
 
     if (!customerPhone) {
@@ -71,10 +73,7 @@ serve(async (req) => {
       );
     }
 
-    // Determine order type for context-aware messages
-    const orderType = webOrder?.order_type || (order.delivery_address && order.delivery_address !== 'N/A' ? 'delivery' : 'takeaway');
     const shortOrderId = order_id.substring(0, 8).toUpperCase();
-    const customerName = webOrder?.customer_name || '';
 
     // Build status message
     const message = buildStatusMessage(new_status, shortOrderId, orderType, customerName);
@@ -103,8 +102,9 @@ serve(async (req) => {
     }
 
     // Send via Evolution API
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL');
+    const evolutionApiUrlRaw = Deno.env.get('EVOLUTION_API_URL');
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY');
+    const evolutionApiUrl = evolutionApiUrlRaw?.replace(/\/+$/, '') || null;
 
     if (!evolutionApiUrl || !evolutionApiKey) {
       console.error('[notify-order-status] Evolution API not configured');
