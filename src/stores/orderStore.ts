@@ -14,7 +14,7 @@ interface OrderState {
   
   // Actions
   fetchOrders: (restaurantId: string) => Promise<void>;
-  updateOrderStatus: (id: string, status: Order['status']) => Promise<void>;
+  updateOrderStatus: (id: string, status: Order['status'], source?: 'whatsapp' | 'web') => Promise<void>;
   subscribeToOrders: (restaurantId: string) => () => void;
   reset: () => void;
 }
@@ -52,97 +52,171 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      // Fetch orders
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
-        .abortSignal(signal);
+      // Fetch both orders and web_orders in parallel
+      const [ordersResult, webOrdersResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
+        supabase
+          .from('web_orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
+      ]);
 
-      if (ordersError) throw ordersError;
-
-      if (!orders || orders.length === 0) {
-        set({ orders: [], loading: false });
-        return;
+      if (ordersResult.error) throw ordersResult.error;
+      if (webOrdersResult.error) {
+        console.warn('[OrderStore] Failed to fetch web_orders:', webOrdersResult.error);
       }
 
-      // Check if request was cancelled
+      const orders = ordersResult.data || [];
+      const webOrders = webOrdersResult.data || [];
+
       if (signal.aborted) return;
 
-      // Fetch customers for all orders
-      const userPhones = [...new Set(orders.map(o => o.user_phone))];
-      const { data: customers, error: customersError } = await supabase
-        .from('customers')
-        .select('phone, name')
-        .in('phone', userPhones)
-        .eq('restaurant_id', restaurantId)
-        .abortSignal(signal);
+      // --- Process regular (WhatsApp) orders ---
+      let whatsappOrdersWithDetails: OrderWithDetails[] = [];
 
-      if (customersError) throw customersError;
-      if (signal.aborted) return;
+      if (orders.length > 0) {
+        const userPhones = [...new Set(orders.map(o => o.user_phone))];
+        const cartIds = orders.map(o => o.cart_id);
 
-      // Fetch cart items for all orders
-      const cartIds = orders.map(o => o.cart_id);
-      const { data: cartItems, error: cartItemsError } = await supabase
-        .from('cart_items')
-        .select('*')
-        .in('cart_id', cartIds)
-        .abortSignal(signal);
+        const [customersResult, cartItemsResult] = await Promise.all([
+          supabase
+            .from('customers')
+            .select('phone, name')
+            .in('phone', userPhones)
+            .eq('restaurant_id', restaurantId)
+            .abortSignal(signal),
+          supabase
+            .from('cart_items')
+            .select('*')
+            .in('cart_id', cartIds)
+            .abortSignal(signal),
+        ]);
 
-      if (cartItemsError) throw cartItemsError;
-      if (signal.aborted) return;
+        if (customersResult.error) throw customersResult.error;
+        if (cartItemsResult.error) throw cartItemsResult.error;
+        if (signal.aborted) return;
 
-      // Fetch products
-      const productIds = [...new Set(cartItems?.map(ci => ci.product_id) || [])];
-      const { data: products, error: productsError } = await supabase
-        .from('products')
-        .select('*')
-        .in('id', productIds)
-        .abortSignal(signal);
+        const customers = customersResult.data || [];
+        const cartItems = cartItemsResult.data || [];
 
-      if (productsError) throw productsError;
-      if (signal.aborted) return;
+        const productIds = [...new Set(cartItems.map(ci => ci.product_id))];
+        const cartItemIds = cartItems.map(ci => ci.id);
 
-      // Fetch cart item addons
-      const cartItemIds = cartItems?.map(ci => ci.id) || [];
-      const { data: cartItemAddons, error: cartItemAddonsError } = await supabase
-        .from('cart_item_addons')
-        .select('*, addons(*)')
-        .in('cart_item_id', cartItemIds)
-        .abortSignal(signal);
+        const [productsResult, cartItemAddonsResult] = await Promise.all([
+          supabase
+            .from('products')
+            .select('*')
+            .in('id', productIds)
+            .abortSignal(signal),
+          supabase
+            .from('cart_item_addons')
+            .select('*, addons(*)')
+            .in('cart_item_id', cartItemIds)
+            .abortSignal(signal),
+        ]);
 
-      if (cartItemAddonsError) throw cartItemAddonsError;
-      if (signal.aborted) return;
+        if (productsResult.error) throw productsResult.error;
+        if (cartItemAddonsResult.error) throw cartItemAddonsResult.error;
+        if (signal.aborted) return;
 
-      // Build nested structure
-      const ordersWithDetails = orders.map(order => {
-        const orderCartItems = (cartItems || []).filter(ci => ci.cart_id === order.cart_id);
-        const customer = customers?.find(c => c.phone === order.user_phone) || null;
-        
-        const items: CartItemWithDetails[] = orderCartItems.map(cartItem => {
-          const product = products?.find(p => p.id === cartItem.product_id);
-          const itemAddons = (cartItemAddons || [])
-            .filter(cia => cia.cart_item_id === cartItem.id)
-            .map(cia => cia.addons);
+        const products = productsResult.data || [];
+        const cartItemAddons = cartItemAddonsResult.data || [];
+
+        whatsappOrdersWithDetails = orders.map(order => {
+          const orderCartItems = cartItems.filter(ci => ci.cart_id === order.cart_id);
+          const customer = customers.find(c => c.phone === order.user_phone) || null;
+          
+          const items: CartItemWithDetails[] = orderCartItems.map(cartItem => {
+            const product = products.find(p => p.id === cartItem.product_id);
+            const itemAddons = cartItemAddons
+              .filter(cia => cia.cart_item_id === cartItem.id)
+              .map(cia => cia.addons);
+
+            return {
+              ...cartItem,
+              product: product!,
+              addons: itemAddons,
+            } as unknown as CartItemWithDetails;
+          });
 
           return {
-            ...cartItem,
-            product: product!,
-            addons: itemAddons,
-          } as unknown as CartItemWithDetails;
-        });
+            ...order,
+            items,
+            customer,
+            source: 'whatsapp' as const,
+          };
+        }) as unknown as OrderWithDetails[];
+      }
+
+      // --- Process web orders ---
+      const webOrdersMapped: OrderWithDetails[] = webOrders.map(wo => {
+        const woItems = (wo.items as any[]) || [];
+        const items: CartItemWithDetails[] = woItems.map((item: any, idx: number) => ({
+          id: `${wo.id}-item-${idx}`,
+          cart_id: wo.cart_id,
+          product_id: item.product_id || '',
+          quantity: item.quantity || 1,
+          notes: item.notes || null,
+          created_at: wo.created_at || '',
+          updated_at: wo.updated_at || '',
+          product: {
+            id: item.product_id || '',
+            restaurant_id: wo.restaurant_id,
+            category_id: '',
+            name: item.product_name || item.name || 'Produto',
+            description: null,
+            price: item.unit_price || item.price || 0,
+            image_url: item.image_url || null,
+            is_available: true,
+            search_keywords: [],
+            ingredients: [],
+            max_addons: null,
+            free_addons_count: null,
+            created_at: '',
+            updated_at: '',
+          },
+          addons: (item.addons || []).map((addon: any) => ({
+            id: addon.id || '',
+            product_id: item.product_id || '',
+            name: addon.name || '',
+            price: addon.price || 0,
+            created_at: '',
+            updated_at: '',
+          })),
+        }));
 
         return {
-          ...order,
+          id: wo.id,
+          cart_id: wo.cart_id,
+          restaurant_id: wo.restaurant_id,
+          user_phone: wo.customer_phone,
+          total_amount: wo.total_amount,
+          payment_method: wo.payment_method as any,
+          delivery_address: wo.delivery_address || '',
+          order_notes: wo.delivery_instructions || null,
+          status: (wo.status || 'new') as Order['status'],
+          created_at: wo.created_at || '',
+          updated_at: wo.updated_at || '',
           items,
-          customer,
-        };
-      }) as unknown as OrderWithDetails[];
+          customer: { phone: wo.customer_phone, name: wo.customer_name || null },
+          source: 'web' as const,
+          order_type: wo.order_type || 'delivery',
+        } as unknown as OrderWithDetails;
+      });
 
-      set({ orders: ordersWithDetails, loading: false });
+      // Combine and sort by created_at descending
+      const allOrders = [...whatsappOrdersWithDetails, ...webOrdersMapped];
+      allOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      set({ orders: allOrders, loading: false });
     } catch (error) {
-      // Ignore abort errors
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('[OrderStore] Request aborted');
         return;
@@ -155,19 +229,27 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     }
   },
 
-  updateOrderStatus: async (id, status) => {
+  updateOrderStatus: async (id, status, source) => {
     set({ loading: true, error: null });
     try {
-      // Get the order's restaurant_id before updating
       const order = get().orders.find(o => o.id === id);
       const restaurantId = order?.restaurant_id;
+      const orderSource = source || (order as any)?.source || 'whatsapp';
 
-      const { error } = await supabase
-        .from('orders')
-        .update({ status })
-        .eq('id', id);
-
-      if (error) throw error;
+      // Update in the correct table
+      if (orderSource === 'web') {
+        const { error } = await supabase
+          .from('web_orders')
+          .update({ status })
+          .eq('id', id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('orders')
+          .update({ status })
+          .eq('id', id);
+        if (error) throw error;
+      }
 
       // Update local state
       set(state => ({
@@ -217,6 +299,19 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         },
         (payload) => {
           console.log('Order change detected:', payload);
+          get().fetchOrders(restaurantId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'web_orders',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          console.log('Web order change detected:', payload);
           get().fetchOrders(restaurantId);
         }
       )

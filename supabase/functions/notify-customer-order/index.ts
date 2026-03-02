@@ -152,8 +152,9 @@ Obrigado pela preferência! 🍕`;
     console.log(`[notify-customer-order] Sending message to customer ${order.customer_phone} via instance ${instance.instance_name}`);
 
     // Send WhatsApp message to customer
-    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL');
+    const evolutionApiUrlRaw = Deno.env.get('EVOLUTION_API_URL');
     const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY');
+    const evolutionApiUrl = evolutionApiUrlRaw?.replace(/\/+$/, '') || null;
 
     if (!evolutionApiUrl || !evolutionApiKey) {
       console.error('[notify-customer-order] Evolution API not configured');
