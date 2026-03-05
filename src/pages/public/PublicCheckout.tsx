@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CouponInput, AppliedCoupon } from '@/components/public/CouponInput';
 import { Badge } from '@/components/ui/badge';
 import { OrderTypeSelector } from '@/components/public/OrderTypeSelector';
+import { PhoneInputWithCountry } from '@/components/public/PhoneInputWithCountry';
 import type { OrderType } from '@/types/public-menu';
 
 export default function PublicCheckout() {
@@ -370,13 +371,11 @@ export default function PublicCheckout() {
 
               <div>
                 <Label htmlFor="phone">Telefone *</Label>
-                <Input
+                <PhoneInputWithCountry
                   id="phone"
-                  type="tel"
                   required
                   value={formData.customer_phone}
-                  onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-                  placeholder="+351 900 000 000"
+                  onChange={(phone) => setFormData({ ...formData, customer_phone: phone })}
                 />
               </div>
 
