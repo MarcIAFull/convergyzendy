@@ -97,7 +97,7 @@ export async function buildConversationContext(
   // Build menu URL - use custom domain if configured, otherwise use production domain
   const baseUrl = restaurantSettings?.custom_domain 
     ? `https://${restaurantSettings.custom_domain}`
-    : 'https://convergy.agency';
+    : 'https://zendy.delivery';
   
   const menuUrl = restaurantSettings?.slug 
     ? `${baseUrl}/menu/${restaurantSettings.slug}` 
