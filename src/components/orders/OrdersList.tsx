@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { OrderDetailsPanel } from '@/components/OrderDetailsPanel';
+import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 import { OrderTypeBadge } from '@/components/orders/OrderTypeBadge';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,12 +20,14 @@ interface OrdersListProps {
 
 export function OrdersList({ orders, onStatusChange, searchQuery }: OrdersListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (orders.length > 0 && !selectedOrder) {
+    if (!isMobile && orders.length > 0 && !selectedOrder) {
       setSelectedOrder(orders[0]);
     }
-  }, [orders, selectedOrder]);
+  }, [orders, selectedOrder, isMobile]);
 
   const activeOrders = orders.filter(
     order => ['new', 'preparing', 'out_for_delivery'].includes(order.status)
@@ -81,6 +85,13 @@ export function OrdersList({ orders, onStatusChange, searchQuery }: OrdersListPr
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
   };
 
+  const handleSelectOrder = (order: OrderWithDetails) => {
+    setSelectedOrder(order);
+    if (isMobile) {
+      setDrawerOpen(true);
+    }
+  };
+
   const OrderCard = ({ order, isSelected }: { order: OrderWithDetails; isSelected: boolean }) => {
     const timeAgo = useTimeAgo(order.created_at);
     const isUrgent = isOrderUrgent(order);
@@ -90,10 +101,10 @@ export function OrdersList({ orders, onStatusChange, searchQuery }: OrdersListPr
       <Card 
         className={cn(
           "mb-3 cursor-pointer transition-all duration-300 hover:shadow-md",
-          isSelected && `border-l-4 ${getStatusBorderColor(order.status)} bg-accent/50 scale-[1.01]`,
+          isSelected && !isMobile && `border-l-4 ${getStatusBorderColor(order.status)} bg-accent/50 scale-[1.01]`,
           isUrgent && "ring-2 ring-destructive"
         )}
-        onClick={() => setSelectedOrder(order)}
+        onClick={() => handleSelectOrder(order)}
       >
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -153,71 +164,92 @@ export function OrdersList({ orders, onStatusChange, searchQuery }: OrdersListPr
     );
   };
 
+  const OrderListPanel = () => (
+    <Card>
+      <Tabs defaultValue="active" className="w-full">
+        <TabsList className="w-full grid grid-cols-2 rounded-none border-b bg-transparent p-0">
+          <TabsTrigger 
+            value="active" 
+            className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
+          >
+            Ativos ({activeOrders.length})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="history"
+            className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
+          >
+            Histórico
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="active" className="mt-0">
+          <div className="h-[calc(100dvh-300px)] overflow-auto">
+            <div className="p-4">
+              {filterOrders(activeOrders).length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p>Nenhum pedido ativo</p>
+                </div>
+              ) : (
+                filterOrders(activeOrders).map(order => (
+                  <OrderCard 
+                    key={order.id} 
+                    order={order} 
+                    isSelected={selectedOrder?.id === order.id}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-0">
+          <div className="h-[calc(100dvh-300px)] overflow-auto">
+            <div className="p-4">
+              {filterOrders(historicalOrders).length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p>Nenhum pedido no histórico</p>
+                </div>
+              ) : (
+                filterOrders(historicalOrders).map(order => (
+                  <OrderCard 
+                    key={order.id} 
+                    order={order} 
+                    isSelected={selectedOrder?.id === order.id}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </Card>
+  );
+
+  // Mobile: full-width list + drawer for details
+  if (isMobile) {
+    return (
+      <>
+        <OrderListPanel />
+        <OrderDetailsDrawer
+          order={selectedOrder}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          onStatusChange={onStatusChange}
+          onContactCustomer={openWhatsApp}
+        />
+      </>
+    );
+  }
+
+  // Desktop: 2-column layout (list + inline panel)
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1">
-        <Card>
-          <Tabs defaultValue="active" className="w-full">
-            <TabsList className="w-full grid grid-cols-2 rounded-none border-b bg-transparent p-0">
-              <TabsTrigger 
-                value="active" 
-                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
-              >
-                Ativos ({activeOrders.length})
-              </TabsTrigger>
-              <TabsTrigger 
-                value="history"
-                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
-              >
-                Histórico
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="active" className="mt-0">
-              <div className="h-[calc(100vh-300px)] overflow-auto">
-                <div className="p-4">
-                  {filterOrders(activeOrders).length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <p>Nenhum pedido ativo</p>
-                    </div>
-                  ) : (
-                    filterOrders(activeOrders).map(order => (
-                      <OrderCard 
-                        key={order.id} 
-                        order={order} 
-                        isSelected={selectedOrder?.id === order.id}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="history" className="mt-0">
-              <div className="h-[calc(100vh-300px)] overflow-auto">
-                <div className="p-4">
-                  {filterOrders(historicalOrders).length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <p>Nenhum pedido no histórico</p>
-                    </div>
-                  ) : (
-                    filterOrders(historicalOrders).map(order => (
-                      <OrderCard 
-                        key={order.id} 
-                        order={order} 
-                        isSelected={selectedOrder?.id === order.id}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </Card>
+        <OrderListPanel />
       </div>
 
       <div className="lg:col-span-2">
-        <div className="h-[calc(100vh-200px)]">
+        <div className="h-[calc(100dvh-200px)]">
           <OrderDetailsPanel
             order={selectedOrder}
             onStatusChange={onStatusChange}

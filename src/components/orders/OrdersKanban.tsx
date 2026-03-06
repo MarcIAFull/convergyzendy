@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 import { OrderTypeBadge } from '@/components/orders/OrderTypeBadge';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { OrderWithDetails } from '@/types/database';
 import type { OrderType } from '@/types/public-menu';
-import { AlertCircle, Clock, Package, CheckCircle, XCircle, Phone } from 'lucide-react';
+import { AlertCircle, Clock, Package, CheckCircle, XCircle, Phone, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface OrdersKanbanProps {
@@ -28,6 +30,7 @@ const KANBAN_COLUMNS = [
 export function OrdersKanban({ orders, onStatusChange, searchQuery }: OrdersKanbanProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const filterOrders = (ordersList: OrderWithDetails[]) => {
     if (!searchQuery) return ordersList;
@@ -55,6 +58,72 @@ export function OrdersKanban({ orders, onStatusChange, searchQuery }: OrdersKanb
     setDrawerOpen(true);
   };
 
+  // Mobile: vertical accordion layout
+  if (isMobile) {
+    return (
+      <>
+        <div className="space-y-3">
+          {KANBAN_COLUMNS.map((column) => {
+            const columnOrders = getOrdersByStatus(column.id);
+            const Icon = column.icon;
+            // Auto-open columns with orders
+            const defaultOpen = columnOrders.length > 0;
+
+            return (
+              <Collapsible key={column.id} defaultOpen={defaultOpen}>
+                <Card className={cn("border-l-4", column.borderColor)}>
+                  <CollapsibleTrigger className="w-full">
+                    <CardHeader className="pb-2 pt-3 px-4">
+                      <CardTitle className="flex items-center justify-between text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <Icon className={cn("h-4 w-4", column.color.replace('bg-', 'text-'))} />
+                          {column.title}
+                          <Badge variant="secondary" className="ml-1">
+                            {columnOrders.length}
+                          </Badge>
+                        </div>
+                        <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200" />
+                      </CardTitle>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="p-2 pt-0">
+                      {columnOrders.length === 0 ? (
+                        <div className="text-center py-4 text-muted-foreground text-sm">
+                          Nenhum pedido
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {columnOrders.map(order => (
+                            <KanbanCard
+                              key={order.id}
+                              order={order}
+                              onView={handleViewOrder}
+                              onContact={openWhatsApp}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            );
+          })}
+        </div>
+
+        <OrderDetailsDrawer
+          order={selectedOrder}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          onStatusChange={onStatusChange}
+          onContactCustomer={openWhatsApp}
+        />
+      </>
+    );
+  }
+
+  // Desktop/Tablet: horizontal columns
   return (
     <>
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -77,7 +146,7 @@ export function OrdersKanban({ orders, onStatusChange, searchQuery }: OrdersKanb
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-2">
-                  <ScrollArea className="h-[calc(100vh-320px)]">
+                  <ScrollArea className="h-[calc(100dvh-320px)]">
                     <div className="space-y-2 pr-2">
                       {columnOrders.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground text-sm">

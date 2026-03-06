@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOrderStore } from '@/stores/orderStore';
 import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { OrdersList } from '@/components/orders/OrdersList';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { OrdersKanban } from '@/components/orders/OrdersKanban';
@@ -35,11 +36,19 @@ interface Filters {
 export default function Dashboard() {
   const { restaurant } = useRestaurantGuard();
   const { orders, loading, fetchOrders, updateOrderStatus, subscribeToOrders } = useOrderStore();
+  const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('orders-view-mode');
     return (saved as ViewMode) || 'list';
   });
+
+  // Force list view on mobile if saved view is table/kanban
+  useEffect(() => {
+    if (isMobile && (viewMode === 'table' || viewMode === 'kanban')) {
+      setViewMode('list');
+    }
+  }, [isMobile, viewMode]);
   const [filters, setFilters] = useState<Filters>(() => {
     const saved = localStorage.getItem('orders-filters');
     return saved ? JSON.parse(saved) : { status: 'all', source: 'all', period: 'all' };

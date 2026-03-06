@@ -192,7 +192,7 @@ const DashboardLayout = () => {
           </header>
 
           {/* Main Content */}
-          <main className="flex-1 min-h-0 overflow-hidden">
+          <main className="flex-1 min-h-0 overflow-auto">
             {!currentRestaurant && restaurants.length === 0 && (
               <Alert className="m-4 border-warning bg-warning/10">
                 <AlertCircle className="h-4 w-4 text-warning" />

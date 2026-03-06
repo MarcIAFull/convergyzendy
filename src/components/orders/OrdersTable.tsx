@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { OrderDetailsDrawer } from '@/components/OrderDetailsDrawer';
 import { useTimeAgo, isOrderUrgent } from '@/hooks/useTimeAgo';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,13 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { OrderWithDetails } from '@/types/database';
 import { AlertCircle, Eye, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,26 +28,17 @@ interface OrdersTableProps {
 export function OrdersTable({ orders, onStatusChange, searchQuery }: OrdersTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const isMobile = useIsMobile();
 
   const filterOrders = (ordersList: OrderWithDetails[]) => {
-    let filtered = ordersList;
-    
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(order => order.status === statusFilter);
-    }
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(order => 
-        order.id.toLowerCase().includes(query) ||
-        order.user_phone.includes(query) ||
-        order.delivery_address.toLowerCase().includes(query) ||
-        order.customer?.name?.toLowerCase().includes(query)
-      );
-    }
-    
-    return filtered;
+    if (!searchQuery) return ordersList;
+    const query = searchQuery.toLowerCase();
+    return ordersList.filter(order => 
+      order.id.toLowerCase().includes(query) ||
+      order.user_phone.includes(query) ||
+      order.delivery_address.toLowerCase().includes(query) ||
+      order.customer?.name?.toLowerCase().includes(query)
+    );
   };
 
   const getStatusLabel = (status: string) => {
@@ -91,22 +76,6 @@ export function OrdersTable({ orders, onStatusChange, searchQuery }: OrdersTable
 
   return (
     <>
-      <div className="mb-4">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Filtrar por status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            <SelectItem value="new">Novos</SelectItem>
-            <SelectItem value="preparing">Preparando</SelectItem>
-            <SelectItem value="out_for_delivery">Em Entrega</SelectItem>
-            <SelectItem value="completed">Concluídos</SelectItem>
-            <SelectItem value="cancelled">Cancelados</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
@@ -120,18 +89,18 @@ export function OrdersTable({ orders, onStatusChange, searchQuery }: OrdersTable
                 <TableRow>
                   <TableHead className="w-[120px]">Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>Endereço</TableHead>
+                  {!isMobile && <TableHead>Endereço</TableHead>}
                   <TableHead>Itens</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Data</TableHead>
+                  {!isMobile && <TableHead>Data</TableHead>}
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={isMobile ? 6 : 8} className="text-center py-12 text-muted-foreground">
                       Nenhum pedido encontrado
                     </TableCell>
                   </TableRow>
@@ -144,6 +113,7 @@ export function OrdersTable({ orders, onStatusChange, searchQuery }: OrdersTable
                       onContact={openWhatsApp}
                       getStatusLabel={getStatusLabel}
                       getStatusColor={getStatusColor}
+                      isMobile={isMobile}
                     />
                   ))
                 )}
@@ -169,13 +139,15 @@ function OrderTableRow({
   onView, 
   onContact,
   getStatusLabel,
-  getStatusColor 
+  getStatusColor,
+  isMobile,
 }: { 
   order: OrderWithDetails; 
   onView: (order: OrderWithDetails) => void;
   onContact: (phone: string) => void;
   getStatusLabel: (status: string) => string;
   getStatusColor: (status: string) => string;
+  isMobile: boolean;
 }) {
   const timeAgo = useTimeAgo(order.created_at);
   const isUrgent = isOrderUrgent(order);
@@ -197,11 +169,13 @@ function OrderTableRow({
           <p className="text-sm text-muted-foreground">{order.user_phone}</p>
         </div>
       </TableCell>
-      <TableCell>
-        <p className="text-sm max-w-[200px] truncate" title={order.delivery_address}>
-          {order.delivery_address}
-        </p>
-      </TableCell>
+      {!isMobile && (
+        <TableCell>
+          <p className="text-sm max-w-[200px] truncate" title={order.delivery_address}>
+            {order.delivery_address}
+          </p>
+        </TableCell>
+      )}
       <TableCell>
         <span className="text-sm">{order.items.length} {order.items.length === 1 ? 'item' : 'itens'}</span>
       </TableCell>
@@ -213,19 +187,22 @@ function OrderTableRow({
           {getStatusLabel(order.status)}
         </Badge>
       </TableCell>
-      <TableCell>
-        <div className="text-sm">
-          <p className={cn(isUrgent && "text-destructive font-medium")}>{timeAgo}</p>
-          <p className="text-muted-foreground text-xs">
-            {format(new Date(order.created_at), "dd/MM HH:mm", { locale: ptBR })}
-          </p>
-        </div>
-      </TableCell>
+      {!isMobile && (
+        <TableCell>
+          <div className="text-sm">
+            <p className={cn(isUrgent && "text-destructive font-medium")}>{timeAgo}</p>
+            <p className="text-muted-foreground text-xs">
+              {format(new Date(order.created_at), "dd/MM HH:mm", { locale: ptBR })}
+            </p>
+          </div>
+        </TableCell>
+      )}
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-1">
           <Button 
             variant="ghost" 
             size="icon"
+            className="h-8 w-8"
             onClick={() => onContact(order.user_phone)}
             title="Contatar cliente"
           >
@@ -234,6 +211,7 @@ function OrderTableRow({
           <Button 
             variant="ghost" 
             size="icon"
+            className="h-8 w-8"
             onClick={() => onView(order)}
             title="Ver detalhes"
           >

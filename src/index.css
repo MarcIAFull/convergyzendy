@@ -152,6 +152,16 @@
   .transition-smooth {
     transition: all 300ms ease-in-out;
   }
+
+
+  /* Hide scrollbar utility */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Print Styles for Thermal Printers */

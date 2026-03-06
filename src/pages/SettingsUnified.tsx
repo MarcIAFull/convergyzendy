@@ -32,7 +32,7 @@ export default function SettingsUnified() {
 
       {/* KEY força re-mount de todas as tabs quando restaurante muda */}
       <Tabs defaultValue={defaultTab} className="space-y-6" key={restaurant?.id || 'no-restaurant'}>
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="flex w-full overflow-x-auto md:grid md:grid-cols-8 no-scrollbar">
           <TabsTrigger value="restaurant" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Restaurante</span>
