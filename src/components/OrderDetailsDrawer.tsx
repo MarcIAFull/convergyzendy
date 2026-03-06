@@ -25,6 +25,7 @@ import {
   X
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
+import { pt } from 'date-fns/locale';
 
 interface OrderDetailsDrawerProps {
   order: OrderWithDetails | null;
@@ -45,52 +46,34 @@ export function OrderDetailsDrawer({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'bg-primary/10 text-primary';
-      case 'preparing':
-        return 'bg-warning/10 text-warning';
-      case 'out_for_delivery':
-        return 'bg-info/10 text-info';
-      case 'completed':
-        return 'bg-success/10 text-success';
-      case 'cancelled':
-        return 'bg-destructive/10 text-destructive';
-      default:
-        return 'bg-muted text-muted-foreground';
+      case 'new': return 'bg-primary/10 text-primary';
+      case 'preparing': return 'bg-warning/10 text-warning';
+      case 'out_for_delivery': return 'bg-info/10 text-info';
+      case 'completed': return 'bg-success/10 text-success';
+      case 'cancelled': return 'bg-destructive/10 text-destructive';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'new':
-        return <Package className="h-5 w-5" />;
-      case 'preparing':
-        return <Clock className="h-5 w-5" />;
-      case 'out_for_delivery':
-        return <Truck className="h-5 w-5" />;
-      case 'completed':
-        return <CheckCircle className="h-5 w-5" />;
-      case 'cancelled':
-        return <X className="h-5 w-5" />;
-      default:
-        return null;
+      case 'new': return <Package className="h-5 w-5" />;
+      case 'preparing': return <Clock className="h-5 w-5" />;
+      case 'out_for_delivery': return <Truck className="h-5 w-5" />;
+      case 'completed': return <CheckCircle className="h-5 w-5" />;
+      case 'cancelled': return <X className="h-5 w-5" />;
+      default: return null;
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'New Order';
-      case 'preparing':
-        return 'Preparing';
-      case 'out_for_delivery':
-        return 'Out for Delivery';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return status;
+      case 'new': return 'Novo Pedido';
+      case 'preparing': return 'Preparando';
+      case 'out_for_delivery': return 'Em Entrega';
+      case 'completed': return 'Concluído';
+      case 'cancelled': return 'Cancelado';
+      default: return status;
     }
   };
 
@@ -104,18 +87,18 @@ export function OrderDetailsDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[96vh]">
+      <DrawerContent className="max-h-[100dvh]">
         <DrawerHeader className="border-b">
           <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <DrawerTitle className="text-2xl flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <DrawerTitle className="text-xl sm:text-2xl flex items-center gap-3">
                 {getStatusIcon(order.status)}
-                Order #{order.id.slice(0, 8).toUpperCase()}
+                <span className="truncate">Pedido #{order.id.slice(0, 8).toUpperCase()}</span>
               </DrawerTitle>
-              <DrawerDescription className="mt-2 flex items-center gap-4">
-                <span>{format(new Date(order.created_at), 'PPp')}</span>
+              <DrawerDescription className="mt-2 flex flex-wrap items-center gap-2 sm:gap-4">
+                <span>{format(new Date(order.created_at), 'PPp', { locale: pt })}</span>
                 <span className="text-muted-foreground">•</span>
-                <span>{formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}</span>
+                <span>{formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: pt })}</span>
               </DrawerDescription>
             </div>
             <Badge className={getStatusColor(order.status)}>
@@ -124,18 +107,18 @@ export function OrderDetailsDrawer({
           </div>
         </DrawerHeader>
 
-        <ScrollArea className="flex-1 px-6">
-          <div className="space-y-6 py-6">
-            {/* Customer Information */}
+        <ScrollArea className="flex-1 px-4 sm:px-6">
+          <div className="space-y-4 sm:space-y-6 py-4 sm:py-6">
+            {/* Informações do Cliente */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Customer Information</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Informações do Cliente</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    <span>{order.user_phone}</span>
+                    <Phone className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">{order.user_phone}</span>
                   </div>
                   <Button
                     variant="outline"
@@ -143,7 +126,7 @@ export function OrderDetailsDrawer({
                     onClick={() => onContactCustomer(order.user_phone)}
                   >
                     <Phone className="h-4 w-4 mr-2" />
-                    Contact
+                    Contactar
                   </Button>
                 </div>
 
@@ -151,10 +134,10 @@ export function OrderDetailsDrawer({
 
                 <div>
                   <div className="flex items-start gap-2 mb-2">
-                    <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Delivery Address</p>
-                      <p className="text-sm text-muted-foreground mt-1">
+                    <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Morada de Entrega</p>
+                      <p className="text-sm text-muted-foreground mt-1 break-words">
                         {order.delivery_address}
                       </p>
                     </div>
@@ -165,7 +148,7 @@ export function OrderDetailsDrawer({
 
                 <div className="flex items-center gap-2">
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">Payment:</span>
+                  <span className="text-sm">Pagamento:</span>
                   <Badge variant="outline" className="capitalize">
                     {order.payment_method}
                   </Badge>
@@ -173,12 +156,12 @@ export function OrderDetailsDrawer({
               </CardContent>
             </Card>
 
-            {/* Order Items */}
+            {/* Itens do Pedido */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Order Items</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Itens do Pedido</CardTitle>
                 <CardDescription>
-                  {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
+                  {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -188,12 +171,12 @@ export function OrderDetailsDrawer({
                       {idx > 0 && <Separator className="mb-4" />}
                       <div className="space-y-2">
                         <div className="flex justify-between items-start">
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="h-6 w-6 rounded-full p-0 flex items-center justify-center">
+                              <Badge variant="secondary" className="h-6 w-6 rounded-full p-0 flex items-center justify-center shrink-0">
                                 {item.quantity}
                               </Badge>
-                              <span className="font-medium">{item.product.name}</span>
+                              <span className="font-medium truncate">{item.product.name}</span>
                             </div>
                             {item.product.description && (
                               <p className="text-sm text-muted-foreground mt-1 ml-8">
@@ -202,7 +185,7 @@ export function OrderDetailsDrawer({
                             )}
                             {item.notes && (
                               <p className="text-sm text-muted-foreground italic mt-1 ml-8">
-                                Note: {item.notes}
+                                Nota: {item.notes}
                               </p>
                             )}
                           </div>
@@ -213,7 +196,7 @@ export function OrderDetailsDrawer({
 
                         {item.addons.length > 0 && (
                           <div className="ml-8 space-y-1">
-                            <p className="text-sm font-medium text-muted-foreground">Add-ons:</p>
+                            <p className="text-sm font-medium text-muted-foreground">Extras:</p>
                             {item.addons.map((addon, addonIdx) => (
                               <div key={addonIdx} className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">+ {addon.name}</span>
@@ -226,7 +209,7 @@ export function OrderDetailsDrawer({
                         )}
 
                         <div className="flex justify-between text-sm font-medium ml-8 pt-1">
-                          <span>Item Total:</span>
+                          <span>Total do Item:</span>
                           <span>€{calculateItemTotal(item).toFixed(2)}</span>
                         </div>
                       </div>
@@ -236,12 +219,12 @@ export function OrderDetailsDrawer({
               </CardContent>
             </Card>
 
-            {/* Order Total */}
+            {/* Total do Pedido */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <DollarSign className="h-5 w-5" />
-                  Order Total
+                  Total do Pedido
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -273,7 +256,7 @@ export function OrderDetailsDrawer({
                   }}
                 >
                   <Clock className="h-4 w-4 mr-2" />
-                  Start Preparing
+                  Iniciar Preparação
                 </Button>
                 <Button
                   variant="destructive"
@@ -283,7 +266,7 @@ export function OrderDetailsDrawer({
                   }}
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Cancel
+                  Cancelar
                 </Button>
               </>
             )}
@@ -298,7 +281,7 @@ export function OrderDetailsDrawer({
                   }}
                 >
                   <Truck className="h-4 w-4 mr-2" />
-                  Send for Delivery
+                  Enviar para Entrega
                 </Button>
                 <Button
                   variant="outline"
@@ -306,7 +289,7 @@ export function OrderDetailsDrawer({
                     onStatusChange(order.id, 'new');
                   }}
                 >
-                  Back to New
+                  Voltar a Novo
                 </Button>
               </>
             )}
@@ -321,7 +304,7 @@ export function OrderDetailsDrawer({
                   }}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Mark as Completed
+                  Marcar como Concluído
                 </Button>
                 <Button
                   variant="outline"
@@ -329,7 +312,7 @@ export function OrderDetailsDrawer({
                     onStatusChange(order.id, 'preparing');
                   }}
                 >
-                  Back to Preparing
+                  Voltar a Preparação
                 </Button>
               </>
             )}
@@ -340,14 +323,14 @@ export function OrderDetailsDrawer({
                 className="flex-1"
                 onClick={() => onOpenChange(false)}
               >
-                Close
+                Fechar
               </Button>
             )}
           </div>
           
           <DrawerClose asChild>
             <Button variant="outline" className="w-full">
-              Close
+              Fechar
             </Button>
           </DrawerClose>
         </DrawerFooter>
