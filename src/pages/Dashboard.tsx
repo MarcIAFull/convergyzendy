@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOrderStore } from '@/stores/orderStore';
 import { useRestaurantGuard } from '@/hooks/useRestaurantGuard';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { OrdersList } from '@/components/orders/OrdersList';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { OrdersKanban } from '@/components/orders/OrdersKanban';
