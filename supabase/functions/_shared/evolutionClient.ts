@@ -286,6 +286,9 @@ export async function createOrConnectInstance(instanceName: string, webhookUrl?:
       url: webhookUrlToUse,
       webhookByEvents: false,
       webhookBase64: true,
+      headers: {
+        "apikey": apiKey
+      },
       events: [
         "MESSAGES_UPSERT",
         "MESSAGES_UPDATE",
