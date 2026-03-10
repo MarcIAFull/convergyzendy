@@ -143,7 +143,7 @@ Gostaria de finalizar o pedido! 😊`;
                   
                   {item.selectedAddons.length > 0 && (
                     <p className="text-sm text-muted-foreground mb-1">
-                      + {item.selectedAddons.map((a) => a.name).join(', ')}
+                      + {formatAddonsText(item.selectedAddons)}
                     </p>
                   )}
                   
