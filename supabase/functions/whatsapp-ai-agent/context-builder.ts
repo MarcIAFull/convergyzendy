@@ -130,7 +130,8 @@ export async function buildConversationContext(
       id, name, sort_order,
       products!inner (
         id, name, description, price, is_available, max_addons, free_addons_count,
-        addons (id, name, price)
+        addons (id, name, price, group_id),
+        addon_groups (id, name, sort_order, min_selections, max_selections, free_selections)
       )
     `)
     .eq('restaurant_id', restaurantId)
@@ -146,10 +147,11 @@ export async function buildConversationContext(
         price: p.price,
         description: p.description,
         category: cat.name,
-        is_available: p.is_available ?? true, // CRITICAL: Include is_available for smart search
+        is_available: p.is_available ?? true,
         addons: p.addons || [],
-        max_addons: p.max_addons ?? null, // Limite de adicionais (null = sem limite)
-        free_addons_count: p.free_addons_count ?? null // Complementos grátis inclusos
+        addon_groups: (p.addon_groups || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0)),
+        max_addons: p.max_addons ?? null,
+        free_addons_count: p.free_addons_count ?? null
       }))
   ) || [];
 
