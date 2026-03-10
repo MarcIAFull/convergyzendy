@@ -482,14 +482,32 @@ function formatMenuForPromptFull(products: any[]): string {
       let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
       if (p.description) line += ` | ${p.description.substring(0, 50)}`;
       
-      // Add free_addons_count info (PRIORITY - customer-facing benefit)
       const freeAddons = p.free_addons_count ?? 0;
       if (freeAddons > 0) {
         line += ` [${freeAddons} complementos GRÁTIS]`;
       }
       
-      // Add addons with max_addons limit info
-      if (p.addons && p.addons.length > 0) {
+      // Show addon groups (steps/combo sections) if present
+      const addonGroups = p.addon_groups || [];
+      if (addonGroups.length > 0) {
+        for (const group of addonGroups) {
+          const groupAddons = (p.addons || []).filter((a: any) => a && a.group_id === group.id);
+          if (groupAddons.length > 0) {
+            const rules = [];
+            if (group.min_selections > 0) rules.push(`mín: ${group.min_selections}`);
+            if (group.max_selections != null) rules.push(`máx: ${group.max_selections}`);
+            if (group.free_selections > 0) rules.push(`${group.free_selections} grátis`);
+            const rulesStr = rules.length > 0 ? ` [${rules.join(', ')}]` : '';
+            line += `\n  ${group.name}${rulesStr}: ${groupAddons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
+          }
+        }
+        // Ungrouped addons
+        const ungrouped = (p.addons || []).filter((a: any) => a && a.name && !a.group_id);
+        if (ungrouped.length > 0) {
+          const maxAddonsInfo = p.max_addons != null ? ` [máx: ${p.max_addons}]` : '';
+          line += `\n  Addons${maxAddonsInfo}: ${ungrouped.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
+        }
+      } else if (p.addons && p.addons.length > 0) {
         const validAddons = (p.addons || []).filter((a: any) => a && a.name);
         if (validAddons.length > 0) {
           const maxAddonsInfo = p.max_addons != null ? ` [máx: ${p.max_addons}]` : '';
