@@ -8,7 +8,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -33,13 +32,14 @@ export const ProductModal = ({
   onAddToCart,
 }: ProductModalProps) => {
   const [quantity, setQuantity] = useState(1);
-  const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
+  // Map<addonId, quantity> — allows selecting same addon multiple times
+  const [addonQuantities, setAddonQuantities] = useState<Map<string, number>>(new Map());
   const [notes, setNotes] = useState('');
   const { toast } = useToast();
 
   const handleClose = () => {
     setQuantity(1);
-    setSelectedAddonIds(new Set());
+    setAddonQuantities(new Map());
     setNotes('');
     onClose();
   };
@@ -62,44 +62,88 @@ export const ProductModal = ({
 
   const hasGroups = productGroups.length > 0;
 
+  // Get total selected count for a group
+  const getGroupSelectedCount = (groupId: string) => {
+    const groupAddonIds = productAddons.filter(a => a.group_id === groupId).map(a => a.id);
+    return groupAddonIds.reduce((sum, id) => sum + (addonQuantities.get(id) || 0), 0);
+  };
+
+  // Get total selected count for ungrouped addons
+  const getUngroupedSelectedCount = () => {
+    return ungroupedAddons.reduce((sum, a) => sum + (addonQuantities.get(a.id) || 0), 0);
+  };
+
+  // Get total addon count across all groups and ungrouped
+  const getTotalAddonCount = () => {
+    return Array.from(addonQuantities.values()).reduce((sum, q) => sum + q, 0);
+  };
+
   // Validation: check if all required groups meet min_selections
   const groupValidation = useMemo(() => {
     const result: Record<string, { selected: number; valid: boolean }> = {};
     for (const group of productGroups) {
-      const groupAddonIds = productAddons.filter(a => a.group_id === group.id).map(a => a.id);
-      const selected = groupAddonIds.filter(id => selectedAddonIds.has(id)).length;
+      const selected = getGroupSelectedCount(group.id);
       const valid = selected >= group.min_selections;
       result[group.id] = { selected, valid };
     }
     return result;
-  }, [productGroups, productAddons, selectedAddonIds]);
+  }, [productGroups, productAddons, addonQuantities]);
 
   const allGroupsValid = productGroups.every(g => groupValidation[g.id]?.valid);
 
-  const toggleAddon = (addonId: string, groupId: string | null) => {
-    const newSet = new Set(selectedAddonIds);
-    if (newSet.has(addonId)) {
-      newSet.delete(addonId);
-    } else {
-      // Check max_selections for the group
-      if (groupId) {
-        const group = productGroups.find(g => g.id === groupId);
-        if (group?.max_selections != null) {
-          const groupAddonIds = productAddons.filter(a => a.group_id === groupId).map(a => a.id);
-          const currentSelected = groupAddonIds.filter(id => newSet.has(id)).length;
-          if (currentSelected >= group.max_selections) {
-            toast({ title: `Máximo de ${group.max_selections} seleções nesta etapa`, variant: 'destructive' });
-            return;
-          }
+  const incrementAddon = (addonId: string, groupId: string | null) => {
+    // Check max_selections for the group
+    if (groupId) {
+      const group = productGroups.find(g => g.id === groupId);
+      if (group?.max_selections != null) {
+        const currentSelected = getGroupSelectedCount(groupId);
+        if (currentSelected >= group.max_selections) {
+          toast({ title: `Máximo de ${group.max_selections} seleções nesta etapa`, variant: 'destructive' });
+          return;
         }
       }
-      newSet.add(addonId);
     }
-    setSelectedAddonIds(newSet);
+
+    // Check product-level max_addons
+    if (product?.max_addons != null) {
+      const totalCount = getTotalAddonCount();
+      if (totalCount >= product.max_addons) {
+        toast({ title: `Máximo de ${product.max_addons} adicionais por item`, variant: 'destructive' });
+        return;
+      }
+    }
+
+    const newMap = new Map(addonQuantities);
+    newMap.set(addonId, (newMap.get(addonId) || 0) + 1);
+    setAddonQuantities(newMap);
+  };
+
+  const decrementAddon = (addonId: string) => {
+    const current = addonQuantities.get(addonId) || 0;
+    if (current <= 0) return;
+    const newMap = new Map(addonQuantities);
+    if (current === 1) {
+      newMap.delete(addonId);
+    } else {
+      newMap.set(addonId, current - 1);
+    }
+    setAddonQuantities(newMap);
   };
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(price);
+  };
+
+  // Build flat addon array from quantities (with duplicates for repeated selections)
+  const buildSelectedAddonsArray = (): Addon[] => {
+    const result: Addon[] = [];
+    for (const addon of productAddons) {
+      const qty = addonQuantities.get(addon.id) || 0;
+      for (let i = 0; i < qty; i++) {
+        result.push(addon);
+      }
+    }
+    return result;
   };
 
   // Calculate total considering group-level free_selections
@@ -110,22 +154,34 @@ export const ProductModal = ({
     if (hasGroups) {
       // Per-group free_selections
       for (const group of productGroups) {
-        const groupAddonList = productAddons
-          .filter(a => a.group_id === group.id)
-          .filter(a => selectedAddonIds.has(a.id));
-        const paidAddons = groupAddonList.slice(group.free_selections);
+        const groupAddonList = productAddons.filter(a => a.group_id === group.id);
+        // Build expanded list respecting quantities
+        const expandedGroupAddons: Addon[] = [];
+        for (const addon of groupAddonList) {
+          const qty = addonQuantities.get(addon.id) || 0;
+          for (let i = 0; i < qty; i++) {
+            expandedGroupAddons.push(addon);
+          }
+        }
+        const paidAddons = expandedGroupAddons.slice(group.free_selections);
         addonsTotal += paidAddons.reduce((sum, a) => sum + a.price, 0);
       }
       // Ungrouped addons use product-level free_addons_count
-      const ungroupedSelected = ungroupedAddons.filter(a => selectedAddonIds.has(a.id));
+      const expandedUngrouped: Addon[] = [];
+      for (const addon of ungroupedAddons) {
+        const qty = addonQuantities.get(addon.id) || 0;
+        for (let i = 0; i < qty; i++) {
+          expandedUngrouped.push(addon);
+        }
+      }
       const freeCount = product.free_addons_count ?? 0;
-      const paidUngrouped = ungroupedSelected.slice(freeCount);
+      const paidUngrouped = expandedUngrouped.slice(freeCount);
       addonsTotal += paidUngrouped.reduce((sum, a) => sum + a.price, 0);
     } else {
       // Legacy: flat addons with product-level free_addons_count
-      const selected = productAddons.filter(a => selectedAddonIds.has(a.id));
+      const expandedAll = buildSelectedAddonsArray();
       const freeCount = product.free_addons_count ?? 0;
-      const paid = selected.slice(freeCount);
+      const paid = expandedAll.slice(freeCount);
       addonsTotal = paid.reduce((sum, a) => sum + a.price, 0);
     }
 
@@ -138,7 +194,7 @@ export const ProductModal = ({
       toast({ title: 'Preencha todas as etapas obrigatórias', variant: 'destructive' });
       return;
     }
-    const selectedAddons = productAddons.filter((addon) => selectedAddonIds.has(addon.id));
+    const selectedAddons = buildSelectedAddonsArray();
     onAddToCart(product, quantity, selectedAddons, notes);
     toast({ title: 'Adicionado ao carrinho', description: `${quantity}x ${product.name}` });
     handleClose();
@@ -146,21 +202,41 @@ export const ProductModal = ({
 
   if (!product) return null;
 
-  const renderAddonItem = (addon: Addon, isFree: boolean) => (
-    <div key={addon.id} className="flex items-center space-x-2">
-      <Checkbox
-        id={addon.id}
-        checked={selectedAddonIds.has(addon.id)}
-        onCheckedChange={() => toggleAddon(addon.id, addon.group_id)}
-      />
-      <label htmlFor={addon.id} className="flex-1 cursor-pointer flex items-center justify-between">
-        <span className="text-foreground">{addon.name}</span>
-        <span className="text-muted-foreground">
-          {isFree ? 'Grátis' : `+ ${formatPrice(addon.price)}`}
-        </span>
-      </label>
-    </div>
-  );
+  const renderAddonItem = (addon: Addon, groupId: string | null, isFreeLabel: boolean) => {
+    const qty = addonQuantities.get(addon.id) || 0;
+    return (
+      <div key={addon.id} className="flex items-center justify-between py-1.5">
+        <span className="text-foreground text-sm">{addon.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground min-w-[50px] text-right">
+            {isFreeLabel && qty > 0 ? 'Grátis' : addon.price > 0 ? `+ ${formatPrice(addon.price)}` : 'Grátis'}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => decrementAddon(addon.id)}
+              disabled={qty === 0}
+            >
+              <Minus className="w-3 h-3" />
+            </Button>
+            <span className="text-sm font-medium w-6 text-center">{qty}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => incrementAddon(addon.id, groupId)}
+            >
+              <Plus className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -190,7 +266,10 @@ export const ProductModal = ({
             const groupAddons = productAddons.filter(a => a.group_id === group.id);
             if (groupAddons.length === 0) return null;
             const validation = groupValidation[group.id];
-            const selectedInGroup = groupAddons.filter(a => selectedAddonIds.has(a.id));
+            const selectedCount = getGroupSelectedCount(group.id);
+
+            // Track how many free slots remain
+            let freeRemaining = group.free_selections;
 
             return (
               <div key={group.id} className="space-y-3 border rounded-lg p-4">
@@ -199,12 +278,12 @@ export const ProductModal = ({
                   <div className="flex items-center gap-2">
                     {group.min_selections > 0 && (
                       <Badge variant={validation?.valid ? 'secondary' : 'destructive'} className="text-xs">
-                        {group.min_selections > 0 ? `Mín: ${group.min_selections}` : ''}
+                        Mín: {group.min_selections}
                       </Badge>
                     )}
                     {group.max_selections != null && (
                       <Badge variant="outline" className="text-xs">
-                        Máx: {group.max_selections}
+                        {selectedCount}/{group.max_selections}
                       </Badge>
                     )}
                   </div>
@@ -212,15 +291,18 @@ export const ProductModal = ({
                 {group.free_selections > 0 && (
                   <p className="text-sm text-muted-foreground">
                     {group.free_selections} {group.free_selections === 1 ? 'seleção grátis' : 'seleções grátis'}
-                    {validation && validation.selected > 0 && validation.selected <= group.free_selections && (
-                      <> — {group.free_selections - validation.selected} restante(s)</>
+                    {selectedCount > 0 && selectedCount <= group.free_selections && (
+                      <> — {group.free_selections - selectedCount} restante(s)</>
                     )}
                   </p>
                 )}
-                <div className="space-y-2">
-                  {groupAddons.map((addon, idx) => {
-                    const isFree = selectedInGroup.indexOf(addon) >= 0 && selectedInGroup.indexOf(addon) < group.free_selections;
-                    return renderAddonItem(addon, isFree);
+                <div className="space-y-1">
+                  {groupAddons.map((addon) => {
+                    const qty = addonQuantities.get(addon.id) || 0;
+                    // Determine if this addon's units fall within free slots
+                    const isFree = freeRemaining > 0 && qty > 0;
+                    freeRemaining = Math.max(0, freeRemaining - qty);
+                    return renderAddonItem(addon, group.id, isFree);
                   })}
                 </div>
               </div>
@@ -237,20 +319,23 @@ export const ProductModal = ({
                 <p className="text-sm text-muted-foreground">
                   Escolha até {product.free_addons_count} adicionais grátis
                   {(() => {
-                    const ungroupedSelected = ungroupedAddons.filter(a => selectedAddonIds.has(a.id));
-                    const remaining = (product.free_addons_count ?? 0) - ungroupedSelected.length;
-                    return remaining > 0 && ungroupedSelected.length > 0 ? ` — ${remaining} restante(s)` : '';
+                    const totalSelected = getUngroupedSelectedCount();
+                    const remaining = (product.free_addons_count ?? 0) - totalSelected;
+                    return remaining > 0 && totalSelected > 0 ? ` — ${remaining} restante(s)` : '';
                   })()}
                 </p>
               )}
-              <div className="space-y-2">
-                {ungroupedAddons.map((addon, idx) => {
+              <div className="space-y-1">
+                {(() => {
                   const freeCount = hasGroups ? 0 : (product.free_addons_count ?? 0);
-                  const ungroupedSelected = ungroupedAddons.filter(a => selectedAddonIds.has(a.id));
-                  const addonIndex = ungroupedSelected.indexOf(addon);
-                  const isFree = addonIndex >= 0 && addonIndex < freeCount;
-                  return renderAddonItem(addon, isFree);
-                })}
+                  let freeRemaining = freeCount;
+                  return ungroupedAddons.map((addon) => {
+                    const qty = addonQuantities.get(addon.id) || 0;
+                    const isFree = freeRemaining > 0 && qty > 0;
+                    freeRemaining = Math.max(0, freeRemaining - qty);
+                    return renderAddonItem(addon, null, isFree);
+                  });
+                })()}
               </div>
             </div>
           )}
