@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Webhooks can manage conversation state" ON public.conversation_state;

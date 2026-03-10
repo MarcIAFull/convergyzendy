@@ -42,6 +42,26 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    // ============================================================
+    // WEBHOOK AUTHENTICATION: Verify request originated from Evolution API
+    // Evolution sends the API key in the 'apikey' header when configured
+    // ============================================================
+    if (req.method === 'POST') {
+      const expectedApiKey = Deno.env.get('EVOLUTION_API_KEY');
+      const receivedApiKey = req.headers.get('apikey') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
+      
+      if (expectedApiKey && receivedApiKey !== expectedApiKey) {
+        console.warn('[EvolutionWebhook] ⚠️ Unauthorized webhook request - API key mismatch');
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      if (!expectedApiKey) {
+        console.warn('[EvolutionWebhook] ⚠️ EVOLUTION_API_KEY not set - webhook authentication disabled');
+      }
+    }
 
     // GET request for webhook verification (if Evolution uses this)
     if (req.method === 'GET') {
