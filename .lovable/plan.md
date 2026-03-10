@@ -1,40 +1,31 @@
 
 
-## Plano: Endereço Clicável nas Mensagens WhatsApp
+## Diagnóstico: Race Condition no Auth causando `removeChild` error
 
-### Problema
-As mensagens de confirmação de pedido enviadas via WhatsApp mostram o endereço como texto simples. O motoboy precisa copiar manualmente o endereço e colar no Google Maps.
+O erro ocorre porque o `onAuthStateChange` dispara dois eventos em sequência rápida: `SIGNED_IN` e `INITIAL_SESSION`. Cada evento causa `setSession`/`setUser`, que re-renderiza toda a árvore (`ProtectedRoute` → `DashboardLayout` → `useRestaurantGuard`). O React tenta remover nós DOM que já foram substituídos por outra atualização, gerando o `removeChild` crash.
 
-### Solução
-A tabela `web_orders` já armazena `delivery_lat` e `delivery_lng`. Basta gerar um link Google Maps com essas coordenadas e incluí-lo na mensagem. No WhatsApp, links são automaticamente clicáveis.
+Causa raiz no `useAuth.tsx`:
+- `getSession()` seta estado (render 1)
+- `onAuthStateChange` com `SIGNED_IN` seta estado novamente (render 2)  
+- `onAuthStateChange` com `INITIAL_SESSION` seta estado novamente (render 3)
+- Renders 2 e 3 acontecem quase simultaneamente, causando a race condition no DOM
 
-### Formato do Link
-```
-https://www.google.com/maps/search/?api=1&query={lat},{lng}
-```
-Este formato abre diretamente no app Google Maps (Android/iOS) ou no navegador.
+### Correções
 
-### Ficheiros a Alterar
+**1. `src/hooks/useAuth.tsx`**
+- Seguir o padrão recomendado: registar `onAuthStateChange` ANTES de chamar `getSession()`
+- Usar `INITIAL_SESSION` como o evento primário de inicialização (não precisa de `getSession` separado)
+- Ignorar eventos redundantes quando o session ID não mudou
+- Só marcar `loading: false` uma vez, no primeiro evento válido
 
-| Ficheiro | Alteração |
-|---|---|
-| `supabase/functions/notify-web-order/index.ts` | Adicionar link Maps ao bloco `locationInfo` para delivery |
-| `supabase/functions/notify-customer-order/index.ts` | Adicionar link Maps ao bloco `locationInfo` para delivery |
+**2. `src/components/ProtectedRoute.tsx`**
+- Sem alterações estruturais, apenas beneficia da correção do auth
 
-### Lógica
+**3. `src/hooks/useRestaurantGuard.tsx`**
+- Remover os `console.log` no corpo do render (executam a cada render, poluem console e degradam performance)
+- Simplificar a lógica de loading: se `loading` do auth é true, retornar loading sem mais cálculos
 
-Nos dois ficheiros, quando `orderType === 'delivery'`, verificar se `order.delivery_lat` e `order.delivery_lng` existem. Se sim, adicionar o link:
-
-```
-📍 *Endereço:*
-Rua X, 123, Lisboa
-📌 https://www.google.com/maps/search/?api=1&query=38.7223,-9.1393
-```
-
-Se não houver coordenadas (fallback), manter apenas o texto do endereço como está hoje.
-
-### Impacto
-- Zero risco — apenas adiciona uma linha extra à mensagem
-- Não altera nenhuma tabela, apenas leitura de campos já existentes
-- Funciona em qualquer app de navegação (Google Maps, Waze, Apple Maps)
+### Arquivos a modificar
+- `src/hooks/useAuth.tsx` — reordenar init do auth, debounce de eventos
+- `src/hooks/useRestaurantGuard.tsx` — remover logs do render body
 

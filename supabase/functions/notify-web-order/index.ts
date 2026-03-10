@@ -132,7 +132,10 @@ serve(async (req) => {
     } else if (orderType === 'takeaway') {
       locationInfo = '🛍️ *Retirada:* No balcão';
     } else {
-      locationInfo = `📍 *Endereço:*\n${order.delivery_address}${order.delivery_instructions ? `\n${order.delivery_instructions}` : ''}`;
+      const mapsLink = order.delivery_lat && order.delivery_lng
+        ? `\n📌 https://www.google.com/maps/search/?api=1&query=${order.delivery_lat},${order.delivery_lng}`
+        : '';
+      locationInfo = `📍 *Endereço:*\n${order.delivery_address}${order.delivery_instructions ? `\n${order.delivery_instructions}` : ''}${mapsLink}`;
     }
 
     // Build message
