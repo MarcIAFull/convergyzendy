@@ -46,13 +46,22 @@ export default function PublicCart() {
     }
   };
 
+  const formatAddonsText = (addons: typeof items[0]['selectedAddons']) => {
+    const freq: Record<string, { name: string; count: number }> = {};
+    addons.forEach(a => {
+      if (!freq[a.id]) freq[a.id] = { name: a.name, count: 0 };
+      freq[a.id].count++;
+    });
+    return Object.values(freq).map(v => v.count > 1 ? `${v.count}x ${v.name}` : v.name).join(', ');
+  };
+
   const formatWhatsAppMessage = () => {
     if (!menuData) return '';
 
     const itemsList = items
       .map((item) => {
         const addonsText = item.selectedAddons.length > 0
-          ? `\n  + ${item.selectedAddons.map((a) => a.name).join(', ')}`
+          ? `\n  + ${formatAddonsText(item.selectedAddons)}`
           : '';
         const notesText = item.notes ? `\n  Obs: ${item.notes}` : '';
         return `• ${item.quantity}x ${item.product.name} - ${formatPrice(item.totalPrice)}${addonsText}${notesText}`;
