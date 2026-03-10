@@ -18,7 +18,19 @@ interface NotificationConfig {
 
 type NotificationsMap = Record<string, NotificationConfig>;
 
-const STATUS_LABELS: Record<string, { label: string; emoji: string; description: string }> = {
+const STATUS_LABELS: Record<string, { label: string; emoji: string; description: string; isTemplate?: boolean }> = {
+  new_order_restaurant: {
+    label: 'Novo Pedido (Restaurante)',
+    emoji: '🛒',
+    description: 'Mensagem enviada ao restaurante quando um novo pedido web é criado',
+    isTemplate: false,
+  },
+  new_order_customer: {
+    label: 'Confirmação (Cliente)',
+    emoji: '✅',
+    description: 'Mensagem de confirmação enviada ao cliente após o pedido',
+    isTemplate: false,
+  },
   preparing: {
     label: 'Em Preparação',
     emoji: '👨‍🍳',
@@ -42,13 +54,15 @@ const STATUS_LABELS: Record<string, { label: string; emoji: string; description:
 };
 
 const DEFAULT_NOTIFICATIONS: NotificationsMap = {
+  new_order_restaurant: { enabled: true, message: '(Mensagem automática com detalhes do pedido — não editável)' },
+  new_order_customer: { enabled: true, message: '(Mensagem automática de confirmação — não editável)' },
   preparing: { enabled: true, message: '👨‍🍳 Olá {{customer_name}}! Seu pedido *#{{order_id}}* está sendo preparado! ⏳' },
   out_for_delivery: { enabled: true, message: '🚚 {{customer_name}}, seu pedido *#{{order_id}}* saiu para entrega! 📍' },
   completed: { enabled: true, message: '🎉 {{customer_name}}, seu pedido *#{{order_id}}* foi entregue! Obrigado! ❤️' },
   cancelled: { enabled: true, message: '❌ {{customer_name}}, seu pedido *#{{order_id}}* foi cancelado. Entre em contato para mais informações.' },
 };
 
-const STATUS_ORDER = ['preparing', 'out_for_delivery', 'completed', 'cancelled'];
+const STATUS_ORDER = ['new_order_restaurant', 'new_order_customer', 'preparing', 'out_for_delivery', 'completed', 'cancelled'];
 
 export function OrderNotificationsSettings() {
   const { toast } = useToast();
