@@ -119,7 +119,10 @@ serve(async (req) => {
     // Build location info based on order type
     let locationInfo = '';
     if (orderType === 'delivery') {
-      locationInfo = `📍 *Entrega:* ${order.delivery_address}`;
+      const mapsLink = order.delivery_lat && order.delivery_lng
+        ? `\n📌 https://www.google.com/maps/search/?api=1&query=${order.delivery_lat},${order.delivery_lng}`
+        : '';
+      locationInfo = `📍 *Entrega:* ${order.delivery_address}${mapsLink}`;
     } else if (orderType === 'dine_in') {
       locationInfo = order.table_number 
         ? `🍽️ *Mesa:* ${order.table_number}`
