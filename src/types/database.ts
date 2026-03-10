@@ -172,6 +172,7 @@ export interface CustomerInsight {
 // Extended types with relations
 export interface ProductWithAddons extends Product {
   addons: Addon[];
+  addon_groups?: AddonGroup[];
 }
 
 export interface CategoryWithProducts extends Category {

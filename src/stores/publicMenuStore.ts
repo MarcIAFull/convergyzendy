@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { PublicMenuData, RestaurantSettings } from '@/types/public-menu';
-import { Product, Addon, Category } from '@/types/database';
+import { Product, Addon, AddonGroup, Category } from '@/types/database';
 
 interface PublicMenuState {
   menuData: PublicMenuData | null;
+  addonGroups: AddonGroup[];
   loading: boolean;
   error: string | null;
   fetchMenuBySlug: (slug: string) => Promise<void>;
@@ -12,20 +13,17 @@ interface PublicMenuState {
 
 export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
   menuData: null,
+  addonGroups: [],
   loading: false,
   error: null,
 
   fetchMenuBySlug: async (slug: string) => {
-    // Evitar múltiplas chamadas simultâneas
     const currentState = get();
-    if (currentState.loading) {
-      return;
-    }
+    if (currentState.loading) return;
 
     set({ loading: true, error: null });
 
     try {
-      // 1. Buscar restaurant_settings por slug
       const { data: settings, error: settingsError } = await supabase
         .from('restaurant_settings')
         .select('*')
@@ -37,7 +35,6 @@ export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
         throw new Error('Menu não encontrado ou não está disponível');
       }
 
-      // 2. Buscar dados do restaurante
       const { data: restaurant, error: restaurantError } = await supabase
         .from('restaurants')
         .select('*')
@@ -48,18 +45,14 @@ export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
         throw new Error('Restaurante não encontrado');
       }
 
-      // 3. Buscar categorias
       const { data: categories, error: categoriesError } = await supabase
         .from('categories')
         .select('*')
         .eq('restaurant_id', settings.restaurant_id)
         .order('sort_order', { ascending: true });
 
-      if (categoriesError) {
-        throw new Error('Erro ao carregar categorias');
-      }
+      if (categoriesError) throw new Error('Erro ao carregar categorias');
 
-      // 4. Buscar produtos disponíveis
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select('*')
@@ -67,25 +60,20 @@ export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
         .eq('is_available', true)
         .order('display_order', { ascending: true });
 
-      if (productsError) {
-        throw new Error('Erro ao carregar produtos');
-      }
+      if (productsError) throw new Error('Erro ao carregar produtos');
 
-      // 5. Buscar todos os addons dos produtos
       const productIds = products?.map((p) => p.id) || [];
       let addons: Addon[] = [];
+      let addonGroups: AddonGroup[] = [];
 
       if (productIds.length > 0) {
-        const { data: addonsData, error: addonsError } = await supabase
-          .from('addons')
-          .select('*')
-          .in('product_id', productIds);
+        const [addonsResult, groupsResult] = await Promise.all([
+          supabase.from('addons').select('*').in('product_id', productIds),
+          supabase.from('addon_groups').select('*').in('product_id', productIds).order('sort_order', { ascending: true }),
+        ]);
 
-        if (addonsError) {
-          console.error('Erro ao carregar addons:', addonsError);
-        } else {
-          addons = addonsData || [];
-        }
+        if (!addonsResult.error) addons = addonsResult.data || [];
+        if (!groupsResult.error) addonGroups = (groupsResult.data || []) as unknown as AddonGroup[];
       }
 
       set({
@@ -96,6 +84,7 @@ export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
           products: (products || []) as any,
           addons: addons as any,
         },
+        addonGroups,
         loading: false,
         error: null,
       });
@@ -103,6 +92,7 @@ export const usePublicMenuStore = create<PublicMenuState>((set, get) => ({
       console.error('Erro ao carregar menu:', error);
       set({
         menuData: null,
+        addonGroups: [],
         loading: false,
         error: error instanceof Error ? error.message : 'Erro ao carregar menu',
       });
