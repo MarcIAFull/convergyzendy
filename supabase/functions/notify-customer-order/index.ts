@@ -38,6 +38,22 @@ serve(async (req) => {
 
     console.log(`[notify-customer-order] Processing order ${order_id} for restaurant ${restaurant_id}`);
 
+    // Check if this notification is enabled
+    const { data: aiSettings } = await supabase
+      .from('restaurant_ai_settings')
+      .select('order_notifications')
+      .eq('restaurant_id', restaurant_id)
+      .maybeSingle();
+
+    const notifications = aiSettings?.order_notifications as Record<string, any> | null;
+    if (notifications?.new_order_customer?.enabled === false) {
+      console.log('[notify-customer-order] Notification disabled for new_order_customer');
+      return new Response(
+        JSON.stringify({ success: true, message: 'Notification disabled' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Fetch web order details
     const { data: order, error: orderError } = await supabase
       .from('web_orders')
