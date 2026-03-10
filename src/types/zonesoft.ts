@@ -5,10 +5,18 @@ export interface ZoneSoftConfig {
   restaurant_id: string;
   enabled: boolean;
   
-  // API Credentials
+  // API Credentials (ZSROI - Restaurant Ordering)
   client_id: string | null;
   app_key: string | null;
   app_secret: string | null;
+  
+  // ZSAPI Credentials (Synchronization API)
+  zsapi_client_id: string | null;
+  zsapi_app_key: string | null;
+  zsapi_app_secret: string | null;
+  
+  // API Type selector
+  api_type: 'zsroi' | 'zsapi' | 'both';
   
   // Store Configuration
   store_id: number | null;

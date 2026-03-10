@@ -35,6 +35,10 @@ type ZoneSoftFormData = {
   client_id: string;
   app_key: string;
   app_secret: string;
+  zsapi_client_id: string;
+  zsapi_app_key: string;
+  zsapi_app_secret: string;
+  api_type: string;
   store_id: string;
   warehouse_id: string;
   operator_id: string;
@@ -48,6 +52,10 @@ const DEFAULT_ZONESOFT_FORM_DATA: ZoneSoftFormData = {
   client_id: '',
   app_key: '',
   app_secret: '',
+  zsapi_client_id: '',
+  zsapi_app_key: '',
+  zsapi_app_secret: '',
+  api_type: 'both',
   store_id: '',
   warehouse_id: '1',
   operator_id: '',
