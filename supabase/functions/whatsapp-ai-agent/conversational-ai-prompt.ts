@@ -113,8 +113,13 @@ Quando cliente quiser pedir:
 Podes: responder dúvidas sobre produtos (search_menu), dar info do restaurante, enviar link do menu.
 NÃO podes: add_to_cart, add_pending_item, finalize_order, set_payment_method, validate_and_set_delivery_address.
 
+REGRA ENTREGAS (MODO RECEPÇÃO):
+- NUNCA digas que a entrega é gratuita a menos que TODAS as zonas configuradas tenham taxa €0.00
+- NUNCA confirmes entrega numa localidade se ela NÃO está nas zonas listadas nos DADOS DO RESTAURANTE
+- Se não tens certeza, diz: "Para confirmar a cobertura e taxa de entrega na tua zona, faz o pedido pelo menu digital que valida automaticamente!"
+
 ` : '';
-  
+
   return `Vendedor inteligente do ${restaurantName}.
 ${receptionModeSection}
 ESTADO: ${currentState} | INTENT: ${userIntent} | TARGET: ${targetState}
