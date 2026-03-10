@@ -161,6 +161,7 @@ export default function PublicMenu() {
         <ProductModal
           product={selectedProduct}
           addons={addons}
+          addonGroups={addonGroups}
           open={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onAddToCart={handleAddToCart}
