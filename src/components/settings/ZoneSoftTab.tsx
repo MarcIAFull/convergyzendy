@@ -269,7 +269,10 @@ export function ZoneSoftTab() {
           
           {/* API Credentials */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Credenciais API</h3>
+            <h3 className="text-lg font-semibold">Credenciais ZSROI (Pedidos / Takeaway)</h3>
+            <p className="text-sm text-muted-foreground">
+              Integração com permissão <strong>ZS Restaurant Ordering</strong> — para enviar pedidos ao POS.
+            </p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -313,8 +316,96 @@ export function ZoneSoftTab() {
                   {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
+            </div>
+          </div>
+          
+          <Separator />
+          
+          {/* ZSAPI Credentials */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Credenciais ZSAPI (Sincronização)</h3>
+            <p className="text-sm text-muted-foreground">
+              Integração com permissão <strong>ZSAPI</strong> — para sincronizar produtos e documentos.
+              Crie uma integração separada no{' '}
+              <a 
+                href="https://developer.zonesoft.org" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center gap-1"
+              >
+                Portal ZoneSoft Developer
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </p>
+            
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                A ZoneSoft utiliza <strong>duas APIs distintas</strong>: ZSROI (pedidos, endpoint <code>zsroi.zonesoft.org</code>) e ZSAPI (sincronização, endpoint <code>zsapi.zonesoft.org</code>). Cada uma requer credenciais e permissões separadas.
+              </AlertDescription>
+            </Alert>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="zsapi_client_id">ZSAPI Client ID</Label>
+                <Input
+                  id="zsapi_client_id"
+                  placeholder="Client ID da integração ZSAPI"
+                  value={formData.zsapi_client_id}
+                  onChange={(e) => handleChange('zsapi_client_id', e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="zsapi_app_key">ZSAPI App Key</Label>
+                <Input
+                  id="zsapi_app_key"
+                  placeholder="App Key da integração ZSAPI"
+                  value={formData.zsapi_app_key}
+                  onChange={(e) => handleChange('zsapi_app_key', e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="zsapi_app_secret">ZSAPI App Secret</Label>
+              <div className="relative">
+                <Input
+                  id="zsapi_app_secret"
+                  type={showSecret ? 'text' : 'password'}
+                  placeholder="••••••••••••••••"
+                  value={formData.zsapi_app_secret}
+                  onChange={(e) => handleChange('zsapi_app_secret', e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                  onClick={() => setShowSecret(!showSecret)}
+                >
+                  {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Tipo de API</Label>
+              <Select
+                value={formData.api_type}
+                onValueChange={(value) => handleChange('api_type', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Ambas (ZSROI + ZSAPI)</SelectItem>
+                  <SelectItem value="zsroi">Apenas ZSROI (Pedidos)</SelectItem>
+                  <SelectItem value="zsapi">Apenas ZSAPI (Sincronização)</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Obtenha estas credenciais em developer.zonesoft.org
+                Selecione quais APIs utilizar. Recomendado: "Ambas" para funcionalidade completa.
               </p>
             </div>
           </div>
