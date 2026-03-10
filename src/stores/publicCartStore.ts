@@ -86,13 +86,18 @@ export const usePublicCartStore = create<PublicCartState>()(
 
       removeItem: (productId: string, addonIds: string[]) => {
         const items = get().items;
+        const buildAddonKey = (ids: string[]) => {
+          const freq: Record<string, number> = {};
+          ids.forEach(id => { freq[id] = (freq[id] || 0) + 1; });
+          return JSON.stringify(Object.entries(freq).sort(([a], [b]) => a.localeCompare(b)));
+        };
+        const targetKey = buildAddonKey(addonIds);
         set({
           items: items.filter(
             (item) =>
               !(
                 item.product.id === productId &&
-                JSON.stringify(item.selectedAddons.map((a) => a.id).sort()) ===
-                  JSON.stringify(addonIds.sort())
+                buildAddonKey(item.selectedAddons.map(a => a.id)) === targetKey
               )
           ),
         });
@@ -105,11 +110,17 @@ export const usePublicCartStore = create<PublicCartState>()(
           return;
         }
 
+        const buildAddonKey = (ids: string[]) => {
+          const freq: Record<string, number> = {};
+          ids.forEach(id => { freq[id] = (freq[id] || 0) + 1; });
+          return JSON.stringify(Object.entries(freq).sort(([a], [b]) => a.localeCompare(b)));
+        };
+        const targetKey = buildAddonKey(addonIds);
+
         const updatedItems = items.map((item) => {
           if (
             item.product.id === productId &&
-            JSON.stringify(item.selectedAddons.map((a) => a.id).sort()) ===
-              JSON.stringify(addonIds.sort())
+            buildAddonKey(item.selectedAddons.map(a => a.id)) === targetKey
           ) {
             const freeCount = item.product.free_addons_count ?? 0;
             const paidAddons = freeCount > 0 ? item.selectedAddons.slice(freeCount) : item.selectedAddons;
