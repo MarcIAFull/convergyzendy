@@ -130,7 +130,8 @@ export async function buildConversationContext(
       id, name, sort_order,
       products!inner (
         id, name, description, price, is_available, max_addons, free_addons_count,
-        addons (id, name, price)
+        addons (id, name, price, group_id),
+        addon_groups (id, name, sort_order, min_selections, max_selections, free_selections)
       )
     `)
     .eq('restaurant_id', restaurantId)
@@ -146,10 +147,11 @@ export async function buildConversationContext(
         price: p.price,
         description: p.description,
         category: cat.name,
-        is_available: p.is_available ?? true, // CRITICAL: Include is_available for smart search
+        is_available: p.is_available ?? true,
         addons: p.addons || [],
-        max_addons: p.max_addons ?? null, // Limite de adicionais (null = sem limite)
-        free_addons_count: p.free_addons_count ?? null // Complementos grátis inclusos
+        addon_groups: (p.addon_groups || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0)),
+        max_addons: p.max_addons ?? null,
+        free_addons_count: p.free_addons_count ?? null
       }))
   ) || [];
 
@@ -480,14 +482,32 @@ function formatMenuForPromptFull(products: any[]): string {
       let line = `• ${p.name} (ID: ${p.id}) - €${p.price}`;
       if (p.description) line += ` | ${p.description.substring(0, 50)}`;
       
-      // Add free_addons_count info (PRIORITY - customer-facing benefit)
       const freeAddons = p.free_addons_count ?? 0;
       if (freeAddons > 0) {
         line += ` [${freeAddons} complementos GRÁTIS]`;
       }
       
-      // Add addons with max_addons limit info
-      if (p.addons && p.addons.length > 0) {
+      // Show addon groups (steps/combo sections) if present
+      const addonGroups = p.addon_groups || [];
+      if (addonGroups.length > 0) {
+        for (const group of addonGroups) {
+          const groupAddons = (p.addons || []).filter((a: any) => a && a.group_id === group.id);
+          if (groupAddons.length > 0) {
+            const rules = [];
+            if (group.min_selections > 0) rules.push(`mín: ${group.min_selections}`);
+            if (group.max_selections != null) rules.push(`máx: ${group.max_selections}`);
+            if (group.free_selections > 0) rules.push(`${group.free_selections} grátis`);
+            const rulesStr = rules.length > 0 ? ` [${rules.join(', ')}]` : '';
+            line += `\n  ${group.name}${rulesStr}: ${groupAddons.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
+          }
+        }
+        // Ungrouped addons
+        const ungrouped = (p.addons || []).filter((a: any) => a && a.name && !a.group_id);
+        if (ungrouped.length > 0) {
+          const maxAddonsInfo = p.max_addons != null ? ` [máx: ${p.max_addons}]` : '';
+          line += `\n  Addons${maxAddonsInfo}: ${ungrouped.map((a: any) => `${a.name} (+€${a.price})`).join(', ')}`;
+        }
+      } else if (p.addons && p.addons.length > 0) {
         const validAddons = (p.addons || []).filter((a: any) => a && a.name);
         if (validAddons.length > 0) {
           const maxAddonsInfo = p.max_addons != null ? ` [máx: ${p.max_addons}]` : '';

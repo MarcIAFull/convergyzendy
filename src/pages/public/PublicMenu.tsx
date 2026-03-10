@@ -16,7 +16,7 @@ import { Helmet } from 'react-helmet-async';
 
 export default function PublicMenu() {
   const { slug } = useParams<{ slug: string }>();
-  const { menuData, loading, error, fetchMenuBySlug } = usePublicMenuStore();
+  const { menuData, addonGroups, loading, error, fetchMenuBySlug } = usePublicMenuStore();
   const { addItem, setSlug } = usePublicCartStore();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -161,6 +161,7 @@ export default function PublicMenu() {
         <ProductModal
           product={selectedProduct}
           addons={addons}
+          addonGroups={addonGroups}
           open={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onAddToCart={handleAddToCart}

@@ -309,7 +309,7 @@ export const BASE_TOOLS: Record<string, ToolDefinition> = {
     type: "function",
     function: {
       name: "get_product_addons",
-      description: "Get available addons (extras, borders, toppings) for a specific product. Use BEFORE add_to_cart when customer asks about customizations like 'quais bordas tem?', 'posso adicionar algo?', or when adding products that typically have addons (pizzas, hambúrgueres). Returns list of addon_ids that can be used in add_to_cart.",
+      description: "Get available addons (extras, borders, toppings) for a specific product. Products may have addon groups (steps like 'Choose Drink', 'Choose Dessert') with their own min/max/free rules. Use BEFORE add_to_cart when customer asks about customizations. Returns list of addon_ids grouped by steps that can be used in add_to_cart.",
       parameters: {
         type: "object",
         properties: {

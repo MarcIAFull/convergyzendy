@@ -44,23 +44,40 @@ import {
   Image as ImageIcon,
   Upload,
   X,
+  Copy,
+  Layers,
 } from 'lucide-react';
-import type { CategoryWithProducts, Product, Addon } from '@/types/database';
+import type { CategoryWithProducts, Product, Addon, AddonGroup } from '@/types/database';
 import { uploadImage, deleteImage, validateImageFile, extractPathFromUrl } from '@/lib/imageUpload';
 import { TagsInput } from '@/components/menu/TagsInput';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const MenuManagement = () => {
   const { restaurant } = useRestaurantGuard();
-  const { categories, loading, fetchMenu, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct, addAddon, updateAddon, deleteAddon } = useMenuStore();
+  const { 
+    categories, loading, fetchMenu, 
+    addCategory, updateCategory, deleteCategory, 
+    addProduct, updateProduct, deleteProduct, duplicateProduct,
+    addAddon, updateAddon, deleteAddon,
+    addAddonGroup, updateAddonGroup, deleteAddonGroup,
+  } = useMenuStore();
   const { toast } = useToast();
 
   const [categoryDialog, setCategoryDialog] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [addonDialog, setAddonDialog] = useState(false);
-  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; type: 'category' | 'product' | 'addon' | null; id: string | null }>({ open: false, type: null, id: null });
+  const [addonGroupDialog, setAddonGroupDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; type: 'category' | 'product' | 'addon' | 'addon_group' | null; id: string | null }>({ open: false, type: null, id: null });
   const [editingCategory, setEditingCategory] = useState<CategoryWithProducts | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
+  const [editingAddonGroup, setEditingAddonGroup] = useState<AddonGroup | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [categoryName, setCategoryName] = useState('');
@@ -69,8 +86,8 @@ const MenuManagement = () => {
   const [productImagePreview, setProductImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [addonForm, setAddonForm] = useState({ name: '', price: '' });
-
+  const [addonForm, setAddonForm] = useState({ name: '', price: '', group_id: '' });
+  const [addonGroupForm, setAddonGroupForm] = useState({ name: '', min_selections: '0', max_selections: '', free_selections: '0' });
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -78,6 +95,9 @@ const MenuManagement = () => {
     }
   }, [restaurant?.id, fetchMenu]);
 
+  // ============================================================
+  // CATEGORY HANDLERS
+  // ============================================================
   const handleAddCategory = () => {
     setEditingCategory(null);
     setCategoryName('');
@@ -92,31 +112,27 @@ const MenuManagement = () => {
 
   const handleSaveCategory = async () => {
     if (!restaurant?.id) {
-      console.error('[MenuManagement] Cannot save category - no restaurant ID');
-      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado. Crie um restaurante primeiro nas Definições.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado.', variant: 'destructive' });
       return;
     }
-    
-    console.log('[MenuManagement] Saving category:', { editing: !!editingCategory, name: categoryName, restaurantId: restaurant.id });
-    
     try {
       if (editingCategory) {
         await updateCategory(editingCategory.id, { name: categoryName });
-        console.log('[MenuManagement] Category updated successfully');
         toast({ title: 'Categoria atualizada com sucesso' });
       } else {
         await addCategory(categoryName, restaurant.id);
-        console.log('[MenuManagement] Category added successfully');
         toast({ title: 'Categoria adicionada com sucesso' });
       }
       setCategoryDialog(false);
       setCategoryName('');
-    } catch (error) {
-      console.error('[MenuManagement] Failed to save category:', error);
+    } catch {
       toast({ title: 'Erro', description: 'Falha ao guardar categoria', variant: 'destructive' });
     }
   };
 
+  // ============================================================
+  // PRODUCT HANDLERS
+  // ============================================================
   const handleAddProduct = (categoryId: string) => {
     setEditingProduct(null);
     setSelectedCategoryId(categoryId);
@@ -145,28 +161,27 @@ const MenuManagement = () => {
     setProductDialog(true);
   };
 
+  const handleDuplicateProduct = async (productId: string) => {
+    if (!restaurant?.id) return;
+    try {
+      await duplicateProduct(productId, restaurant.id);
+      toast({ title: 'Produto duplicado com sucesso' });
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao duplicar produto', variant: 'destructive' });
+    }
+  };
+
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Validate file
     const validationError = validateImageFile(file);
     if (validationError) {
-      toast({
-        title: 'Imagem inválida',
-        description: validationError,
-        variant: 'destructive',
-      });
+      toast({ title: 'Imagem inválida', description: validationError, variant: 'destructive' });
       return;
     }
-
-    // Create preview
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setProductImagePreview(reader.result as string);
-    };
+    reader.onloadend = () => setProductImagePreview(reader.result as string);
     reader.readAsDataURL(file);
-    
     setProductImageFile(file);
   };
 
@@ -174,41 +189,25 @@ const MenuManagement = () => {
     setProductImageFile(null);
     setProductImagePreview('');
     setProductForm({ ...productForm, image_url: '' });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSaveProduct = async () => {
     if (!restaurant?.id) {
-      console.error('[MenuManagement] Cannot save product - no restaurant ID');
-      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado. Crie um restaurante primeiro nas Definições.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Nenhum restaurante encontrado.', variant: 'destructive' });
       return;
     }
-    
-    console.log('[MenuManagement] Saving product:', { editing: !!editingProduct, form: productForm, hasImage: !!productImageFile, restaurantId: restaurant.id });
-    
     setUploadingImage(true);
     try {
       let imageUrl = productForm.image_url;
-
-      // Upload new image if file selected
       if (productImageFile) {
-        console.log('[MenuManagement] Uploading product image...');
         const uploadResult = await uploadImage(productImageFile);
         imageUrl = uploadResult.url;
-        console.log('[MenuManagement] Image uploaded:', imageUrl);
-
-        // Delete old image if updating product
         if (editingProduct?.image_url) {
           const oldImagePath = extractPathFromUrl(editingProduct.image_url);
-          if (oldImagePath) {
-            console.log('[MenuManagement] Deleting old image:', oldImagePath);
-            await deleteImage(oldImagePath).catch(console.error);
-          }
+          if (oldImagePath) await deleteImage(oldImagePath).catch(console.error);
         }
       }
-
       const productData = {
         name: productForm.name,
         description: productForm.description || null,
@@ -220,80 +219,117 @@ const MenuManagement = () => {
         max_addons: productForm.max_addons ? parseInt(productForm.max_addons, 10) : null,
         free_addons_count: productForm.free_addons_count ? parseInt(productForm.free_addons_count, 10) : null,
       };
-
       if (editingProduct) {
         await updateProduct(editingProduct.id, productData);
-        console.log('[MenuManagement] Product updated successfully');
         toast({ title: 'Produto atualizado com sucesso' });
       } else {
         await addProduct({ ...productData, category_id: selectedCategoryId, restaurant_id: restaurant.id });
-        console.log('[MenuManagement] Product added successfully');
         toast({ title: 'Produto adicionado com sucesso' });
       }
-      
       setProductDialog(false);
       setProductImageFile(null);
       setProductImagePreview('');
     } catch (error) {
-      console.error('[MenuManagement] Failed to save product:', error);
       toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Falha ao guardar produto', variant: 'destructive' });
     } finally {
       setUploadingImage(false);
     }
   };
 
+  // ============================================================
+  // ADDON HANDLERS
+  // ============================================================
   const handleAddAddon = (productId: string) => {
     setEditingAddon(null);
     setSelectedProductId(productId);
-    setAddonForm({ name: '', price: '' });
+    setAddonForm({ name: '', price: '', group_id: '' });
     setAddonDialog(true);
   };
 
   const handleEditAddon = (addon: Addon) => {
     setEditingAddon(addon);
     setSelectedProductId(addon.product_id);
-    setAddonForm({ name: addon.name, price: String(addon.price) });
+    setAddonForm({ name: addon.name, price: String(addon.price), group_id: addon.group_id || '' });
     setAddonDialog(true);
   };
 
   const handleSaveAddon = async () => {
-    console.log('[MenuManagement] Saving addon:', { editing: !!editingAddon, form: addonForm, productId: selectedProductId });
-    
     try {
-      const addonData = { name: addonForm.name, price: parseFloat(addonForm.price) };
+      const addonData = { 
+        name: addonForm.name, 
+        price: parseFloat(addonForm.price),
+        group_id: addonForm.group_id || null,
+      };
       if (editingAddon) {
         await updateAddon(editingAddon.id, addonData);
-        console.log('[MenuManagement] Addon updated successfully');
         toast({ title: 'Adicional atualizado com sucesso' });
       } else {
         await addAddon({ ...addonData, product_id: selectedProductId });
-        console.log('[MenuManagement] Addon added successfully');
         toast({ title: 'Adicional adicionado com sucesso' });
       }
       setAddonDialog(false);
-    } catch (error) {
-      console.error('[MenuManagement] Failed to save addon:', error);
+      // Refresh to get updated data
+      if (restaurant?.id) await fetchMenu(restaurant.id);
+    } catch {
       toast({ title: 'Erro', description: 'Falha ao guardar adicional', variant: 'destructive' });
     }
   };
 
+  // ============================================================
+  // ADDON GROUP HANDLERS
+  // ============================================================
+  const handleAddAddonGroup = (productId: string) => {
+    setEditingAddonGroup(null);
+    setSelectedProductId(productId);
+    setAddonGroupForm({ name: '', min_selections: '0', max_selections: '', free_selections: '0' });
+    setAddonGroupDialog(true);
+  };
+
+  const handleEditAddonGroup = (group: AddonGroup) => {
+    setEditingAddonGroup(group);
+    setSelectedProductId(group.product_id);
+    setAddonGroupForm({
+      name: group.name,
+      min_selections: String(group.min_selections),
+      max_selections: group.max_selections != null ? String(group.max_selections) : '',
+      free_selections: String(group.free_selections),
+    });
+    setAddonGroupDialog(true);
+  };
+
+  const handleSaveAddonGroup = async () => {
+    try {
+      const groupData = {
+        name: addonGroupForm.name,
+        min_selections: parseInt(addonGroupForm.min_selections, 10) || 0,
+        max_selections: addonGroupForm.max_selections ? parseInt(addonGroupForm.max_selections, 10) : null,
+        free_selections: parseInt(addonGroupForm.free_selections, 10) || 0,
+      };
+      if (editingAddonGroup) {
+        await updateAddonGroup(editingAddonGroup.id, groupData);
+        toast({ title: 'Etapa atualizada com sucesso' });
+      } else {
+        await addAddonGroup({ ...groupData, product_id: selectedProductId });
+        toast({ title: 'Etapa adicionada com sucesso' });
+      }
+      setAddonGroupDialog(false);
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao guardar etapa', variant: 'destructive' });
+    }
+  };
+
+  // ============================================================
+  // DELETE HANDLER
+  // ============================================================
   const handleDelete = async () => {
     if (!deleteDialog.id || !deleteDialog.type) return;
-    
-    // Get product count before deleting category for proper feedback
     const category = categories.find(c => c.id === deleteDialog.id);
     const productCount = category?.products.length || 0;
-
     try {
       switch (deleteDialog.type) {
         case 'category':
           await deleteCategory(deleteDialog.id);
-          toast({ 
-            title: 'Categoria eliminada com sucesso',
-            description: productCount > 0 
-              ? `${productCount} ${productCount === 1 ? 'produto também eliminado' : 'produtos também eliminados'}`
-              : undefined
-          });
+          toast({ title: 'Categoria eliminada com sucesso', description: productCount > 0 ? `${productCount} produto(s) também eliminado(s)` : undefined });
           break;
         case 'product':
           await deleteProduct(deleteDialog.id);
@@ -303,11 +339,21 @@ const MenuManagement = () => {
           await deleteAddon(deleteDialog.id);
           toast({ title: 'Adicional eliminado com sucesso' });
           break;
+        case 'addon_group':
+          await deleteAddonGroup(deleteDialog.id);
+          toast({ title: 'Etapa eliminada com sucesso' });
+          break;
       }
       setDeleteDialog({ open: false, type: null, id: null });
-    } catch (error) {
-      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Falha ao eliminar item', variant: 'destructive' });
+    } catch {
+      toast({ title: 'Erro', description: 'Falha ao eliminar item', variant: 'destructive' });
     }
+  };
+
+  // Get addon groups for the currently selected product in addon dialog
+  const getProductAddonGroups = (productId: string): AddonGroup[] => {
+    const product = categories.flatMap(c => c.products).find(p => p.id === productId);
+    return product?.addon_groups || [];
   };
 
   if (loading && categories.length === 0) {
@@ -323,9 +369,7 @@ const MenuManagement = () => {
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-48" />
-              </CardHeader>
+              <CardHeader><Skeleton className="h-6 w-48" /></CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[1, 2, 3].map((j) => (
                   <Card key={j}>
@@ -368,9 +412,7 @@ const MenuManagement = () => {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">Ainda não há categorias</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Comece criando a sua primeira categoria
-            </p>
+            <p className="text-muted-foreground text-center mb-4">Comece criando a sua primeira categoria</p>
             <Button onClick={handleAddCategory}>
               <Plus className="h-4 w-4 mr-2" />
               Adicionar Categoria
@@ -434,11 +476,64 @@ const MenuManagement = () => {
                                 €{Number(product.price).toFixed(2)}
                               </div>
                             </div>
-                            {product.addons.length > 0 && (
+
+                            {/* Addon Groups */}
+                            {(product.addon_groups || []).length > 0 && (
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium flex items-center gap-1">
+                                  <Layers className="h-3 w-3" />
+                                  Etapas:
+                                </p>
+                                {(product.addon_groups || []).map((group) => {
+                                  const groupAddons = product.addons.filter(a => a.group_id === group.id);
+                                  return (
+                                    <div key={group.id} className="bg-muted/30 rounded-md p-2 space-y-1">
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="font-medium">{group.name}</span>
+                                        <div className="flex items-center gap-1">
+                                          <Badge variant="outline" className="text-xs">
+                                            {group.min_selections > 0 ? `Mín: ${group.min_selections}` : 'Opcional'}
+                                            {group.max_selections != null ? ` · Máx: ${group.max_selections}` : ''}
+                                            {group.free_selections > 0 ? ` · ${group.free_selections} grátis` : ''}
+                                          </Badge>
+                                          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => handleEditAddonGroup(group)}>
+                                            <Edit2 className="h-3 w-3" />
+                                          </Button>
+                                          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setDeleteDialog({ open: true, type: 'addon_group', id: group.id })}>
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                      {groupAddons.length > 0 && (
+                                        <div className="pl-2 space-y-0.5">
+                                          {groupAddons.map((addon) => (
+                                            <div key={addon.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                                              <span>{addon.name}</span>
+                                              <div className="flex items-center gap-1">
+                                                <span>+€{Number(addon.price).toFixed(2)}</span>
+                                                <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => handleEditAddon(addon)}>
+                                                  <Edit2 className="h-2.5 w-2.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => setDeleteDialog({ open: true, type: 'addon', id: addon.id })}>
+                                                  <Trash2 className="h-2.5 w-2.5" />
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Ungrouped addons */}
+                            {product.addons.filter(a => !a.group_id).length > 0 && (
                               <div>
                                 <p className="text-sm font-medium mb-2">Adicionais:</p>
                                 <div className="space-y-1">
-                                  {product.addons.map((addon) => (
+                                  {product.addons.filter(a => !a.group_id).map((addon) => (
                                     <div key={addon.id} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1">
                                       <span className="truncate">{addon.name}</span>
                                       <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
@@ -455,10 +550,19 @@ const MenuManagement = () => {
                                 </div>
                               </div>
                             )}
-                            <div className="flex gap-2 pt-2">
-                              <Button variant="outline" size="sm" className="flex-1 text-xs md:text-sm" onClick={() => handleAddAddon(product.id)}>
+
+                            <div className="flex gap-2 pt-2 flex-wrap">
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => handleAddAddonGroup(product.id)}>
+                                <Layers className="h-3 w-3 mr-1" />
+                                Etapa
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => handleAddAddon(product.id)}>
                                 <Plus className="h-3 w-3 mr-1" />
                                 Adicional
+                              </Button>
+                              <div className="flex-1" />
+                              <Button variant="outline" size="sm" onClick={() => handleDuplicateProduct(product.id)} title="Duplicar produto">
+                                <Copy className="h-4 w-4" />
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleEditProduct(product)}>
                                 <Edit2 className="h-4 w-4" />
@@ -531,33 +635,13 @@ const MenuManagement = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="product-max-addons">Limite de Adicionais</Label>
-                <Input 
-                  id="product-max-addons" 
-                  type="number" 
-                  min="0" 
-                  step="1"
-                  placeholder="Sem limite" 
-                  value={productForm.max_addons} 
-                  onChange={(e) => setProductForm({ ...productForm, max_addons: e.target.value })} 
-                />
-                <p className="text-xs text-muted-foreground">
-                  Máximo de adicionais permitidos
-                </p>
+                <Input id="product-max-addons" type="number" min="0" step="1" placeholder="Sem limite" value={productForm.max_addons} onChange={(e) => setProductForm({ ...productForm, max_addons: e.target.value })} />
+                <p className="text-xs text-muted-foreground">Máximo de adicionais permitidos</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="product-free-addons">Complementos Grátis</Label>
-                <Input 
-                  id="product-free-addons" 
-                  type="number" 
-                  min="0" 
-                  step="1"
-                  placeholder="Nenhum" 
-                  value={productForm.free_addons_count} 
-                  onChange={(e) => setProductForm({ ...productForm, free_addons_count: e.target.value })} 
-                />
-                <p className="text-xs text-muted-foreground">
-                  Número de adicionais inclusos no preço
-                </p>
+                <Input id="product-free-addons" type="number" min="0" step="1" placeholder="Nenhum" value={productForm.free_addons_count} onChange={(e) => setProductForm({ ...productForm, free_addons_count: e.target.value })} />
+                <p className="text-xs text-muted-foreground">Número de adicionais inclusos no preço</p>
               </div>
             </div>
             <div className="space-y-2">
@@ -568,18 +652,8 @@ const MenuManagement = () => {
               <div className="space-y-3">
                 {productImagePreview ? (
                   <div className="relative w-full aspect-video bg-muted rounded-lg overflow-hidden">
-                    <img
-                      src={productImagePreview}
-                      alt="Pré-visualização do produto"
-                      className="w-full h-full object-cover"
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2"
-                      onClick={handleRemoveImage}
-                    >
+                    <img src={productImagePreview} alt="Pré-visualização" className="w-full h-full object-cover" />
+                    <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2" onClick={handleRemoveImage}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -591,48 +665,19 @@ const MenuManagement = () => {
                     </div>
                   </div>
                 )}
-                <Input
-                  ref={fileInputRef}
-                  id="product-image"
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp"
-                  onChange={handleImageFileChange}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Formatos: JPEG, PNG, WebP • Tamanho máximo: 5MB • Dimensão recomendada: 800×450px (16:9)
-                </p>
+                <Input ref={fileInputRef} id="product-image" type="file" accept="image/jpeg,image/jpg,image/png,image/webp" onChange={handleImageFileChange} className="cursor-pointer" />
+                <p className="text-xs text-muted-foreground">Formatos: JPEG, PNG, WebP • Tamanho máximo: 5MB</p>
               </div>
             </div>
-            
-            {/* Search Optimization Fields */}
             <div className="space-y-4 border-t pt-4">
               <h4 className="text-sm font-medium text-muted-foreground">Otimização de Busca (Opcional)</h4>
-              
-              <TagsInput
-                label="Palavras-chave de Busca"
-                value={productForm.search_keywords}
-                onChange={(tags) => setProductForm({ ...productForm, search_keywords: tags })}
-                placeholder="Ex: marg, pizza basica..."
-                suggestions={['pizza', 'hamburguer', 'bebida', 'combo', 'promoção']}
-              />
-              
-              <TagsInput
-                label="Ingredientes"
-                value={productForm.ingredients}
-                onChange={(tags) => setProductForm({ ...productForm, ingredients: tags })}
-                placeholder="Ex: queijo, tomate, bacon..."
-                suggestions={['queijo', 'presunto', 'bacon', 'cebola', 'tomate', 'alface']}
-              />
+              <TagsInput label="Palavras-chave de Busca" value={productForm.search_keywords} onChange={(tags) => setProductForm({ ...productForm, search_keywords: tags })} placeholder="Ex: marg, pizza basica..." suggestions={['pizza', 'hamburguer', 'bebida', 'combo', 'promoção']} />
+              <TagsInput label="Ingredientes" value={productForm.ingredients} onChange={(tags) => setProductForm({ ...productForm, ingredients: tags })} placeholder="Ex: queijo, tomate, bacon..." suggestions={['queijo', 'presunto', 'bacon', 'cebola', 'tomate', 'alface']} />
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setProductDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
-            <Button 
-              onClick={handleSaveProduct} 
-              disabled={!productForm.name.trim() || !productForm.price || parseFloat(productForm.price) < 0 || uploadingImage}
-              className="w-full sm:w-auto"
-            >
+            <Button onClick={handleSaveProduct} disabled={!productForm.name.trim() || !productForm.price || parseFloat(productForm.price) < 0 || uploadingImage} className="w-full sm:w-auto">
               {uploadingImage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingProduct ? 'Atualizar' : 'Adicionar'} Produto
             </Button>
@@ -656,10 +701,67 @@ const MenuManagement = () => {
               <Label htmlFor="addon-price">Preço (€)</Label>
               <Input id="addon-price" type="number" step="0.01" min="0" placeholder="1.50" value={addonForm.price} onChange={(e) => setAddonForm({ ...addonForm, price: e.target.value })} />
             </div>
+            {/* Group selection */}
+            {getProductAddonGroups(selectedProductId).length > 0 && (
+              <div className="space-y-2">
+                <Label>Etapa (opcional)</Label>
+                <Select value={addonForm.group_id} onValueChange={(val) => setAddonForm({ ...addonForm, group_id: val === '__none__' ? '' : val })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sem etapa (adicional solto)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sem etapa</SelectItem>
+                    {getProductAddonGroups(selectedProductId).map(g => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Associe este adicional a uma etapa do combo</p>
+              </div>
+            )}
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setAddonDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
             <Button onClick={handleSaveAddon} disabled={!addonForm.name.trim() || !addonForm.price || parseFloat(addonForm.price) < 0} className="w-full sm:w-auto">{editingAddon ? 'Atualizar' : 'Adicionar'} Adicional</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Addon Group Dialog */}
+      <Dialog open={addonGroupDialog} onOpenChange={setAddonGroupDialog}>
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingAddonGroup ? 'Editar Etapa' : 'Adicionar Etapa'}</DialogTitle>
+            <DialogDescription>
+              {editingAddonGroup ? 'Atualize as informações da etapa' : 'Crie uma nova etapa para este produto (ex: Bebida, Sobremesa, Adicionais)'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="group-name">Nome da Etapa</Label>
+              <Input id="group-name" placeholder="Ex: Escolha a Bebida" value={addonGroupForm.name} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="group-min">Mínimo</Label>
+                <Input id="group-min" type="number" min="0" step="1" placeholder="0" value={addonGroupForm.min_selections} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, min_selections: e.target.value })} />
+                <p className="text-xs text-muted-foreground">0 = opcional</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="group-max">Máximo</Label>
+                <Input id="group-max" type="number" min="0" step="1" placeholder="Sem limite" value={addonGroupForm.max_selections} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, max_selections: e.target.value })} />
+                <p className="text-xs text-muted-foreground">Vazio = sem limite</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="group-free">Grátis</Label>
+                <Input id="group-free" type="number" min="0" step="1" placeholder="0" value={addonGroupForm.free_selections} onChange={(e) => setAddonGroupForm({ ...addonGroupForm, free_selections: e.target.value })} />
+                <p className="text-xs text-muted-foreground">Itens inclusos</p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setAddonGroupDialog(false)} className="w-full sm:w-auto">Cancelar</Button>
+            <Button onClick={handleSaveAddonGroup} disabled={!addonGroupForm.name.trim()} className="w-full sm:w-auto">{editingAddonGroup ? 'Atualizar' : 'Adicionar'} Etapa</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -677,15 +779,14 @@ const MenuManagement = () => {
                   {(() => {
                     const category = categories.find(c => c.id === deleteDialog.id);
                     const productCount = category?.products.length || 0;
-                    if (productCount > 0) {
-                      return ` e todos os ${productCount} ${productCount === 1 ? 'produto' : 'produtos'} nela (incluindo os seus adicionais)`;
-                    }
+                    if (productCount > 0) return ` e todos os ${productCount} produto(s)`;
                     return '';
                   })()}.
                 </>
               )}
               {deleteDialog.type === 'product' && ' Isto irá eliminar permanentemente este produto e todos os seus adicionais.'}
               {deleteDialog.type === 'addon' && ' Isto irá eliminar permanentemente este adicional.'}
+              {deleteDialog.type === 'addon_group' && ' Isto irá eliminar esta etapa. Os adicionais associados ficarão sem etapa.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
