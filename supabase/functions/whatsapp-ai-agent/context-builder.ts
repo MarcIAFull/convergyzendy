@@ -661,7 +661,7 @@ function formatPendingItemsForPrompt(pendingItems: any[]): string {
  * Format restaurant operational info for prompt
  * Includes: phone, address, delivery fee, opening hours
  */
-function formatRestaurantInfoForPrompt(restaurant: any): string {
+function formatRestaurantInfoForPrompt(restaurant: any, deliveryZones: any[] = []): string {
   if (!restaurant) return 'Informações do restaurante não disponíveis';
   
   const days: Record<string, string> = {
@@ -693,11 +693,24 @@ function formatRestaurantInfoForPrompt(restaurant: any): string {
   // Dynamic open/closed status based on current time and opening_hours
   const { isOpen, statusMessage } = isRestaurantCurrentlyOpen(restaurant);
   
+  // Format delivery zones info
+  let deliveryInfo = '';
+  if (deliveryZones.length > 0) {
+    const zonesList = deliveryZones.map(z => {
+      const fee = z.fee_amount > 0 ? `€${z.fee_amount.toFixed(2)}` : 'Grátis';
+      const minOrder = z.min_order_amount ? ` (mín. €${z.min_order_amount.toFixed(2)})` : '';
+      return `${z.name}: ${fee}${minOrder}`;
+    }).join(' | ');
+    deliveryInfo = `\n• Zonas de Entrega: ${zonesList}
+⚠️ REGRA ENTREGAS: Só confirma entrega em zonas LISTADAS acima. Se o cliente perguntar sobre uma localidade NÃO listada, diz que não tens a certeza se cobrem essa zona e sugere fazer o pedido pelo menu digital para validação automática do endereço.`;
+  } else {
+    deliveryInfo = `\n• Taxa de Entrega Fixa: €${restaurant.delivery_fee?.toFixed(2) || '0.00'}`;
+  }
+  
   return `📍 DADOS DO RESTAURANTE:
 • Nome: ${restaurant.name}
 • Telefone: ${restaurant.phone || 'Não informado'}
-• Endereço: ${restaurant.address || 'Não informado'}
-• Taxa de Entrega Fixa: €${restaurant.delivery_fee?.toFixed(2) || '0.00'}
+• Endereço: ${restaurant.address || 'Não informado'}${deliveryInfo}
 • Status: ${isOpen ? '🟢' : '🔴'} ${statusMessage}
 • Horários: ${hoursText}`;
 }
