@@ -209,7 +209,7 @@ export function OrderNotificationsSettings() {
                 </div>
               </div>
 
-              {config.enabled && (
+              {config.enabled && meta.isTemplate !== false && (
                 <>
                   <div className="space-y-2">
                     <Label className="text-xs">Mensagem</Label>
@@ -225,6 +225,13 @@ export function OrderNotificationsSettings() {
                     <p className="text-sm">{renderPreview(config.message)}</p>
                   </div>
                 </>
+              )}
+              {config.enabled && meta.isTemplate === false && (
+                <div className="bg-muted/50 rounded-md p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Esta mensagem é gerada automaticamente com os detalhes do pedido (itens, total, endereço, etc.) e não pode ser editada.
+                  </p>
+                </div>
               )}
             </div>
           );
