@@ -399,7 +399,7 @@ export async function buildConversationContext(
     customer: formatCustomerForRAG(customer, customerInsights),   // RAG: minimal status
     history: formatHistoryForPrompt(conversationHistory, historyTruncateLength),
     pendingItems: formatPendingItemsForPrompt(pendingItems),
-    restaurantInfo: formatRestaurantInfoForPrompt(restaurant),    // Operational info
+    restaurantInfo: formatRestaurantInfoForPrompt(restaurant, deliveryZones || []),
     localTime: '',  // OPTIMIZATION Phase 1.3: Removed - breaks cache, not essential
     paymentMethods: formatPaymentMethodsForPrompt(acceptedPaymentMethods, mbwayPhoneNumber)
   };
