@@ -58,9 +58,22 @@ export interface Product {
   updated_at: string;
 }
 
+export interface AddonGroup {
+  id: string;
+  product_id: string;
+  name: string;
+  sort_order: number;
+  min_selections: number;
+  max_selections: number | null;
+  free_selections: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Addon {
   id: string;
   product_id: string;
+  group_id: string | null;
   name: string;
   price: number;
   created_at: string;
