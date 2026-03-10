@@ -37,18 +37,26 @@ export const usePublicCartStore = create<PublicCartState>()(
       addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => {
         const items = get().items;
         
+        // Build addon frequency key for matching (handles duplicates)
+        const buildAddonKey = (addons: Addon[]) => {
+          const freq: Record<string, number> = {};
+          addons.forEach(a => { freq[a.id] = (freq[a.id] || 0) + 1; });
+          return JSON.stringify(Object.entries(freq).sort(([a], [b]) => a.localeCompare(b)));
+        };
+
         // Calcular preço total do item respeitando free_addons_count
         const freeCount = product.free_addons_count ?? 0;
         const paidAddons = freeCount > 0 ? selectedAddons.slice(freeCount) : selectedAddons;
         const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
         const totalPrice = (product.price + addonsTotal) * quantity;
 
+        const addonKey = buildAddonKey(selectedAddons);
+
         // Verificar se item idêntico já existe
         const existingItemIndex = items.findIndex(
           (item) =>
             item.product.id === product.id &&
-            JSON.stringify(item.selectedAddons.map((a) => a.id).sort()) ===
-              JSON.stringify(selectedAddons.map((a) => a.id).sort()) &&
+            buildAddonKey(item.selectedAddons) === addonKey &&
             item.notes === notes
         );
 
