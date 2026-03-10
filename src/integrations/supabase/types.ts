@@ -14,9 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      addon_groups: {
+        Row: {
+          created_at: string | null
+          free_selections: number | null
+          id: string
+          max_selections: number | null
+          min_selections: number | null
+          name: string
+          product_id: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          free_selections?: number | null
+          id?: string
+          max_selections?: number | null
+          min_selections?: number | null
+          name: string
+          product_id: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          free_selections?: number | null
+          id?: string
+          max_selections?: number | null
+          min_selections?: number | null
+          name?: string
+          product_id?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_groups_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       addons: {
         Row: {
           created_at: string
+          group_id: string | null
           id: string
           name: string
           price: number
@@ -25,6 +70,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          group_id?: string | null
           id?: string
           name: string
           price?: number
@@ -33,6 +79,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          group_id?: string | null
           id?: string
           name?: string
           price?: number
@@ -40,6 +87,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "addons_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "addon_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "addons_product_id_fkey"
             columns: ["product_id"]
