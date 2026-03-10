@@ -121,6 +121,19 @@ export async function buildConversationContext(
   console.log(`[Context Builder] Prompt Overrides: ${promptOverrides?.length || 0}`);
 
   // ============================================================
+  // LOAD DELIVERY ZONES
+  // ============================================================
+  
+  const { data: deliveryZones } = await supabase
+    .from('delivery_zones')
+    .select('name, fee_amount, fee_type, min_order_amount, max_delivery_time_minutes, is_active')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true)
+    .order('priority');
+  
+  console.log(`[Context Builder] Delivery Zones: ${deliveryZones?.length || 0} active zones`);
+
+  // ============================================================
   // LOAD MENU
   // ============================================================
   
