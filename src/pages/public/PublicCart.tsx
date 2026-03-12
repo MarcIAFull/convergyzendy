@@ -224,10 +224,9 @@ Gostaria de finalizar o pedido! 😊`;
               <span>{formatPrice(subtotal)}</span>
             </div>
             
-            <div className="flex justify-between text-foreground">
-              <span>Taxa de Entrega</span>
-              <span>{formatPrice(deliveryFee)}</span>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Taxa de entrega calculada no checkout
+            </p>
 
             <Separator />
 
