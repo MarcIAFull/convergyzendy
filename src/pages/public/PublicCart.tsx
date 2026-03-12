@@ -27,8 +27,8 @@ export default function PublicCart() {
   };
 
   const subtotal = getSubtotal();
-  const deliveryFee = menuData?.restaurant.delivery_fee || 0;
-  const total = subtotal + deliveryFee;
+  // Don't show delivery fee in cart - it depends on order type chosen at checkout
+  const total = subtotal;
 
   const handleContinueToCheckout = () => {
     if (!menuData?.settings.checkout_whatsapp_enabled && !menuData?.settings.checkout_web_enabled) {
