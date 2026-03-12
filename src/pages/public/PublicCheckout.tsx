@@ -25,8 +25,8 @@ import type { OrderType } from '@/types/public-menu';
 export default function PublicCheckout() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { items, getSubtotal, clearCart } = usePublicCartStore();
-  const { menuData } = usePublicMenuStore();
+  const { items, getSubtotal, clearCart, _hasHydrated } = usePublicCartStore();
+  const { menuData, fetchMenuBySlug, loading: menuLoading } = usePublicMenuStore();
   const { toast } = useToast();
   const { apiKey } = useGoogleMapsApiKey();
 
