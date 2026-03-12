@@ -323,7 +323,14 @@ export default function PublicCheckout() {
     }
   };
 
-  // Wait for hydration before checking items
+  // Redirect if cart is empty after hydration
+  useEffect(() => {
+    if (_hasHydrated && items.length === 0) {
+      navigate(`/menu/${slug}`, { replace: true });
+    }
+  }, [_hasHydrated, items.length, slug, navigate]);
+
+  // Wait for hydration before rendering
   if (!_hasHydrated || menuLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -333,7 +340,6 @@ export default function PublicCheckout() {
   }
 
   if (items.length === 0) {
-    navigate(`/menu/${slug}`);
     return null;
   }
 
