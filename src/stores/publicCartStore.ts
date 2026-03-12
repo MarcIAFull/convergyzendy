@@ -155,10 +155,13 @@ export const usePublicCartStore = create<PublicCartState>()(
     {
       name: 'zendy-public-cart',
       onRehydrateStorage: () => (state) => {
-        if (state?.lastUpdated && Date.now() - state.lastUpdated > CART_TTL_MS) {
-          state.items = [];
-          state.lastUpdated = null;
-          console.log('[PublicCart] Cart expired (>24h), cleared automatically');
+        if (state) {
+          state._hasHydrated = true;
+          if (state.lastUpdated && Date.now() - state.lastUpdated > CART_TTL_MS) {
+            state.items = [];
+            state.lastUpdated = null;
+            console.log('[PublicCart] Cart expired (>12h), cleared automatically');
+          }
         }
       },
     }
