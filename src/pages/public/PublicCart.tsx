@@ -10,8 +10,8 @@ import { useEffect } from 'react';
 export default function PublicCart() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { items, getSubtotal, updateItemQuantity, removeItem, clearCart } = usePublicCartStore();
-  const { menuData, fetchMenuBySlug } = usePublicMenuStore();
+  const { items, getSubtotal, updateItemQuantity, removeItem, clearCart, _hasHydrated } = usePublicCartStore();
+  const { menuData, fetchMenuBySlug, loading: menuLoading } = usePublicMenuStore();
 
   useEffect(() => {
     if (slug && !menuData) {
