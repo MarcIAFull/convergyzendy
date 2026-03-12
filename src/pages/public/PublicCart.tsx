@@ -73,8 +73,7 @@ export default function PublicCart() {
 📋 *Itens:*
 ${itemsList}
 
-💰 *Subtotal:* ${formatPrice(subtotal)}
-🚚 *Taxa de Entrega:* ${formatPrice(deliveryFee)}
+
 💵 *Total:* ${formatPrice(total)}
 
 Gostaria de finalizar o pedido! 😊`;
