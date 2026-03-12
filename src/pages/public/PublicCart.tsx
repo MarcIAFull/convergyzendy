@@ -80,6 +80,15 @@ ${itemsList}
 Gostaria de finalizar o pedido! 😊`;
   };
 
+  // Wait for hydration
+  if (!_hasHydrated || menuLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <ShoppingBag className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
