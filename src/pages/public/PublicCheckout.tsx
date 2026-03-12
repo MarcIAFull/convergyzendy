@@ -54,6 +54,13 @@ export default function PublicCheckout() {
     takeaway_enabled: boolean;
   } | null>(null);
 
+  // Fetch menu data if not loaded
+  useEffect(() => {
+    if (slug && !menuData && !menuLoading) {
+      fetchMenuBySlug(slug);
+    }
+  }, [slug, menuData, menuLoading]);
+
   // Check order settings for this restaurant
   useEffect(() => {
     const fetchOrderSettings = async () => {
