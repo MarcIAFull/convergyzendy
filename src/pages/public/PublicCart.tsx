@@ -10,8 +10,8 @@ import { useEffect } from 'react';
 export default function PublicCart() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { items, getSubtotal, updateItemQuantity, removeItem, clearCart } = usePublicCartStore();
-  const { menuData, fetchMenuBySlug } = usePublicMenuStore();
+  const { items, getSubtotal, updateItemQuantity, removeItem, clearCart, _hasHydrated } = usePublicCartStore();
+  const { menuData, fetchMenuBySlug, loading: menuLoading } = usePublicMenuStore();
 
   useEffect(() => {
     if (slug && !menuData) {
@@ -27,8 +27,8 @@ export default function PublicCart() {
   };
 
   const subtotal = getSubtotal();
-  const deliveryFee = menuData?.restaurant.delivery_fee || 0;
-  const total = subtotal + deliveryFee;
+  // Don't show delivery fee in cart - it depends on order type chosen at checkout
+  const total = subtotal;
 
   const handleContinueToCheckout = () => {
     if (!menuData?.settings.checkout_whatsapp_enabled && !menuData?.settings.checkout_web_enabled) {
@@ -73,12 +73,20 @@ export default function PublicCart() {
 📋 *Itens:*
 ${itemsList}
 
-💰 *Subtotal:* ${formatPrice(subtotal)}
-🚚 *Taxa de Entrega:* ${formatPrice(deliveryFee)}
+
 💵 *Total:* ${formatPrice(total)}
 
 Gostaria de finalizar o pedido! 😊`;
   };
+
+  // Wait for hydration
+  if (!_hasHydrated || menuLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <ShoppingBag className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -216,10 +224,9 @@ Gostaria de finalizar o pedido! 😊`;
               <span>{formatPrice(subtotal)}</span>
             </div>
             
-            <div className="flex justify-between text-foreground">
-              <span>Taxa de Entrega</span>
-              <span>{formatPrice(deliveryFee)}</span>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Taxa de entrega calculada no checkout
+            </p>
 
             <Separator />
 

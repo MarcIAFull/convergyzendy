@@ -25,8 +25,8 @@ import type { OrderType } from '@/types/public-menu';
 export default function PublicCheckout() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { items, getSubtotal, clearCart } = usePublicCartStore();
-  const { menuData } = usePublicMenuStore();
+  const { items, getSubtotal, clearCart, _hasHydrated } = usePublicCartStore();
+  const { menuData, fetchMenuBySlug, loading: menuLoading } = usePublicMenuStore();
   const { toast } = useToast();
   const { apiKey } = useGoogleMapsApiKey();
 
@@ -53,6 +53,13 @@ export default function PublicCheckout() {
     dine_in_table_prefix: string;
     takeaway_enabled: boolean;
   } | null>(null);
+
+  // Fetch menu data if not loaded
+  useEffect(() => {
+    if (slug && !menuData && !menuLoading) {
+      fetchMenuBySlug(slug);
+    }
+  }, [slug, menuData, menuLoading]);
 
   // Check order settings for this restaurant
   useEffect(() => {
@@ -316,8 +323,23 @@ export default function PublicCheckout() {
     }
   };
 
+  // Redirect if cart is empty after hydration
+  useEffect(() => {
+    if (_hasHydrated && items.length === 0) {
+      navigate(`/menu/${slug}`, { replace: true });
+    }
+  }, [_hasHydrated, items.length, slug, navigate]);
+
+  // Wait for hydration before rendering
+  if (!_hasHydrated || menuLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (items.length === 0) {
-    navigate(`/menu/${slug}`);
     return null;
   }
 

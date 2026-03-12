@@ -9,6 +9,7 @@ interface PublicCartState {
   items: CartItem[];
   slug: string | null;
   lastUpdated: number | null;
+  _hasHydrated: boolean;
   addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => void;
   removeItem: (productId: string, addonIds: string[]) => void;
   updateItemQuantity: (productId: string, addonIds: string[], quantity: number) => void;
@@ -24,6 +25,7 @@ export const usePublicCartStore = create<PublicCartState>()(
       items: [],
       slug: null,
       lastUpdated: null,
+      _hasHydrated: false,
 
       setSlug: (slug: string) => {
         const currentSlug = get().slug;
@@ -153,10 +155,13 @@ export const usePublicCartStore = create<PublicCartState>()(
     {
       name: 'zendy-public-cart',
       onRehydrateStorage: () => (state) => {
-        if (state?.lastUpdated && Date.now() - state.lastUpdated > CART_TTL_MS) {
-          state.items = [];
-          state.lastUpdated = null;
-          console.log('[PublicCart] Cart expired (>24h), cleared automatically');
+        if (state) {
+          state._hasHydrated = true;
+          if (state.lastUpdated && Date.now() - state.lastUpdated > CART_TTL_MS) {
+            state.items = [];
+            state.lastUpdated = null;
+            console.log('[PublicCart] Cart expired (>12h), cleared automatically');
+          }
         }
       },
     }
