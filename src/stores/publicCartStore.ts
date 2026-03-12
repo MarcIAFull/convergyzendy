@@ -25,6 +25,7 @@ export const usePublicCartStore = create<PublicCartState>()(
       items: [],
       slug: null,
       lastUpdated: null,
+      _hasHydrated: false,
 
       setSlug: (slug: string) => {
         const currentSlug = get().slug;
