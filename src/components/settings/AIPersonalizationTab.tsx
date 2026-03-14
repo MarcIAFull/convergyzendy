@@ -41,7 +41,7 @@ export function AIPersonalizationTab() {
       if (error) throw error;
 
       if (data) {
-        setSettings(data as RestaurantAISettings);
+        setSettings(data as unknown as RestaurantAISettings);
       } else {
         const { data: newSettings, error: createError } = await supabase
           .from('restaurant_ai_settings')
