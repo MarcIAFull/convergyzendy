@@ -405,6 +405,11 @@ export function AIPersonalizationTab() {
           </CardContent>
         </Card>
 
+      <RecoveryMessagesSettings
+        config={settings.recovery_config}
+        onChange={(config) => updateSetting('recovery_config', config)}
+      />
+
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
