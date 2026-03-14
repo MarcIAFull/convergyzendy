@@ -90,7 +90,8 @@ export function AIPersonalizationTab() {
           faq_responses: settings.faq_responses,
           unavailable_items_handling: settings.unavailable_items_handling,
           special_offers_info: settings.special_offers_info,
-          ai_ordering_enabled: settings.ai_ordering_enabled
+          ai_ordering_enabled: settings.ai_ordering_enabled,
+          recovery_config: settings.recovery_config as any
         })
         .eq('id', settings.id);
 
