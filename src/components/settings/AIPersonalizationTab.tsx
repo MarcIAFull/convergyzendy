@@ -57,7 +57,7 @@ export function AIPersonalizationTab() {
           .single();
 
         if (createError) throw createError;
-        setSettings(newSettings as RestaurantAISettings);
+        setSettings(newSettings as unknown as RestaurantAISettings);
       }
     } catch (error) {
       console.error('Error loading AI settings:', error);
