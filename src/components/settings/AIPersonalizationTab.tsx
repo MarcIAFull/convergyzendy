@@ -11,7 +11,8 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Info, Bot, ExternalLink } from 'lucide-react';
-import { RestaurantAISettings, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
+import { RestaurantAISettings, RecoveryConfig, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
+import { RecoveryMessagesSettings } from '@/components/settings/RecoveryMessagesSettings';
 
 export function AIPersonalizationTab() {
   const { restaurant } = useRestaurantStore();
