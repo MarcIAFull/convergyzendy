@@ -1,31 +1,41 @@
 
 
-## Diagnóstico: Race Condition no Auth causando `removeChild` error
+## Diagnóstico: Mensagens de Recuperação
 
-O erro ocorre porque o `onAuthStateChange` dispara dois eventos em sequência rápida: `SIGNED_IN` e `INITIAL_SESSION`. Cada evento causa `setSession`/`setUser`, que re-renderiza toda a árvore (`ProtectedRoute` → `DashboardLayout` → `useRestaurantGuard`). O React tenta remover nós DOM que já foram substituídos por outra atualização, gerando o `removeChild` crash.
+### Estado atual
 
-Causa raiz no `useAuth.tsx`:
-- `getSession()` seta estado (render 1)
-- `onAuthStateChange` com `SIGNED_IN` seta estado novamente (render 2)  
-- `onAuthStateChange` com `INITIAL_SESSION` seta estado novamente (render 3)
-- Renders 2 e 3 acontecem quase simultaneamente, causando a race condition no DOM
+1. **Recovery está DESATIVADO** -- o campo `recovery_config.enabled` no agente global (`agents` table) está `false`
+2. **Configuração é GLOBAL** -- a edge function `conversation-recovery` lê de `agents.recovery_config` (uma única config para todos os restaurantes), não respeita configurações por restaurante
+3. **Não integra com pedidos do menu público** -- o sistema de recovery só detecta carrinhos WhatsApp (`carts` table) e `conversation_state`. Pedidos do menu público (`web_orders`) não são considerados para detecção de clientes inativos nem carrinhos abandonados
+4. **A tabela `restaurant_ai_settings` não tem campos de recovery** -- apesar da memória do sistema mencionar migração per-restaurant, isso não foi implementado
 
-### Correções
+### Plano de implementação
 
-**1. `src/hooks/useAuth.tsx`**
-- Seguir o padrão recomendado: registar `onAuthStateChange` ANTES de chamar `getSession()`
-- Usar `INITIAL_SESSION` como o evento primário de inicialização (não precisa de `getSession` separado)
-- Ignorar eventos redundantes quando o session ID não mudou
-- Só marcar `loading: false` uma vez, no primeiro evento válido
+**Tarefa 1: Adicionar campos de recovery à tabela `restaurant_ai_settings`**
+- Criar migration adicionando coluna `recovery_config JSONB DEFAULT '{...}'` à tabela `restaurant_ai_settings`
+- Estrutura idêntica à do agent: `{ enabled, types: { cart_abandoned, conversation_paused, customer_inactive } }`
 
-**2. `src/components/ProtectedRoute.tsx`**
-- Sem alterações estruturais, apenas beneficia da correção do auth
+**Tarefa 2: Adicionar UI de recovery no `AIPersonalizationTab`**
+- Mover a UI do `RecoveryMessagesCard` (atualmente só no admin global `/admin/ai-configuration`) para dentro das configurações por restaurante em `AIPersonalizationTab`
+- Cada restaurante configura seus próprios delays, templates e tipos ativos
+- Incluir campo `handleSave` para gravar `recovery_config` junto com as outras settings
 
-**3. `src/hooks/useRestaurantGuard.tsx`**
-- Remover os `console.log` no corpo do render (executam a cada render, poluem console e degradam performance)
-- Simplificar a lógica de loading: se `loading` do auth é true, retornar loading sem mais cálculos
+**Tarefa 3: Atualizar edge function `conversation-recovery` para ler config per-restaurant**
+- Em vez de ler de `agents.recovery_config` (global), ler de `restaurant_ai_settings.recovery_config` para cada restaurante
+- Se não existir config per-restaurant, usar defaults desativados (não fallback para global)
 
-### Arquivos a modificar
-- `src/hooks/useAuth.tsx` — reordenar init do auth, debounce de eventos
-- `src/hooks/useRestaurantGuard.tsx` — remover logs do render body
+**Tarefa 4: Integrar `web_orders` no sistema de recovery**
+- Na função `detect_abandoned_carts`: além de verificar `carts` (WhatsApp), verificar também `web_orders` com `status = 'pending'` e `payment_status != 'paid'` que estejam abandonados
+- Na função `detect_inactive_customers` (SQL function): considerar também pedidos de `web_orders` para calcular `last_interaction_at` e `order_count`
+- Na verificação de atividade recente antes de enviar: verificar também `web_orders` recentes do mesmo telefone
+
+**Tarefa 5: Atualizar tipo TypeScript `RestaurantAISettings`**
+- Adicionar `recovery_config` ao interface `RestaurantAISettings`
+
+### Detalhes técnicos
+
+- A migration SQL adiciona a coluna com default JSON que traz recovery desativado por padrão
+- A edge function usa `restaurant_ai_settings` como source of truth; o `RecoveryMessagesCard` global no admin continua existindo como fallback/referência
+- Para `web_orders`, a detecção de abandono usa `customer_phone` (campo existente) como identificador, enviando recovery via WhatsApp se o telefone existir
+- O cron job existente (`conversation-recovery-job` a cada 15min) continua inalterado -- apenas a lógica interna da function muda
 
