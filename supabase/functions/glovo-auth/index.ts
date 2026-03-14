@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 const GLOVO_STAGING_URL = 'https://ondemand-stageapi.glovoapp.com';
@@ -21,23 +21,28 @@ serve(async (req) => {
 
     // Validate auth
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Missing authorization' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    if (authError || !user) {
+    const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
+
+    if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const userId = claimsData.claims.sub as string;
 
     const { action, restaurantId } = await req.json();
 
@@ -46,14 +51,22 @@ serve(async (req) => {
       .from('restaurant_owners')
       .select('id')
       .eq('restaurant_id', restaurantId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     if (!access) {
-      return new Response(JSON.stringify({ error: 'Access denied' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      const { data: restaurant } = await supabase
+        .from('restaurants')
+        .select('user_id')
+        .eq('id', restaurantId)
+        .single();
+
+      if (restaurant?.user_id !== userId) {
+        return new Response(JSON.stringify({ error: 'Access denied' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Get Glovo config
