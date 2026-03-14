@@ -13,8 +13,33 @@ export interface RestaurantAISettings {
   unavailable_items_handling: string | null;
   special_offers_info: string | null;
   ai_ordering_enabled: boolean;
+  recovery_config: RecoveryConfig | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RecoveryConfig {
+  enabled: boolean;
+  types: {
+    cart_abandoned: {
+      enabled: boolean;
+      delay_minutes: number;
+      max_attempts: number;
+      message_template: string;
+    };
+    conversation_paused: {
+      enabled: boolean;
+      delay_minutes: number;
+      max_attempts: number;
+      message_template: string;
+    };
+    customer_inactive: {
+      enabled: boolean;
+      delay_days: number;
+      max_attempts: number;
+      message_template: string;
+    };
+  };
 }
 
 export interface RestaurantPromptOverride {

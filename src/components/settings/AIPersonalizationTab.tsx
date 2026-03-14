@@ -11,7 +11,8 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Info, Bot, ExternalLink } from 'lucide-react';
-import { RestaurantAISettings, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
+import { RestaurantAISettings, RecoveryConfig, TONE_OPTIONS, UPSELL_OPTIONS } from '@/types/restaurant-ai-settings';
+import { RecoveryMessagesSettings } from '@/components/settings/RecoveryMessagesSettings';
 
 export function AIPersonalizationTab() {
   const { restaurant } = useRestaurantStore();
@@ -40,7 +41,7 @@ export function AIPersonalizationTab() {
       if (error) throw error;
 
       if (data) {
-        setSettings(data as RestaurantAISettings);
+        setSettings(data as unknown as RestaurantAISettings);
       } else {
         const { data: newSettings, error: createError } = await supabase
           .from('restaurant_ai_settings')
@@ -56,7 +57,7 @@ export function AIPersonalizationTab() {
           .single();
 
         if (createError) throw createError;
-        setSettings(newSettings as RestaurantAISettings);
+        setSettings(newSettings as unknown as RestaurantAISettings);
       }
     } catch (error) {
       console.error('Error loading AI settings:', error);
@@ -89,7 +90,8 @@ export function AIPersonalizationTab() {
           faq_responses: settings.faq_responses,
           unavailable_items_handling: settings.unavailable_items_handling,
           special_offers_info: settings.special_offers_info,
-          ai_ordering_enabled: settings.ai_ordering_enabled
+          ai_ordering_enabled: settings.ai_ordering_enabled,
+          recovery_config: settings.recovery_config as any
         })
         .eq('id', settings.id);
 
@@ -402,6 +404,11 @@ export function AIPersonalizationTab() {
             </div>
           </CardContent>
         </Card>
+
+      <RecoveryMessagesSettings
+        config={settings.recovery_config}
+        onChange={(config) => updateSetting('recovery_config', config)}
+      />
 
       <div className="flex justify-end gap-2">
         <Button

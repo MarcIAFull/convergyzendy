@@ -29,11 +29,10 @@ interface RecoveryConfig {
   };
 }
 
-// Spam prevention constants
-const COOLDOWN_HOURS = 24; // Global cooldown per customer
+const COOLDOWN_HOURS = 24;
 const ATTEMPT_INTERVALS = {
-  1: 60, // 1 hour after attempt 1
-  2: 720, // 12 hours after attempt 2
+  1: 60,
+  2: 720,
 };
 
 Deno.serve(async (req) => {
@@ -48,56 +47,53 @@ Deno.serve(async (req) => {
 
     console.log('[Recovery] Starting conversation recovery check...');
 
-    // Get all restaurants with active recovery config
-    const { data: restaurants, error: restaurantsError } = await supabase
-      .from('restaurants')
-      .select('id, phone')
+    // Get all restaurants with their per-restaurant recovery config
+    const { data: restaurantSettings, error: settingsError } = await supabase
+      .from('restaurant_ai_settings')
+      .select('restaurant_id, recovery_config')
       .limit(100);
 
-    if (restaurantsError) throw restaurantsError;
+    if (settingsError) throw settingsError;
 
-    for (const restaurant of restaurants || []) {
-      console.log(`[Recovery] Processing restaurant ${restaurant.id}`);
+    // Also get restaurant phones for sending
+    const restaurantIds = (restaurantSettings || []).map((s: any) => s.restaurant_id);
+    const { data: restaurants } = await supabase
+      .from('restaurants')
+      .select('id, phone')
+      .in('id', restaurantIds.length > 0 ? restaurantIds : ['00000000-0000-0000-0000-000000000000']);
 
-      // Get agent configuration for this restaurant
-      const { data: agent, error: agentError } = await supabase
-        .from('agents')
-        .select('recovery_config')
-        .eq('type', 'assistant')
-        .single();
+    const phoneMap = new Map((restaurants || []).map((r: any) => [r.id, r.phone]));
 
-      if (agentError || !agent) {
-        console.log('[Recovery] No agent config found, skipping');
-        continue;
-      }
-
-      const config = agent.recovery_config as RecoveryConfig;
+    for (const setting of restaurantSettings || []) {
+      const config = setting.recovery_config as RecoveryConfig;
+      const restaurantId = setting.restaurant_id;
+      const restaurantPhone = phoneMap.get(restaurantId);
 
       if (!config || !config.enabled) {
-        console.log('[Recovery] Recovery disabled for restaurant, skipping');
         continue;
       }
 
-      // 1. Detect abandoned carts
+      if (!restaurantPhone) {
+        console.log(`[Recovery] No phone for restaurant ${restaurantId}, skipping`);
+        continue;
+      }
+
+      console.log(`[Recovery] Processing restaurant ${restaurantId}`);
+
       if (config.types.cart_abandoned.enabled) {
-        await detectAndScheduleCartRecoveries(supabase, restaurant.id, config);
+        await detectAndScheduleCartRecoveries(supabase, restaurantId, config);
       }
 
-      // 2. Detect paused conversations
       if (config.types.conversation_paused.enabled) {
-        await detectAndSchedulePausedConversations(supabase, restaurant.id, config);
+        await detectAndSchedulePausedConversations(supabase, restaurantId, config);
       }
 
-      // 3. Detect inactive customers
       if (config.types.customer_inactive.enabled) {
-        await detectAndScheduleInactiveCustomers(supabase, restaurant.id, config);
+        await detectAndScheduleInactiveCustomers(supabase, restaurantId, config);
       }
 
-      // 4. Process next attempts (attempt 2 and 3)
-      await processNextAttempts(supabase, restaurant.id);
-
-      // 5. Send pending recovery messages
-      await sendPendingRecoveryMessages(supabase, restaurant.id, restaurant.phone);
+      await processNextAttempts(supabase, restaurantId);
+      await sendPendingRecoveryMessages(supabase, restaurantId, restaurantPhone);
     }
 
     return new Response(
@@ -130,16 +126,11 @@ async function checkCooldown(supabase: any, restaurantId: string, userPhone: str
     return false;
   }
 
-  if (data && data.length > 0) {
-    console.log(`[Recovery] Customer ${userPhone} is in cooldown period`);
-    return false;
-  }
-
-  return true;
+  return !data || data.length === 0;
 }
 
 async function detectAndScheduleCartRecoveries(supabase: any, restaurantId: string, config: RecoveryConfig) {
-  console.log('[Recovery] Detecting abandoned carts...');
+  console.log('[Recovery] Detecting abandoned carts (WhatsApp + web)...');
 
   const { data: abandonedCarts, error } = await supabase.rpc('detect_abandoned_carts', {
     p_restaurant_id: restaurantId,
@@ -154,12 +145,8 @@ async function detectAndScheduleCartRecoveries(supabase: any, restaurantId: stri
   console.log(`[Recovery] Found ${abandonedCarts?.length || 0} abandoned carts`);
 
   for (const cart of abandonedCarts || []) {
-    // Check cooldown
     const canSend = await checkCooldown(supabase, restaurantId, cart.user_phone);
-    if (!canSend) {
-      console.log(`[Recovery] Skipping cart for ${cart.user_phone} due to cooldown`);
-      continue;
-    }
+    if (!canSend) continue;
 
     await supabase.from('conversation_recovery_attempts').insert({
       restaurant_id: restaurantId,
@@ -193,12 +180,8 @@ async function detectAndSchedulePausedConversations(supabase: any, restaurantId:
   console.log(`[Recovery] Found ${pausedConvs?.length || 0} paused conversations`);
 
   for (const conv of pausedConvs || []) {
-    // Check cooldown
     const canSend = await checkCooldown(supabase, restaurantId, conv.user_phone);
-    if (!canSend) {
-      console.log(`[Recovery] Skipping conversation for ${conv.user_phone} due to cooldown`);
-      continue;
-    }
+    if (!canSend) continue;
 
     await supabase.from('conversation_recovery_attempts').insert({
       restaurant_id: restaurantId,
@@ -231,12 +214,8 @@ async function detectAndScheduleInactiveCustomers(supabase: any, restaurantId: s
   console.log(`[Recovery] Found ${inactiveCustomers?.length || 0} inactive customers`);
 
   for (const customer of inactiveCustomers || []) {
-    // Check cooldown
     const canSend = await checkCooldown(supabase, restaurantId, customer.user_phone);
-    if (!canSend) {
-      console.log(`[Recovery] Skipping inactive customer ${customer.user_phone} due to cooldown`);
-      continue;
-    }
+    if (!canSend) continue;
 
     const preferredItem = customer.preferred_items?.[0] || 'pedido favorito';
     
@@ -257,17 +236,13 @@ async function detectAndScheduleInactiveCustomers(supabase: any, restaurantId: s
 }
 
 async function processNextAttempts(supabase: any, restaurantId: string) {
-  console.log('[Recovery] Processing next attempts...');
-
   const now = new Date();
 
-  // Find sent attempts that need a next attempt
   const { data: sentAttempts, error } = await supabase
     .from('conversation_recovery_attempts')
     .select('*')
     .eq('restaurant_id', restaurantId)
     .eq('status', 'sent')
-    .lt('attempt_number', supabase.rpc('LEAST', { a: 'max_attempts', b: 3 }))
     .lte('next_attempt_at', now.toISOString())
     .not('next_attempt_at', 'is', null);
 
@@ -276,26 +251,19 @@ async function processNextAttempts(supabase: any, restaurantId: string) {
     return;
   }
 
-  console.log(`[Recovery] Found ${sentAttempts?.length || 0} attempts ready for next try`);
-
   for (const attempt of sentAttempts || []) {
-    const nextAttemptNumber = attempt.attempt_number + 1;
+    if (attempt.attempt_number >= attempt.max_attempts) continue;
 
-    // Check cooldown before scheduling next attempt
     const canSend = await checkCooldown(supabase, restaurantId, attempt.user_phone);
-    if (!canSend) {
-      console.log(`[Recovery] Skipping next attempt for ${attempt.user_phone} due to cooldown`);
-      continue;
-    }
+    if (!canSend) continue;
 
-    // Create new attempt
     await supabase.from('conversation_recovery_attempts').insert({
       restaurant_id: attempt.restaurant_id,
       user_phone: attempt.user_phone,
       cart_id: attempt.cart_id,
       conversation_state_id: attempt.conversation_state_id,
       recovery_type: attempt.recovery_type,
-      attempt_number: nextAttemptNumber,
+      attempt_number: attempt.attempt_number + 1,
       max_attempts: attempt.max_attempts,
       cart_value: attempt.cart_value,
       items_count: attempt.items_count,
@@ -305,20 +273,14 @@ async function processNextAttempts(supabase: any, restaurantId: string) {
       metadata: attempt.metadata
     });
 
-    // Mark previous attempt as processed
     await supabase
       .from('conversation_recovery_attempts')
       .update({ next_attempt_at: null })
       .eq('id', attempt.id);
-
-    console.log(`[Recovery] Scheduled attempt ${nextAttemptNumber} for ${attempt.user_phone}`);
   }
 }
 
 async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, restaurantPhone: string) {
-  console.log('[Recovery] Checking for pending recovery messages...');
-
-  // Check business hours (9am - 10pm)
   const now = new Date();
   const hour = now.getHours();
   if (hour < 9 || hour >= 22) {
@@ -340,13 +302,9 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
     return;
   }
 
-  console.log(`[Recovery] Found ${pendingRecoveries?.length || 0} pending recovery messages`);
-
   for (const recovery of pendingRecoveries || []) {
-    // Check cooldown one more time before sending
     const canSend = await checkCooldown(supabase, restaurantId, recovery.user_phone);
     if (!canSend) {
-      console.log(`[Recovery] Skipping send for ${recovery.user_phone} due to cooldown`);
       await supabase
         .from('conversation_recovery_attempts')
         .update({ status: 'skipped_cooldown' })
@@ -354,7 +312,7 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
       continue;
     }
 
-    // Check if customer has recent activity
+    // Check recent activity in messages AND web_orders
     const { data: recentMessages } = await supabase
       .from('messages')
       .select('id')
@@ -363,8 +321,16 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
       .gte('timestamp', new Date(Date.now() - 30 * 60 * 1000).toISOString())
       .limit(1);
 
-    if (recentMessages && recentMessages.length > 0) {
-      console.log(`[Recovery] Customer ${recovery.user_phone} has recent activity, marking as recovered`);
+    const { data: recentWebOrders } = await supabase
+      .from('web_orders')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('customer_phone', recovery.user_phone)
+      .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+      .not('status', 'eq', 'pending')
+      .limit(1);
+
+    if ((recentMessages && recentMessages.length > 0) || (recentWebOrders && recentWebOrders.length > 0)) {
       await supabase
         .from('conversation_recovery_attempts')
         .update({ status: 'recovered', recovered_at: now.toISOString() })
@@ -372,14 +338,10 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
       continue;
     }
 
-    // Generate personalized message
     const message = generateMessage(recovery);
-
-    // Send via WhatsApp
     const sent = await sendWhatsAppMessage(supabase, restaurantId, restaurantPhone, recovery.user_phone, message);
 
     if (sent) {
-      // Calculate next attempt time
       const nextAttemptTime = calculateNextAttemptTime(recovery.attempt_number, now);
 
       await supabase
@@ -392,7 +354,6 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
         })
         .eq('id', recovery.id);
 
-      // Log message
       await supabase.from('messages').insert({
         restaurant_id: restaurantId,
         from_number: restaurantPhone,
@@ -402,10 +363,7 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
         timestamp: now.toISOString()
       });
 
-      console.log(`[Recovery] ✅ Sent recovery message (attempt ${recovery.attempt_number}) to ${recovery.user_phone}`);
-      if (nextAttemptTime) {
-        console.log(`[Recovery] Next attempt scheduled for: ${nextAttemptTime}`);
-      }
+      console.log(`[Recovery] ✅ Sent recovery (attempt ${recovery.attempt_number}) to ${recovery.user_phone}`);
     } else {
       await supabase
         .from('conversation_recovery_attempts')
@@ -417,50 +375,32 @@ async function sendPendingRecoveryMessages(supabase: any, restaurantId: string, 
 
 function calculateNextAttemptTime(currentAttempt: number, now: Date): string | null {
   const intervalMinutes = ATTEMPT_INTERVALS[currentAttempt as keyof typeof ATTEMPT_INTERVALS];
-  
-  if (!intervalMinutes) {
-    return null; // No more attempts
-  }
-
-  const nextAttemptTime = new Date(now.getTime() + intervalMinutes * 60 * 1000);
-  return nextAttemptTime.toISOString();
+  if (!intervalMinutes) return null;
+  return new Date(now.getTime() + intervalMinutes * 60 * 1000).toISOString();
 }
 
 function generateMessage(recovery: any): string {
   let template = recovery.metadata?.template || 'Olá! 👋 Posso ajudar?';
-  
   template = template.replace('{{customer_name}}', recovery.customer_name || 'Olá');
   template = template.replace('{{items_count}}', recovery.items_count?.toString() || '0');
   template = template.replace('{{cart_value}}', recovery.cart_value?.toFixed(2) || '0');
-  
   if (recovery.metadata?.preferred_item) {
     template = template.replace('{{preferred_item}}', recovery.metadata.preferred_item);
   }
-  
   return template;
 }
 
 async function sendWhatsAppMessage(
-  supabase: any,
-  restaurantId: string,
-  fromPhone: string,
-  toPhone: string,
-  message: string
+  supabase: any, restaurantId: string, fromPhone: string, toPhone: string, message: string
 ): Promise<boolean> {
   try {
     const { error } = await supabase.functions.invoke('whatsapp-send', {
-      body: {
-        restaurantId,
-        toPhone,
-        message
-      }
+      body: { restaurantId, toPhone, message }
     });
-
     if (error) {
       console.error('[Recovery] Error sending WhatsApp message:', error);
       return false;
     }
-
     return true;
   } catch (error) {
     console.error('[Recovery] Exception sending WhatsApp message:', error);

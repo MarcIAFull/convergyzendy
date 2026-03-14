@@ -1616,6 +1616,7 @@ export type Database = {
           language: string
           max_additional_questions_before_checkout: number
           order_notifications: Json | null
+          recovery_config: Json | null
           restaurant_id: string
           special_offers_info: string | null
           tone: string
@@ -1635,6 +1636,7 @@ export type Database = {
           language?: string
           max_additional_questions_before_checkout?: number
           order_notifications?: Json | null
+          recovery_config?: Json | null
           restaurant_id: string
           special_offers_info?: string | null
           tone?: string
@@ -1654,6 +1656,7 @@ export type Database = {
           language?: string
           max_additional_questions_before_checkout?: number
           order_notifications?: Json | null
+          recovery_config?: Json | null
           restaurant_id?: string
           special_offers_info?: string | null
           tone?: string
