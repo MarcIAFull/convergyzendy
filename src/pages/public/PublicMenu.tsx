@@ -44,9 +44,10 @@ export default function PublicMenu() {
     product: Product,
     quantity: number,
     selectedAddons: Addon[],
-    notes: string
+    notes: string,
+    unitPrice: number
   ) => {
-    addItem(product, quantity, selectedAddons, notes);
+    addItem(product, quantity, selectedAddons, notes, unitPrice);
   };
 
   if (loading) {

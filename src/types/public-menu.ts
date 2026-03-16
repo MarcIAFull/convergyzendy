@@ -54,6 +54,7 @@ export interface CartItem {
   selectedAddons: Addon[];
   notes: string;
   totalPrice: number;
+  unitPrice: number;
 }
 
 export interface DeliveryAddress {

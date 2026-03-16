@@ -10,7 +10,7 @@ interface PublicCartState {
   slug: string | null;
   lastUpdated: number | null;
   _hasHydrated: boolean;
-  addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => void;
+  addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string, unitPrice: number) => void;
   removeItem: (productId: string, addonIds: string[]) => void;
   updateItemQuantity: (productId: string, addonIds: string[], quantity: number) => void;
   clearCart: () => void;
@@ -36,7 +36,7 @@ export const usePublicCartStore = create<PublicCartState>()(
         }
       },
 
-      addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => {
+      addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string, unitPrice: number) => {
         const items = get().items;
         
         // Build addon frequency key for matching (handles duplicates)
@@ -46,12 +46,7 @@ export const usePublicCartStore = create<PublicCartState>()(
           return JSON.stringify(Object.entries(freq).sort(([a], [b]) => a.localeCompare(b)));
         };
 
-        // Calcular preço total do item respeitando free_addons_count
-        const freeCount = product.free_addons_count ?? 0;
-        const paidAddons = freeCount > 0 ? selectedAddons.slice(freeCount) : selectedAddons;
-        const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
-        const totalPrice = (product.price + addonsTotal) * quantity;
-
+        const totalPrice = unitPrice * quantity;
         const addonKey = buildAddonKey(selectedAddons);
 
         // Verificar se item idêntico já existe
@@ -65,8 +60,12 @@ export const usePublicCartStore = create<PublicCartState>()(
         if (existingItemIndex >= 0) {
           // Atualizar quantidade do item existente
           const updatedItems = [...items];
-          updatedItems[existingItemIndex].quantity += quantity;
-          updatedItems[existingItemIndex].totalPrice += totalPrice;
+          updatedItems[existingItemIndex] = {
+            ...updatedItems[existingItemIndex],
+            quantity: updatedItems[existingItemIndex].quantity + quantity,
+            totalPrice: updatedItems[existingItemIndex].totalPrice + totalPrice,
+            unitPrice,
+          };
           set({ items: updatedItems, lastUpdated: Date.now() });
         } else {
           // Adicionar novo item
@@ -79,6 +78,7 @@ export const usePublicCartStore = create<PublicCartState>()(
                 selectedAddons,
                 notes,
                 totalPrice,
+                unitPrice,
               },
             ],
             lastUpdated: Date.now(),
@@ -124,14 +124,12 @@ export const usePublicCartStore = create<PublicCartState>()(
             item.product.id === productId &&
             buildAddonKey(item.selectedAddons.map(a => a.id)) === targetKey
           ) {
-            const freeCount = item.product.free_addons_count ?? 0;
-            const paidAddons = freeCount > 0 ? item.selectedAddons.slice(freeCount) : item.selectedAddons;
-            const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
-            const unitPrice = item.product.price + addonsTotal;
+            // Use stored unitPrice for recalculation (handles free addons correctly)
+            const up = item.unitPrice ?? (item.totalPrice / item.quantity);
             return {
               ...item,
               quantity,
-              totalPrice: unitPrice * quantity,
+              totalPrice: up * quantity,
             };
           }
           return item;
