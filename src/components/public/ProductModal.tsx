@@ -20,7 +20,7 @@ interface ProductModalProps {
   addonGroups?: AddonGroup[];
   open: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => void;
+  onAddToCart: (product: Product, quantity: number, selectedAddons: Addon[], notes: string, unitPrice: number) => void;
 }
 
 export const ProductModal = ({
