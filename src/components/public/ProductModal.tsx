@@ -195,7 +195,9 @@ export const ProductModal = ({
       return;
     }
     const selectedAddons = buildSelectedAddonsArray();
-    onAddToCart(product, quantity, selectedAddons, notes);
+    const total = calculateTotalPrice();
+    const unitPrice = total / quantity;
+    onAddToCart(product, quantity, selectedAddons, notes, unitPrice);
     toast({ title: 'Adicionado ao carrinho', description: `${quantity}x ${product.name}` });
     handleClose();
   };
