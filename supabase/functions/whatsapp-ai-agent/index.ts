@@ -8,6 +8,7 @@ import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 import { updateCustomerInsightsAfterOrder, getCustomerInsights } from '../_shared/customerInsights.ts';
 import { buildConversationContext } from './context-builder.ts';
 import { smartSearchProducts } from './smart-search.ts';
+import { runMCPFlow } from './mcp-flow.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +25,7 @@ serve(async (req) => {
   let supabase: any;
 
   try {
-    const { messageBody: rawMessage, customerPhone, restaurantId } = await req.json();
+    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName } = await req.json();
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
     console.log(`\n${'='.repeat(80)}`);
@@ -82,6 +83,19 @@ serve(async (req) => {
     }
     
     console.log('[Mode Check] ✅ Conversation in AI mode - proceeding with AI agent\n');
+
+    // ============================================================
+    // MCP FLOW (when MCP_USE_MCP=true)
+    // ============================================================
+    if (Deno.env.get('MCP_USE_MCP') === 'true') {
+      console.log('[WhatsApp AI] Using MCP flow (MCP_USE_MCP=true)');
+      return runMCPFlow(supabase, {
+        restaurantId,
+        customerPhone,
+        rawMessage,
+        instanceName: instanceName || '',
+      });
+    }
 
     // ============================================================
     // STEP 1: LOAD AGENT CONFIGURATION FROM DATABASE
