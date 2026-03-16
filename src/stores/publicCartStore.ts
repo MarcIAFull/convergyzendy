@@ -10,7 +10,7 @@ interface PublicCartState {
   slug: string | null;
   lastUpdated: number | null;
   _hasHydrated: boolean;
-  addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string) => void;
+  addItem: (product: Product, quantity: number, selectedAddons: Addon[], notes: string, unitPrice: number) => void;
   removeItem: (productId: string, addonIds: string[]) => void;
   updateItemQuantity: (productId: string, addonIds: string[], quantity: number) => void;
   clearCart: () => void;
