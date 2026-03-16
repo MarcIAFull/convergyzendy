@@ -124,14 +124,12 @@ export const usePublicCartStore = create<PublicCartState>()(
             item.product.id === productId &&
             buildAddonKey(item.selectedAddons.map(a => a.id)) === targetKey
           ) {
-            const freeCount = item.product.free_addons_count ?? 0;
-            const paidAddons = freeCount > 0 ? item.selectedAddons.slice(freeCount) : item.selectedAddons;
-            const addonsTotal = paidAddons.reduce((sum, addon) => sum + addon.price, 0);
-            const unitPrice = item.product.price + addonsTotal;
+            // Use stored unitPrice for recalculation (handles free addons correctly)
+            const up = item.unitPrice ?? (item.totalPrice / item.quantity);
             return {
               ...item,
               quantity,
-              totalPrice: unitPrice * quantity,
+              totalPrice: up * quantity,
             };
           }
           return item;
