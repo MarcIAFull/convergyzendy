@@ -25,7 +25,7 @@ serve(async (req) => {
   let supabase: any;
 
   try {
-    const { messageBody: rawMessage, customerPhone, restaurantId } = await req.json();
+    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName } = await req.json();
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
     console.log(`\n${'='.repeat(80)}`);
