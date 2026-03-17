@@ -25,7 +25,11 @@ serve(async (req) => {
   let supabase: any;
 
   try {
-    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName } = await req.json();
+    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName, simulatorMode } = await req.json();
+    const isSimulator = simulatorMode === true;
+    if (isSimulator) {
+      console.log('[WhatsApp AI] 🧪 SIMULATOR MODE - WhatsApp sending will be bypassed');
+    }
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
     console.log(`\n${'='.repeat(80)}`);
@@ -94,6 +98,7 @@ serve(async (req) => {
         customerPhone,
         rawMessage,
         instanceName: instanceName || '',
+        simulatorMode: isSimulator,
       });
     }
 
@@ -506,8 +511,12 @@ serve(async (req) => {
         
         const handoffInstanceName = whatsappInstanceData?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
         
-        // Send via WhatsApp
-        await sendWhatsAppMessage(handoffInstanceName, customerPhone, handoffMessage);
+        // Send via WhatsApp (skip in simulator mode)
+        if (!isSimulator) {
+          await sendWhatsAppMessage(handoffInstanceName, customerPhone, handoffMessage);
+        } else {
+          console.log('[WhatsApp] 🧪 Simulator: skipped WhatsApp send for handoff message');
+        }
         
         // Update metadata
         await supabase
@@ -1318,12 +1327,16 @@ ${rawMessage}
 
     const resolvedInstanceName = whatsappInstance?.instance_name || instanceName || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
     
-    // Send WhatsApp response
-    try {
-      await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
-      console.log('[WhatsApp] ✅ Message sent successfully');
-    } catch (whatsappError: any) {
-      console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
+    // Send WhatsApp response (skip in simulator mode)
+    if (!isSimulator) {
+      try {
+        await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
+        console.log('[WhatsApp] ✅ Message sent successfully');
+      } catch (whatsappError: any) {
+        console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
+      }
+    } else {
+      console.log('[WhatsApp] 🧪 Simulator: skipped WhatsApp send, returning response directly');
     }
     
     // ============================================================

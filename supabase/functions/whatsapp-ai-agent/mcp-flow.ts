@@ -11,6 +11,7 @@ interface MCPFlowParams {
   customerPhone: string;
   rawMessage: string;
   instanceName: string;
+  simulatorMode?: boolean;
 }
 
 const MCP_SYSTEM_PROMPT = `És o assistente de pedidos do restaurante. Responde em português de forma amigável e concisa.
@@ -320,10 +321,14 @@ export async function runMCPFlow(supabase: SupabaseClient, params: MCPFlowParams
       responseText = 'Desculpa, não consegui responder. Podes tentar de novo?';
     }
 
-    await sendWhatsAppMessage(instance, customerPhone, responseText);
+    if (!params.simulatorMode) {
+      await sendWhatsAppMessage(instance, customerPhone, responseText);
+    } else {
+      console.log('[MCP Flow] 🧪 Simulator: skipped WhatsApp send');
+    }
 
     return new Response(
-      JSON.stringify({ success: true, response: responseText }),
+      JSON.stringify({ success: true, response: responseText, message: responseText }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

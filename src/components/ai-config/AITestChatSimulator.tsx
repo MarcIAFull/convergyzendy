@@ -158,7 +158,8 @@ export function AITestChatSimulator({ restaurantId }: AITestChatSimulatorProps) 
         body: {
           restaurantId,
           customerPhone: testPhone,
-          messageBody: messageToSend
+          messageBody: messageToSend,
+          simulatorMode: true
         }
       });
 
