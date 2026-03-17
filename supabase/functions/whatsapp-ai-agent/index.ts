@@ -1327,12 +1327,16 @@ ${rawMessage}
 
     const resolvedInstanceName = whatsappInstance?.instance_name || instanceName || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
     
-    // Send WhatsApp response
-    try {
-      await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
-      console.log('[WhatsApp] ✅ Message sent successfully');
-    } catch (whatsappError: any) {
-      console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
+    // Send WhatsApp response (skip in simulator mode)
+    if (!isSimulator) {
+      try {
+        await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
+        console.log('[WhatsApp] ✅ Message sent successfully');
+      } catch (whatsappError: any) {
+        console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
+      }
+    } else {
+      console.log('[WhatsApp] 🧪 Simulator: skipped WhatsApp send, returning response directly');
     }
     
     // ============================================================
