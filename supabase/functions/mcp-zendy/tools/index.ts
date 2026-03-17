@@ -2,30 +2,27 @@
  * MCP Zendy Tools - Central registration
  */
 
-import type { McpServer } from 'mcp-lite';
-import { z } from 'zod';
 import { registerSearchMenuTool } from './search-menu.ts';
 import { registerGetCustomerHistoryTool } from './get-customer-history.ts';
 import { registerGetProductAddonsTool } from './get-product-addons.ts';
 import { registerAddonSelectionTools } from './addon-selection-tools.ts';
 import { registerGetCartTool } from './cart-tools.ts';
 
-export function registerAllTools(mcp: McpServer, registerExecutor?: (name: string, handler: (args: Record<string, any>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => void) {
-  mcp.tool(
-    'test_ping',
-    z.object({
-      message: z.string().optional().describe('Optional message to echo back'),
-    }),
-    async ({ message }) => ({
+type ToolHandler = (args: Record<string, any>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
+type ExecutorReg = (name: string, handler: ToolHandler) => void;
+
+export function registerAllTools(mcp: any, registerExecutor?: ExecutorReg) {
+  // Register test_ping directly with executor
+  if (registerExecutor) {
+    registerExecutor('test_ping', async (args) => ({
       content: [
         {
           type: 'text' as const,
-          text: `Pong! ${message ? `Received: ${message}` : 'MCP Zendy is ready.'}`,
+          text: `Pong! ${args.message ? `Received: ${args.message}` : 'MCP Zendy is ready.'}`,
         },
       ],
-    }),
-    { description: 'WHEN: Use to verify the MCP server is responding. Returns a simple pong.' }
-  );
+    }));
+  }
 
   registerSearchMenuTool(mcp, registerExecutor);
   registerGetCustomerHistoryTool(mcp, registerExecutor);
