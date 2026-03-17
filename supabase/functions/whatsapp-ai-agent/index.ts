@@ -511,8 +511,12 @@ serve(async (req) => {
         
         const handoffInstanceName = whatsappInstanceData?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
         
-        // Send via WhatsApp
-        await sendWhatsAppMessage(handoffInstanceName, customerPhone, handoffMessage);
+        // Send via WhatsApp (skip in simulator mode)
+        if (!isSimulator) {
+          await sendWhatsAppMessage(handoffInstanceName, customerPhone, handoffMessage);
+        } else {
+          console.log('[WhatsApp] 🧪 Simulator: skipped WhatsApp send for handoff message');
+        }
         
         // Update metadata
         await supabase
