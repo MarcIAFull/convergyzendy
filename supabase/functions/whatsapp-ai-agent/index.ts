@@ -85,6 +85,19 @@ serve(async (req) => {
     console.log('[Mode Check] ✅ Conversation in AI mode - proceeding with AI agent\n');
 
     // ============================================================
+    // MCP FLOW (when MCP_USE_MCP=true)
+    // ============================================================
+    if (Deno.env.get('MCP_USE_MCP') === 'true') {
+      console.log('[WhatsApp AI] Using MCP flow (MCP_USE_MCP=true)');
+      return runMCPFlow(supabase, {
+        restaurantId,
+        customerPhone,
+        rawMessage,
+        instanceName: instanceName || '',
+      });
+    }
+
+    // ============================================================
     // STEP 1: LOAD AGENT CONFIGURATION FROM DATABASE
     // ============================================================
     
