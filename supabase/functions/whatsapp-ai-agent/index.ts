@@ -25,7 +25,11 @@ serve(async (req) => {
   let supabase: any;
 
   try {
-    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName } = await req.json();
+    const { messageBody: rawMessage, customerPhone, restaurantId, instanceName, simulatorMode } = await req.json();
+    const isSimulator = simulatorMode === true;
+    if (isSimulator) {
+      console.log('[WhatsApp AI] 🧪 SIMULATOR MODE - WhatsApp sending will be bypassed');
+    }
     const messageBody = rawMessage?.toLowerCase().trim() || '';
 
     console.log(`\n${'='.repeat(80)}`);
