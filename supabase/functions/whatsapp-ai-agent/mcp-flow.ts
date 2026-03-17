@@ -328,7 +328,7 @@ export async function runMCPFlow(supabase: SupabaseClient, params: MCPFlowParams
     }
 
     return new Response(
-      JSON.stringify({ success: true, response: responseText }),
+      JSON.stringify({ success: true, response: responseText, message: responseText }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
