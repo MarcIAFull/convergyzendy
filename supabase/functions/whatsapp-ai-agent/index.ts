@@ -1320,7 +1320,7 @@ ${rawMessage}
     
     // Send WhatsApp response
     try {
-      await sendWhatsAppMessage(instanceName, customerPhone, finalResponse);
+      await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
       console.log('[WhatsApp] ✅ Message sent successfully');
     } catch (whatsappError: any) {
       console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
