@@ -1316,7 +1316,7 @@ ${rawMessage}
       .eq('restaurant_id', restaurantId)
       .single();
 
-    const instanceName = whatsappInstance?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
+    const resolvedInstanceName = whatsappInstance?.instance_name || instanceName || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
     
     // Send WhatsApp response
     try {
