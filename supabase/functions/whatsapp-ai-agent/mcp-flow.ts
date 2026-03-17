@@ -11,6 +11,7 @@ interface MCPFlowParams {
   customerPhone: string;
   rawMessage: string;
   instanceName: string;
+  simulatorMode?: boolean;
 }
 
 const MCP_SYSTEM_PROMPT = `És o assistente de pedidos do restaurante. Responde em português de forma amigável e concisa.
