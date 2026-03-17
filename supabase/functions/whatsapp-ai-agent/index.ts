@@ -98,6 +98,7 @@ serve(async (req) => {
         customerPhone,
         rawMessage,
         instanceName: instanceName || '',
+        simulatorMode: isSimulator,
       });
     }
 
