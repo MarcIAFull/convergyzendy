@@ -1316,11 +1316,11 @@ ${rawMessage}
       .eq('restaurant_id', restaurantId)
       .single();
 
-    const instanceName = whatsappInstance?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
+    const resolvedInstanceName = whatsappInstance?.instance_name || instanceName || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
     
     // Send WhatsApp response
     try {
-      await sendWhatsAppMessage(instanceName, customerPhone, finalResponse);
+      await sendWhatsAppMessage(resolvedInstanceName, customerPhone, finalResponse);
       console.log('[WhatsApp] ✅ Message sent successfully');
     } catch (whatsappError: any) {
       console.warn(`[WhatsApp] ⚠️ Failed to send WhatsApp (test mode?): ${whatsappError.message}`);
