@@ -1,10 +1,7 @@
 /**
  * get_product_addons tool - Get addons by group with offset
- * WHEN: Before add_to_cart when customer asks about customizations. Use addon_group_index and offset for products with many groups/options.
  */
 
-import type { McpServer } from 'mcp-lite';
-import { z } from 'zod';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 import { loadMenu } from '../db/mcp-db-client.ts';
 
@@ -12,7 +9,7 @@ const PAGE_SIZE = 15;
 
 type ExecutorReg = (name: string, h: (a: Record<string, any>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => void;
 
-export function registerGetProductAddonsTool(mcp: McpServer, reg?: ExecutorReg) {
+export function registerGetProductAddonsTool(_mcp: any, reg?: ExecutorReg) {
   const handler = async (args: Record<string, any>) => {
     const { restaurant_id, product_id, addon_group_index, offset = 0 } = args as {
       restaurant_id: string; product_id: string; addon_group_index?: number; offset?: number;
@@ -59,48 +56,16 @@ export function registerGetProductAddonsTool(mcp: McpServer, reg?: ExecutorReg) 
     const page = groupAddons.slice(offset, offset + PAGE_SIZE);
     const hasMore = offset + page.length < total;
     const output = {
-      success: true,
-      product_id: product.id,
-      product_name: product.name,
-      addon_group_index,
-      addon_group_name: group.name,
-      min_selections: group.min_selections ?? 0,
-      max_selections: group.max_selections ?? 1,
+      success: true, product_id: product.id, product_name: product.name,
+      addon_group_index, addon_group_name: group.name,
+      min_selections: group.min_selections ?? 0, max_selections: group.max_selections ?? 1,
       free_selections: group.free_selections ?? 0,
       addons: page.map(a => ({ id: a.id, name: a.name, price: a.price })),
-      offset,
-      total,
-      hasMore,
+      offset, total, hasMore,
       message: page.length > 0 ? `${group.name}: ${page.map(a => `${a.name} (+€${a.price.toFixed(2)})`).join(', ')}${hasMore ? '... (use offset para mais)' : ''}` : 'Sem opções neste grupo.',
     };
     return { content: [{ type: 'text' as const, text: JSON.stringify(output) }] };
   };
 
   if (reg) reg('get_product_addons', handler);
-
-  mcp.tool(
-    'get_product_addons',
-    z.object({
-      restaurant_id: z.string().uuid().describe('Restaurant UUID'),
-      product_id: z
-        .string()
-        .describe('Product UUID (from search_menu) or exact product name'),
-      addon_group_index: z
-        .number()
-        .min(0)
-        .optional()
-        .describe('Which addon group/step to show (0-based). Omit to see all groups summary.'),
-      offset: z
-        .number()
-        .min(0)
-        .optional()
-        .default(0)
-        .describe('Pagination offset within the group (when group has many options)'),
-    }),
-    handler,
-    {
-      description:
-        'WHEN: Before add_to_cart when customer asks about customizations. Use addon_group_index for products with multiple steps; use offset when a group has many options.',
-    }
-  );
 }

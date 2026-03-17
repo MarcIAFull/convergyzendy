@@ -1,17 +1,14 @@
 /**
  * search_menu tool - Search products with pagination (offset/limit)
- * WHEN: Customer asks about products, categories, or wants to browse. Use offset for large menus.
  */
 
-import type { McpServer } from 'mcp-lite';
-import { z } from 'zod';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 import { smartSearchProductsV2 } from '../lib/smart-search-v2.ts';
 import { loadMenu } from '../db/mcp-db-client.ts';
 
 type ExecutorReg = (name: string, h: (a: Record<string, any>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>) => void;
 
-export function registerSearchMenuTool(mcp: McpServer, reg?: ExecutorReg) {
+export function registerSearchMenuTool(_mcp: any, reg?: ExecutorReg) {
   const handler = async (args: Record<string, any>) => {
     const { restaurant_id, query, category, max_results = 10, offset = 0 } = args as {
       restaurant_id: string; query?: string; category?: string; max_results?: number; offset?: number;
@@ -60,21 +57,4 @@ export function registerSearchMenuTool(mcp: McpServer, reg?: ExecutorReg) {
   };
 
   if (reg) reg('search_menu', handler);
-
-  mcp.tool(
-    'search_menu',
-    z.object({
-      restaurant_id: z.string().uuid().describe('Restaurant UUID'),
-      customer_phone: z.string().describe('Customer phone for context'),
-      query: z.string().optional().describe('Search term: product name, category, ingredient'),
-      category: z.string().optional().describe('Filter by category name'),
-      max_results: z.number().min(1).max(50).optional().default(10),
-      offset: z.number().min(0).optional().default(0),
-    }),
-    handler,
-    {
-      description:
-        'WHEN: Customer asks about products, categories, or wants to browse. Use offset for pagination when menu has many items.',
-    }
-  );
 }
