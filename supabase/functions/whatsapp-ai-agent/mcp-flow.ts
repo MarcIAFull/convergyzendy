@@ -214,8 +214,17 @@ async function callMCPTool(
     body: { name, arguments: args, context },
   });
   if (error) {
-    console.error(`[MCP Flow] Tool ${name} error:`, error);
-    return JSON.stringify({ error: error.message });
+    // Extract details from FunctionsHttpError
+    let details = error.message || 'Unknown error';
+    if (error.context && typeof error.context === 'object') {
+      const ctx = error.context as Response;
+      try {
+        const body = await ctx.text();
+        details = `${ctx.status} ${ctx.statusText} — ${body.slice(0, 300)}`;
+      } catch { /* ignore */ }
+    }
+    console.error(`[MCP Flow] Tool ${name} error: ${details}`);
+    return JSON.stringify({ error: details });
   }
   return typeof data?.content === 'string' ? data.content : JSON.stringify(data);
 }

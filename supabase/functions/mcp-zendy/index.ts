@@ -26,15 +26,16 @@ registerAllTools(mcp, (name, handler) => registerToolHandler(name, handler));
 // Bind to HTTP transport
 const transport = new StreamableHttpTransport();
 
-// Supabase passes full path e.g. /functions/v1/mcp-zendy or /functions/v1/mcp-zendy/mcp
-const app = new Hono().basePath('/functions/v1/mcp-zendy');
+// No basePath — Supabase delivers requests at the function root
+const app = new Hono();
 
 app.get('/', (c) => {
   return c.json({
     message: 'MCP Zendy - WhatsApp AI Tools',
     endpoints: {
-      mcp: '/mcp-zendy/mcp',
-      health: '/mcp-zendy/health',
+      mcp: '/mcp',
+      health: '/health',
+      execute: '/execute',
     },
   });
 });
@@ -48,13 +49,14 @@ app.all('/mcp', async (c) => {
   return response;
 });
 
-// Tool execution: POST /execute or POST / (for supabase.functions.invoke)
+// Tool execution handler
 async function handleExecute(c: { req: { json: () => Promise<any> }; json: (obj: unknown, status?: number) => Response }) {
   try {
     const body = await c.req.json() as { name?: string; arguments?: Record<string, any>; context?: { restaurant_id?: string; customer_phone?: string } };
     const { name, arguments: args = {}, context = {} } = body;
     if (!name) return c.json({ error: 'Missing tool name' }, 400);
     const mergedArgs = { ...context, ...args };
+    console.log(`[mcp-zendy] Executing tool: ${name}`, JSON.stringify(mergedArgs).slice(0, 200));
     const result = await executeTool(name, mergedArgs);
     const text = result.content?.[0]?.type === 'text' ? result.content[0].text : JSON.stringify(result);
     return c.json({ content: text });
@@ -63,17 +65,31 @@ async function handleExecute(c: { req: { json: () => Promise<any> }; json: (obj:
     return c.json({ error: err instanceof Error ? err.message : 'Tool execution failed' }, 500);
   }
 }
+
 app.post('/execute', handleExecute);
-app.post('/', handleExecute); // For supabase.functions.invoke which POSTs to /
+app.post('/', handleExecute); // supabase.functions.invoke POSTs to /
+
+// Fallback 404 for unmatched routes
+app.all('*', (c) => {
+  const url = new URL(c.req.url);
+  console.warn(`[mcp-zendy] 404 — unmatched route: ${c.req.method} ${url.pathname}`);
+  return c.json({ error: 'Not found', method: c.req.method, path: url.pathname }, 404);
+});
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const url = new URL(req.url);
+  console.log(`[mcp-zendy] ${req.method} ${url.pathname}`);
+
   try {
     const res = await app.fetch(req);
-    return res;
+    // Add CORS headers to all responses
+    const headers = new Headers(res.headers);
+    Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
   } catch (error) {
     console.error('[mcp-zendy] Error:', error);
     return new Response(
