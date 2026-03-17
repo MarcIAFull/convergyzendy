@@ -237,13 +237,12 @@ export async function runMCPFlow(supabase: SupabaseClient, params: MCPFlowParams
 
   let instance = instanceName;
   if (!instance) {
-    const { data: restaurant } = await supabase
-      .from('restaurants')
-      .select('whatsapp_instances')
-      .eq('id', restaurantId)
+    const { data: whatsappInstance } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_name')
+      .eq('restaurant_id', restaurantId)
       .maybeSingle();
-    const instances = Array.isArray(restaurant?.whatsapp_instances) ? restaurant.whatsapp_instances : [restaurant?.whatsapp_instances];
-    instance = (instances as any)?.[0]?.instance_name || '';
+    instance = whatsappInstance?.instance_name || Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'default';
   }
 
   try {
