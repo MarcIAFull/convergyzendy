@@ -8,6 +8,7 @@ import { BASE_TOOLS, getBaseToolDefinition } from './base-tools.ts';
 import { updateCustomerInsightsAfterOrder, getCustomerInsights } from '../_shared/customerInsights.ts';
 import { buildConversationContext } from './context-builder.ts';
 import { smartSearchProducts } from './smart-search.ts';
+import { runMCPFlow } from './mcp-flow.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
