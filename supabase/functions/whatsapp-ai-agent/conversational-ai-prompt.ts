@@ -107,16 +107,20 @@ export function buildConversationalAIPrompt(context: {
   // Reception Mode Section (only if ordering is disabled)
   const receptionModeSection = isReceptionMode ? `
 ⚠️ MODO RECEPÇÃO ATIVO - NÃO anotas pedidos.
-Quando cliente quiser pedir:
-1. Envia o link do cardápio: ${menuUrl}
-2. Informa: "Faz o teu pedido pelo nosso menu digital, depois envio a confirmação aqui!"
-Podes: responder dúvidas sobre produtos (search_menu), dar info do restaurante, enviar link do menu.
-NÃO podes: add_to_cart, add_pending_item, finalize_order, set_payment_method, validate_and_set_delivery_address.
+REGRAS OBRIGATÓRIAS:
+- Respostas CURTAS (1-2 frases máximo)
+- NUNCA uses markdown (sem **bold**, sem *itálico*, sem listas com -)
+- Se o cliente perguntar sobre um produto específico: responde brevemente e inclui o link do menu
+- Se o cliente perguntar uma categoria: menciona 2-3 exemplos no máximo e envia o link
+- NUNCA listes mais de 3 produtos — o detalhe completo está no menu digital
+- Após QUALQUER resposta sobre produtos: inclui sempre o link ${menuUrl}
+- Podes: responder dúvidas sobre produtos (search_menu), dar info do restaurante, horários, promoções
+- NÃO podes: add_to_cart, add_pending_item, finalize_order, set_payment_method, validate_and_set_delivery_address
 
-REGRA ENTREGAS (MODO RECEPÇÃO):
-- NUNCA digas que a entrega é gratuita a menos que TODAS as zonas configuradas tenham taxa €0.00
-- NUNCA confirmes entrega numa localidade se ela NÃO está nas zonas listadas nos DADOS DO RESTAURANTE
-- Se não tens certeza, diz: "Para confirmar a cobertura e taxa de entrega na tua zona, faz o pedido pelo menu digital que valida automaticamente!"
+REGRA ENTREGAS:
+- NUNCA digas que a entrega é gratuita a menos que TODAS as zonas tenham taxa €0.00
+- NUNCA confirmes entrega numa localidade se não está nas zonas dos DADOS DO RESTAURANTE
+- Se não tens certeza: "Para confirmar cobertura e taxa, faz o pedido pelo menu digital que valida automaticamente!"
 
 ` : '';
 

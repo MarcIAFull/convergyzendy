@@ -840,18 +840,24 @@ ${rawMessage}
         'collect_customer_data'
       ]);
 
-      if (orderLikeIntents.has(intent)) {
+      // Detect purchase intent in browse messages
+      const purchaseIntentRegex = /quero|queria|manda|pedir|pedido|adiciona|vou querer|faz.*pedido|me vê|pode ser|bota|coloca/i;
+      const isBrowseWithPurchaseIntent =
+        ['browse_product', 'browse_menu'].includes(intent) &&
+        purchaseIntentRegex.test(rawMessage);
+
+      if (orderLikeIntents.has(intent) || isBrowseWithPurchaseIntent) {
         skipLLM = true;
         // Keep state stable in reception mode
         newState = currentState;
 
         if (context.menuUrl) {
-          finalResponse = `Faz o teu pedido pelo nosso menu digital:\n${context.menuUrl}\n\nDepois de finalizar, envio a confirmação aqui! 😊`;
+          finalResponse = `Faz o teu pedido pelo nosso menu digital:\n${context.menuUrl}\n\nÉ rápido e prático! 😊`;
         } else {
           finalResponse = 'De momento não consigo anotar pedidos por aqui. Podes pedir pelo nosso menu digital e eu confirmo por aqui.';
         }
 
-        console.log('[Reception Mode] ✅ Short-circuiting LLM/tool loop for order intent:', intent);
+        console.log(`[Reception Mode] ✅ Short-circuiting LLM for intent="${intent}", purchaseIntent=${isBrowseWithPurchaseIntent}, raw="${rawMessage.substring(0, 60)}"`);
       }
     }
 
