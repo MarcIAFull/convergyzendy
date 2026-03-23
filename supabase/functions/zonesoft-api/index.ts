@@ -194,9 +194,9 @@ async function zoneSoftRequest(
     );
 
     try {
-      // Per ZoneSoft support: headers are 'Authorization' and 'X-Integration-Signature'
-      // Authorization = Client ID (or App Key), X-Integration-Signature = HMAC signature
-      // We try multiple auth header combinations on 401
+      // Per ZoneSoft support (confirmed): headers are 'Authorization' = Client ID
+      // and 'X-Integration-Signature' = HMAC-SHA256 signature.
+      // Prioritize the confirmed combination, keep one fallback.
       const headerVariants = [
         {
           label: "clientId-in-auth",
@@ -212,38 +212,6 @@ async function zoneSoftRequest(
             "Content-Type": "application/json",
             "Authorization": config.app_key.trim(),
             "X-Integration-Signature": candidate.signature,
-          },
-        },
-        {
-          label: "bearer-clientId",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${config.client_id.trim()}`,
-            "X-Integration-Signature": candidate.signature,
-          },
-        },
-        {
-          label: "bearer-appKey",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${config.app_key.trim()}`,
-            "X-Integration-Signature": candidate.signature,
-          },
-        },
-        {
-          label: "basic-clientId-appKey",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Basic ${btoa(`${config.client_id.trim()}:${config.app_key.trim()}`)}`,
-            "X-Integration-Signature": candidate.signature,
-          },
-        },
-        {
-          label: "appKey-sig-in-auth",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": config.app_key.trim(),
-            "X-Integration-Signature": `${config.client_id.trim()}:${candidate.signature}`,
           },
         },
       ];
@@ -536,13 +504,10 @@ serve(async (req) => {
       // We try multiple endpoint paths to discover what's available.
       
       const testEndpoints = [
-        // ZSROI likely endpoints for ordering API
-        { iface: "orders", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI orders/getInstances" },
-        { iface: "Documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Documents/getInstances" },
-        { iface: "documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI documents/getInstances (lowercase)" },
-        { iface: "Order", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Order/getInstances" },
+        // ZSROI endpoints (ordering API only — no products/)
+        { iface: "Orders", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Orders/getInstances" },
         { iface: "Takeaway", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Takeaway/getInstances" },
-        { iface: "products", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI products/getInstances" },
+        { iface: "Documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Documents/getInstances" },
       ];
       
       // If ZSAPI credentials are available, also test those
@@ -614,11 +579,23 @@ serve(async (req) => {
     
     // Sync products from ZoneSoft
     if (action === "sync-products") {
-      // Product sync uses ZSAPI credentials if available
+      // Product sync requires ZSAPI credentials (separate integration with ZSAPI permission)
+      // ZSROI does NOT have products/getInstances
+      const hasZsapiCreds = config.zsapi_client_id && config.zsapi_app_key && config.zsapi_app_secret;
+      if (!hasZsapiCreds) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Sincronização de produtos requer credenciais ZSAPI (API de sincronização). A integração ZSROI apenas suporta pedidos e takeaway. Crie uma integração separada com permissão ZSAPI no portal developer.zonesoft.org.",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Body is auto-wrapped: {"product": {"loja": X}}
       const result = await zoneSoftRequest(zsapiConfig, "products", "getInstances", {
         loja: config.store_id || 1,
-      }, zsapiConfig !== apiConfig ? 'zsapi' : apiType);
+      }, 'zsapi');
       
       if (!result.success) {
         return new Response(JSON.stringify(result), {
