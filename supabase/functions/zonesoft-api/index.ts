@@ -504,13 +504,10 @@ serve(async (req) => {
       // We try multiple endpoint paths to discover what's available.
       
       const testEndpoints = [
-        // ZSROI likely endpoints for ordering API
-        { iface: "orders", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI orders/getInstances" },
-        { iface: "Documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Documents/getInstances" },
-        { iface: "documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI documents/getInstances (lowercase)" },
-        { iface: "Order", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Order/getInstances" },
+        // ZSROI endpoints (ordering API only — no products/)
+        { iface: "Orders", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Orders/getInstances" },
         { iface: "Takeaway", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Takeaway/getInstances" },
-        { iface: "products", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI products/getInstances" },
+        { iface: "Documents", action: "getInstances", api: 'zsroi' as const, creds: apiConfig, label: "ZSROI Documents/getInstances" },
       ];
       
       // If ZSAPI credentials are available, also test those
