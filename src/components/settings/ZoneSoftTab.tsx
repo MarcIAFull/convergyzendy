@@ -508,6 +508,19 @@ export function ZoneSoftTab() {
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Sincronização de Produtos</h3>
             
+            {!formData.zsapi_client_id && (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  A sincronização de produtos requer credenciais <strong>ZSAPI</strong> (API de sincronização). 
+                  A integração ZSROI apenas suporta pedidos e takeaway. Crie uma integração separada com permissão ZSAPI no{' '}
+                  <a href="https://developer.zonesoft.org" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    portal ZoneSoft Developer
+                  </a>.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
               <div>
                 <p className="text-sm font-medium">
@@ -524,7 +537,8 @@ export function ZoneSoftTab() {
                 variant="outline"
                 size="sm"
                 onClick={handleSyncProducts}
-                disabled={isSyncing || !formData.client_id}
+                disabled={isSyncing || !formData.zsapi_client_id}
+                title={!formData.zsapi_client_id ? 'Requer credenciais ZSAPI' : undefined}
               >
                 {isSyncing ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />

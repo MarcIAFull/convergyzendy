@@ -579,11 +579,23 @@ serve(async (req) => {
     
     // Sync products from ZoneSoft
     if (action === "sync-products") {
-      // Product sync uses ZSAPI credentials if available
+      // Product sync requires ZSAPI credentials (separate integration with ZSAPI permission)
+      // ZSROI does NOT have products/getInstances
+      const hasZsapiCreds = config.zsapi_client_id && config.zsapi_app_key && config.zsapi_app_secret;
+      if (!hasZsapiCreds) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Sincronização de produtos requer credenciais ZSAPI (API de sincronização). A integração ZSROI apenas suporta pedidos e takeaway. Crie uma integração separada com permissão ZSAPI no portal developer.zonesoft.org.",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Body is auto-wrapped: {"product": {"loja": X}}
       const result = await zoneSoftRequest(zsapiConfig, "products", "getInstances", {
         loja: config.store_id || 1,
-      }, zsapiConfig !== apiConfig ? 'zsapi' : apiType);
+      }, 'zsapi');
       
       if (!result.success) {
         return new Response(JSON.stringify(result), {
