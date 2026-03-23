@@ -1,86 +1,64 @@
 
 
-## Plano: Simplificar Modo Recepção — Envio Imediato do Link
+## Plano: Corrigir credenciais ZoneSoft e adaptar lógica ao feedback do suporte
 
-### Problema Identificado
+### Resumo do feedback ZoneSoft
 
-No atendimento do telefone 3621, o cliente disse "Queria fazer um pedido de açaí" e a IA entrou em modo de navegação completa: listou 5 opções de açaí com descrições, perguntou complementos, sugeriu itens — tudo isto quando a IA **não anota pedidos**. Só enviou o link do menu digital na 5ª mensagem, quando o intent mudou para `confirm_item`.
+O suporte confirmou:
+1. **ZSROI** (`zsroi.zonesoft.org/v1.0/`) — apenas encomendas e takeaway. Não tem `products/getInstances`.
+2. **ZSAPI** — API de sincronização (produtos, documentos). Precisa de **integração separada** com permissão ZSAPI, que **ainda não existe**.
+3. O App Secret deve ser usado como **string UTF-8** (não hex-decoded).
+4. Headers: `Authorization` + `X-Integration-Signature`.
+5. Credenciais novas partilhadas:
+   - APP-KEY: `EC23...2E14`
+   - APP-SECRET: `1E45...E5F4`
+   - Graça (store 1): Client ID `13E5...7571`
+   - Barreiro (store 2): Client ID `768D...8D54`
 
-**Causa raiz:** O guardrail do Modo Recepção (linhas 831-856 do `index.ts`) só bloqueia intents de ordering (`confirm_item`, `finalize`, etc.), mas `browse_product` e `browse_menu` passam direto para o loop LLM completo. O prompt diz "podes responder dúvidas sobre produtos (search_menu)", o que faz a IA navegar extensivamente pelo menu antes de sugerir o link.
+### Problemas atuais na BD
 
-### O Que Vou Implementar
+| Restaurante | Campo | Valor atual | Valor correto |
+|-------------|-------|-------------|---------------|
+| Graça | client_id | `442F...06EE` (antigo) | `13E5...7571` |
+| Graça | app_key | `2AB4...6B09` (antigo) | `EC23...2E14` |
+| Graça | app_secret | `8DF6...47A2` (antigo) | `1E45...E5F4` |
+| Barreiro | client_id | `0C9B...A00C` (errado) | `768D...8D54` |
+| Barreiro | app_key | `2AB4...6B09` (antigo) | `EC23...2E14` |
+| Barreiro | app_secret | `8DF6...47A2` (antigo) | `1E45...E5F4` |
+| Barreiro | api_type | `zsapi` | `zsroi` (ZSAPI não disponível) |
 
-#### 1. Expandir o guardrail de Modo Recepção no `index.ts`
+Além disso, o Barreiro tem os dados novos no campo `zsapi_*`, mas esses são credenciais ZSROI, não ZSAPI.
 
-Adicionar uma nova categoria de intents ao guardrail: **intents que demonstram intenção de compra**. Quando o cliente demonstra que quer pedir (não apenas tirar dúvidas), o sistema envia o link imediatamente sem passar pelo LLM.
+### O que vou implementar
 
-Intents que disparam envio direto do link (além dos atuais):
-- `browse_product` **quando a mensagem indica intenção de compra** (ex: "quero", "queria", "manda", "pedido")
-- `confirm_item`, `finalize`, `provide_address`, `provide_payment`, etc. (já existentes)
+#### 1. Atualizar credenciais na BD (migration)
+- Graça: atualizar `client_id`, `app_key`, `app_secret` com as novas credenciais ZSROI
+- Barreiro: atualizar `client_id`, `app_key`, `app_secret`, limpar `zsapi_*` (não existem credenciais ZSAPI), corrigir `api_type` para `zsroi`, ativar `enabled`
 
-Intents que continuam a passar pelo LLM (para o agente responder naturalmente):
-- `browse_product` / `browse_menu` **sem intenção de compra** (ex: "quanto custa X?", "tem opções sem glúten?")
-- `ask_question` (ex: "qual o horário?", "fazem entrega?")
-- `greeting`, `acknowledgment`
-- `clarify`
+#### 2. Adaptar `test-connection` no `zonesoft-api/index.ts`
+- Para ZSROI: testar apenas endpoints de ordering (`Orders/getInstances`, `Takeaway/getInstances`, `Documents/getInstances`) — remover `products/getInstances` dos testes ZSROI
+- Reduzir variantes de header: o suporte confirmou que é `Authorization = Client ID` e `X-Integration-Signature = HMAC`. Priorizar essa combinação (mantendo fallbacks, mas tentando primeiro a confirmada)
+- Priorizar assinatura `utf8:hexLower` (string UTF-8 conforme confirmado pelo suporte)
 
-**Lógica:** Regex simples no `rawMessage` para detectar intenção de compra: `/quero|queria|manda|pedir|pedido|adiciona|vou querer/i`
+#### 3. Bloquear `sync-products` quando não há ZSAPI
+- Se não existem credenciais ZSAPI e `api_type` é `zsroi`, devolver erro claro: "Sincronização de produtos requer credenciais ZSAPI (API de sincronização). Contacte o suporte ZoneSoft para criar uma integração ZSAPI."
+- Na UI, desabilitar botão de sync produtos quando não há ZSAPI configurado
 
-#### 2. Simplificar o prompt de Modo Recepção no `conversational-ai-prompt.ts`
+#### 4. Corrigir URL ZSAPI
+- Mudar `zsapi.zonesoft.org` para placeholder ou remover até ter a URL real (o DNS não resolve)
+- Adicionar nota no código que a URL deve ser confirmada via `developer.zonesoft.org`
 
-Tornar o comportamento do LLM mais direto quando estiver em modo recepção:
-- Respostas curtas (1-2 frases máximo)
-- Após qualquer browse com resultado, mencionar sempre o link do menu
-- Nunca listar mais de 3 produtos (apenas dar uma ideia, o detalhe está no menu digital)
-- Sem markdown (sem `**bold**`) — o WhatsApp não renderiza markdown do GPT
+### Ficheiros a alterar
+- **Nova migration SQL**: atualizar credenciais nas duas configs
+- **`supabase/functions/zonesoft-api/index.ts`**: adaptar test-connection, bloquear sync-products sem ZSAPI, priorizar variante de auth confirmada
+- **`src/components/settings/ZoneSoftTab.tsx`**: desabilitar botão de sync quando não há ZSAPI
 
-#### 3. Atualizar o prompt block no `seed-agent-prompts.sql`
-
-Atualizar a secção `reception_mode_section` para refletir as novas regras.
-
-### Ficheiros a Alterar
-
-- **`supabase/functions/whatsapp-ai-agent/index.ts`** — Expandir guardrail (linhas ~830-856)
-- **`supabase/functions/whatsapp-ai-agent/conversational-ai-prompt.ts`** — Simplificar prompt de modo recepção
-- **`supabase/seed-agent-prompts.sql`** — Atualizar template do reception_mode_section
-
-### Detalhes Técnicos
-
-```text
-ANTES (fluxo atual):
-  "Queria pedir açaí" → browse_product → LLM → search_menu → lista 5 itens → sugere → ...
-  ... 4 mensagens depois → confirm_item → guardrail → envia link
-
-DEPOIS (fluxo corrigido):
-  "Queria pedir açaí" → browse_product → detecta intenção de compra → envia link IMEDIATAMENTE
-  "Quanto custa o açaí G?" → browse_product → sem intenção de compra → LLM responde (curto) + menciona link
-```
-
-Guardrail expandido (pseudo-código):
-```typescript
-if (!aiOrderingEnabled) {
-  const orderLikeIntents = new Set(['confirm_item', 'finalize', ...]);
-  const purchaseIntentRegex = /quero|queria|manda|pedir|pedido|adiciona|vou querer|faz.*pedido/i;
-  
-  const isBrowseWithPurchaseIntent = 
-    ['browse_product', 'browse_menu'].includes(intent) && 
-    purchaseIntentRegex.test(rawMessage);
-
-  if (orderLikeIntents.has(intent) || isBrowseWithPurchaseIntent) {
-    skipLLM = true;
-    finalResponse = `Faz o teu pedido pelo nosso menu digital:\n${context.menuUrl}\n\nÉ rápido e prático! 😊`;
-  }
-}
-```
-
-### Sem Alterações Necessárias
-- Sem mudanças de base de dados
+### Sem alterações necessárias
 - Sem novas secrets
-- Sem alterações de UI
+- Sem novas tabelas
 
-### Critérios de Sucesso
-- "Queria pedir açaí" em modo recepção → link do menu na 1ª resposta
-- "Quanto custa o açaí?" em modo recepção → resposta curta + menção ao link
-- "Qual o horário?" → resposta normal sem link forçado
-- Respostas sem markdown (`**bold**`) no WhatsApp
+### Critérios de sucesso
+- `test-connection` no Barreiro e Graça retorna sucesso com as credenciais ZSROI
+- `sync-products` devolve mensagem clara quando ZSAPI não está disponível
+- Logs sem DNS errors
 
